@@ -49,33 +49,33 @@ class MainActivity : ComponentActivity() {
             val themeMode by prefs.themeMode.collectAsState()
             val barTabs by prefs.barTabs.collectAsState()
             val autoCheckUpdate by prefs.updateAutoCheck.collectAsState()
-            var pendingUpdate by androidx.compose.runtime.remember {
+            val pendingUpdate = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)
             }
             val context = androidx.compose.ui.platform.LocalContext.current
 
             // Vérification automatique à l'ouverture (« mise à jour auto »)
             androidx.compose.runtime.LaunchedEffect(autoCheckUpdate) {
-                if (autoCheckUpdate && pendingUpdate == null) {
+                if (autoCheckUpdate && pendingUpdate.value == null) {
                     updateChecker.latest()?.let { latest ->
-                        if (updateChecker.isNewer(latest.tag)) pendingUpdate = latest
+                        if (updateChecker.isNewer(latest.tag)) pendingUpdate.value = latest
                     }
                 }
             }
 
             EndlessSeaTheme(themeMode = themeMode) {
                 // Boîte « nouvelle version »
-                pendingUpdate?.let { update ->
+                pendingUpdate.value?.let { update ->
                     androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { pendingUpdate = null },
+                        onDismissRequest = { pendingUpdate.value = null },
                         confirmButton = {
                             androidx.compose.material3.Button(onClick = {
                                 AppUpdateInstaller.download(context, update)
-                                pendingUpdate = null
+                                pendingUpdate.value = null
                             }) { Text("Télécharger et installer") }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { pendingUpdate = null }) {
+                            androidx.compose.material3.TextButton(onClick = { pendingUpdate.value = null }) {
                                 Text("Plus tard")
                             }
                         },
