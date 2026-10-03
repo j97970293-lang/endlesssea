@@ -62,7 +62,10 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
-    implementation(libs.compose.material.icons.core)
+    // icons-extended : icônes riches (Explore, Extension, PlayListPlay…).
+    // Le volume de classes n'est un problème que pour D8 local en mémoire restreinte ;
+    // la CI (16 Go) le digère sans peine — et R8 élaguera au release.
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
 
