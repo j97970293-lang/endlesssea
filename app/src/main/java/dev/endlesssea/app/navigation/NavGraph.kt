@@ -74,8 +74,8 @@ fun EsBottomBar(nav: NavHostController, currentRoute: String?, tabs: Set<String>
                             restoreState = true
                         }
                     },
+                    // Icônes seules (style Anymex) — le rôle reste accessible via contentDescription
                     icon = { Icon(screen.icon, contentDescription = screen.label) },
-                    label = { Text(screen.label, style = MaterialTheme.typography.labelSmall) },
                     colors = NavigationBarItemDefaults.colors(
                         indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                         selectedIconColor = MaterialTheme.colorScheme.primary,

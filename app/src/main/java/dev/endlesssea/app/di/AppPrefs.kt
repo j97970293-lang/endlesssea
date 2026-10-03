@@ -29,7 +29,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val p = context.getSharedPreferences("endless_sea_prefs", Context.MODE_PRIVATE)
 
     // ---------------------------------------------------------------- thème
-    private val _themeMode = MutableStateFlow(p.getInt("theme_mode", THEME_SYSTEM))
+    // AMOLED par défaut (esthétique cible) ; l'utilisateur peut revenir à Système.
+    private val _themeMode = MutableStateFlow(p.getInt("theme_mode", THEME_AMOLED))
     val themeMode: StateFlow<Int> = _themeMode
     fun setThemeMode(mode: Int) {
         p.edit().putInt("theme_mode", mode).apply(); _themeMode.value = mode
@@ -68,6 +69,11 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _parallelTasks = MutableStateFlow(p.getInt("tasks", 2))
     val parallelTasks: StateFlow<Int> = _parallelTasks
     fun setParallelTasks(v: Int) { val c = v.coerceIn(1, 4); p.edit().putInt("tasks", c).apply(); _parallelTasks.value = c }
+
+    // ---------------------------------------------------------------- mises à jour
+    private val _updateAutoCheck = MutableStateFlow(p.getBoolean("update_auto_check", true))
+    val updateAutoCheck: StateFlow<Boolean> = _updateAutoCheck
+    fun setUpdateAutoCheck(v: Boolean) { p.edit().putBoolean("update_auto_check", v).apply(); _updateAutoCheck.value = v }
 
     // ---------------------------------------------------------------- lecteur
     private val _defaultSpeed = MutableStateFlow(p.getFloat("speed", 1f))

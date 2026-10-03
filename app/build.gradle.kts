@@ -15,11 +15,22 @@ android {
         applicationId = "dev.endlesssea.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.3.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // Signature debug FIXE (keystore public dédié au debug — aucun secret de production)
+    // → les mises à jour GitHub s'installent SANS désinstaller l'ancienne version.
+    signingConfigs {
+        named("debug") {
+            storeFile = rootProject.file("keystore/debug.p12")
+            storePassword = "endlesssea"
+            keyAlias = "endlesssea-debug"
+            keyPassword = "endlesssea"
+            storeType = "PKCS12"
+        }
+    }
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"

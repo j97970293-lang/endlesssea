@@ -89,6 +89,22 @@ fun HomeScreen(
                 MediaRow(title = "Reprendre la lecture", items = state.continueWatching, onMediaClick = onMediaClick)
             }
         }
+
+        // ---- Rangées en ligne des extensions (la vraie vie de l'accueil)
+        state.remoteRows.forEach { row ->
+            item(key = "remote-${row.title}") {
+                MediaRow(title = row.title, items = row.items, onMediaClick = onMediaClick)
+            }
+        }
+        if (state.remoteRows.isEmpty() && state.extensionCount > 0 && !state.loading) {
+            item { Text(
+                "Vos extensions ne proposent pas de catalogue « à la une » — utilisez la recherche.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) }
+        }
+
         if (state.recent.isNotEmpty()) {
             item {
                 MediaRow(title = "Ajoutés récemment", items = state.recent, onMediaClick = onMediaClick)
@@ -127,9 +143,9 @@ private fun FeaturedBanner(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(300.dp)
-            .padding(horizontal = 12.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .height(320.dp)
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(24.dp))
             .clickable { onClick(items[pager.currentPage].id) }
     ) {
         HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
@@ -145,10 +161,26 @@ private fun FeaturedBanner(
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                            listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.88f))
                         )
                     )
                 )
+                // Badge année / type (style Anymex)
+                item.subtitle?.take(10)?.let { badge ->
+                    Box(
+                        Modifier.align(Alignment.TopEnd).padding(14.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            badge,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFFB9C1FF),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
                 Column(
                     Modifier
                         .align(Alignment.BottomStart)

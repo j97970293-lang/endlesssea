@@ -55,7 +55,7 @@ class ExploreViewModel @Inject constructor(
                                 title = "${ext.info.name}" + if (page.hasNextPage) " · suite →" else "",
                                 items = page.items.take(20).map {
                                     SearchItemUi(
-                                        id = "$pkg:${it.url}", title = it.title,
+                                        id = "${ext.info.id}:${it.url}", title = it.title,
                                         posterUrl = it.posterUrl,
                                         subtitle = it.year?.toString() ?: it.type.name,
                                     )

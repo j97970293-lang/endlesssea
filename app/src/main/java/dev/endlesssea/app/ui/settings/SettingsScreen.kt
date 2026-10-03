@@ -247,11 +247,29 @@ fun SettingsScreen(
                 )
             }
 
+            // --------------------------------------------------- MISES À JOUR
+            item { SectionHeader("Mises à jour de l'application") }
+            item {
+                SettingSwitch(
+                    title = "Mise à jour automatique",
+                    subtitle = "Avertir à l'ouverture quand une nouvelle version est publiée",
+                    checked = state.updateAutoCheck,
+                    onChange = viewModel::setUpdateAutoCheck,
+                )
+            }
+            item {
+                SettingRow(
+                    title = if (state.updateChecking) "Vérification en cours…" else "Vérifier maintenant",
+                    subtitle = "Dernière release publiée sur GitHub",
+                    onClick = { if (!state.updateChecking) viewModel.checkForUpdate() },
+                )
+            }
+
             // --------------------------------------------------------- À PROPOS
             item { SectionHeader("À propos") }
             item {
                 SettingRow(
-                    title = "Endless Sea 0.2.0",
+                    title = "Endless Sea 0.3.0",
                     subtitle = "GPL-3.0 · aucune source incluse · github.com/j97970293-lang/endlesssea",
                     onClick = { },
                 )
@@ -295,6 +313,27 @@ fun SettingsScreen(
                         }
                     }
                 }
+            },
+        )
+    }
+
+    // ------------------------------------------------- Mise à jour trouvée
+    state.availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissUpdate() },
+            confirmButton = {
+                Button(onClick = {
+                    dev.endlesssea.app.update.AppUpdateInstaller.download(context, update)
+                    viewModel.dismissUpdate()
+                }) { Text("Télécharger") }
+            },
+            dismissButton = { TextButton(onClick = { viewModel.dismissUpdate() }) { Text("Plus tard") } },
+            title = { Text("Mise à jour ${update.tag}") },
+            text = {
+                Text(
+                    update.notes.take(600).ifBlank { "Nouvelle version disponible sur GitHub Releases." },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             },
         )
     }

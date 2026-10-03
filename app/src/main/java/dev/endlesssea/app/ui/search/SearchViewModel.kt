@@ -70,8 +70,9 @@ class SearchViewModel @Inject constructor(
             async {
                 runCatching { ext.search(query, page = 1, filters = FilterSet()) }
                     .onSuccess { page ->
-                        // id composite « ext:url » — requis par l'écran Détails pour rappeler l'extension
-                        val remapped = page.items.map { it.copy(id = "$name:${it.url}") }
+                        // id composite « <pkg id>:<url> » — l'écran Détails rappelle cette extension
+                        val remapPrefix = ext.info.id
+                        val remapped = page.items.map { it.copy(id = "$remapPrefix:${it.url}") }
                         synchronized(results) { results += remapped }
                     }
                     .onFailure { e ->

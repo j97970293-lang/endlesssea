@@ -30,12 +30,16 @@ import dev.endlesssea.app.navigation.EsBottomBar
 import dev.endlesssea.app.navigation.EsNavGraph
 import dev.endlesssea.app.navigation.Screen
 import dev.endlesssea.app.ui.theme.EndlessSeaTheme
+import dev.endlesssea.app.update.AppUpdateInfo
+import dev.endlesssea.app.update.AppUpdateInstaller
+import dev.endlesssea.app.update.UpdateChecker
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var prefs: AppPrefs
+    @Inject lateinit var updateChecker: UpdateChecker
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,8 +48,44 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by prefs.themeMode.collectAsState()
             val barTabs by prefs.barTabs.collectAsState()
+            val autoCheckUpdate by prefs.updateAutoCheck.collectAsState()
+            var pendingUpdate by androidx.compose.runtime.remember {
+                androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)
+            }
+            val context = androidx.compose.ui.platform.LocalContext.current
+
+            // Vérification automatique à l'ouverture (« mise à jour auto »)
+            androidx.compose.runtime.LaunchedEffect(autoCheckUpdate) {
+                if (autoCheckUpdate && pendingUpdate == null) {
+                    updateChecker.latest()?.let { latest ->
+                        if (updateChecker.isNewer(latest.tag)) pendingUpdate = latest
+                    }
+                }
+            }
 
             EndlessSeaTheme(themeMode = themeMode) {
+                // Boîte « nouvelle version »
+                pendingUpdate?.let { update ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { pendingUpdate = null },
+                        confirmButton = {
+                            androidx.compose.material3.Button(onClick = {
+                                AppUpdateInstaller.download(context, update)
+                                pendingUpdate = null
+                            }) { Text("Télécharger et installer") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { pendingUpdate = null }) {
+                                Text("Plus tard")
+                            }
+                        },
+                        title = { Text("Mise à jour ${update.tag} disponible") },
+                        text = {
+                            Text(update.notes.take(500).ifBlank { "Nouvelle version publiée sur GitHub Releases." })
+                        },
+                    )
+                }
+
                 val nav = rememberNavController()
                 val backStack by nav.currentBackStackEntryAsState()
                 val route = backStack?.destination?.route

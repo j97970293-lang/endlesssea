@@ -11,38 +11,38 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import dev.endlesssea.app.di.AppPrefs
 
-// Palette « mer profonde » — bleu profond / cyan vif
+// Palette inspiration Anymex : bleu nuit indigo + pervenche (periwinkle)
 private val SeaDark = darkColorScheme(
-    primary = Color(0xFF7AD8FF),
-    onPrimary = Color(0xFF003547),
-    primaryContainer = Color(0xFF004D66),
-    onPrimaryContainer = Color(0xFFBFE9FF),
-    secondary = Color(0xFF8CD6C3),
-    onSecondary = Color(0xFF00382D),
-    tertiary = Color(0xFF16C2C2),
-    surface = Color(0xFF0E1518),
-    onSurface = Color(0xFFDDE4E7),
-    surfaceVariant = Color(0xFF16222A),
-    onSurfaceVariant = Color(0xFF8FA2AE),
-    background = Color(0xFF0B1114),
+    primary = Color(0xFFB9C1FF),
+    onPrimary = Color(0xFF26315F),
+    primaryContainer = Color(0xFF3D4779),
+    onPrimaryContainer = Color(0xFFDEE1FF),
+    secondary = Color(0xFFC0C2E8),
+    onSecondary = Color(0xFF2A2E4A),
+    tertiary = Color(0xFF7AE0E0),
+    surface = Color(0xFF0B0E1A),
+    onSurface = Color(0xFFE3E2E9),
+    surfaceVariant = Color(0xFF141830),
+    onSurfaceVariant = Color(0xFF8D93B8),
+    background = Color(0xFF080A14),
 )
 
-// AMOLED : fonds en noir pur (économie d'écran, plus beau dégradé flottant)
+// AMOLED : noir pur + cartes bleu nuit — la référence visuelle (par défaut)
 private val SeaAmoled = darkColorScheme(
-    primary = Color(0xFF7AD8FF),
-    onPrimary = Color(0xFF003547),
-    primaryContainer = Color(0xFF004D66),
-    onPrimaryContainer = Color(0xFFBFE9FF),
-    secondary = Color(0xFF8CD6C3),
-    onSecondary = Color(0xFF00382D),
-    tertiary = Color(0xFF16C2C2),
+    primary = Color(0xFFAFB8FF),
+    onPrimary = Color(0xFF273162),
+    primaryContainer = Color(0xFF3E4880),
+    onPrimaryContainer = Color(0xFFDEE1FF),
+    secondary = Color(0xFFC0C2E8),
+    onSecondary = Color(0xFF242847),
+    tertiary = Color(0xFF7AE0E0),
     surface = Color(0xFF000000),
-    onSurface = Color(0xFFE6EBEE),
-    surfaceVariant = Color(0xFF0B0B0B),
-    onSurfaceVariant = Color(0xFF94A5B1),
+    onSurface = Color(0xFFE4E3EE),
+    surfaceVariant = Color(0xFF0C0F1E),
+    onSurfaceVariant = Color(0xFF8D93B8),
     background = Color(0xFF000000),
-    surfaceContainerHigh = Color(0xFF0B0B0B),
-    surfaceContainer = Color(0xFF050505),
+    surfaceContainerHigh = Color(0xFF0C0F1E),
+    surfaceContainer = Color(0xFF070810),
 )
 
 private val SeaLight = lightColorScheme(

@@ -31,6 +31,9 @@ data class SettingsUiState(
     val themeMode: Int = AppPrefs.THEME_SYSTEM,
     val barTabs: Set<String> = AppPrefs.DEFAULT_TABS,
     val genres: List<GenreUi> = emptyList(),
+    val updateAutoCheck: Boolean = true,
+    val availableUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
+    val updateChecking: Boolean = false,
     val message: String? = null,
 )
 
@@ -40,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val genreDao: GenreDao,
     private val libraryDao: LibraryDao,
     private val historyDao: WatchHistoryDao,
+    private val updateChecker: dev.endlesssea.app.update.UpdateChecker,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -54,6 +58,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoResume.collect { v -> set { copy(autoResume = v) } } }
         viewModelScope.launch { prefs.themeMode.collect { v -> set { copy(themeMode = v) } } }
         viewModelScope.launch { prefs.barTabs.collect { v -> set { copy(barTabs = v) } } }
+        viewModelScope.launch { prefs.updateAutoCheck.collect { v -> set { copy(updateAutoCheck = v) } } }
         viewModelScope.launch {
             genreDao.observeAll()
                 .catch { /* la table est créée par seed — jamais vide de fait */ }
@@ -114,6 +119,27 @@ class SettingsViewModel @Inject constructor(
         genreDao.reorder(all[idx].id, all[target].position)
         genreDao.reorder(all[target].id, all[idx].position)
     }
+
+    // --------------------------------------------------------- mises à jour
+
+    fun setUpdateAutoCheck(v: Boolean) {
+        prefs.setUpdateAutoCheck(v)
+        toastState(if (v) "Recherche de mises à jour automatique activée" else "Recherche automatique désactivée")
+    }
+
+    /** Vérification manuelle (« Vérifier les mises à jour »). */
+    fun checkForUpdate() = viewModelScope.launch {
+        set { copy(updateChecking = true, availableUpdate = null) }
+        val latest = updateChecker.latest()
+        when {
+            latest == null -> toastState("Vérification impossible pour l'instant (réseau ?)")
+            updateChecker.isNewer(latest.tag) -> set { copy(availableUpdate = latest) }
+            else -> toastState("Vous êtes déjà à jour")
+        }
+        set { copy(updateChecking = false) }
+    }
+
+    fun dismissUpdate() { set { copy(availableUpdate = null) } }
 
     // ------------------------------------------------------------ sauvegarde
 
