@@ -37,6 +37,7 @@ object AppModule {
             .build()
 
     @Provides fun provideMediaDao(db: EsDatabase): MediaDao = db.mediaDao()
+    @Provides fun provideEpisodeDao(db: EsDatabase): dev.endlesssea.data.db.EpisodeDao = db.episodeDao()
     @Provides fun provideLibraryDao(db: EsDatabase): LibraryDao = db.libraryDao()
     @Provides fun provideHistoryDao(db: EsDatabase): WatchHistoryDao = db.watchHistoryDao()
     @Provides fun provideDownloadsDao(db: EsDatabase): DownloadsDao = db.downloadsDao()
