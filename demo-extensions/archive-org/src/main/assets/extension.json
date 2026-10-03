@@ -1,0 +1,19 @@
+{
+  "id": "dev.endlesssea.demo.archiveorg",
+  "name": "Internet Archive — Domaine public",
+  "version": 1,
+  "versionName": "1.0.0",
+  "apiVersion": 1,
+  "description": {
+    "fr": "Films du domaine public et licences libres via l'API officielle de l'Internet Archive (archive.org). Source 100 % légale, servant de démonstration et de test.",
+    "en": "Public-domain and openly-licensed films via the official Internet Archive API (archive.org). 100% legal source used for demo and testing."
+  },
+  "author": { "name": "Endless Sea", "url": "https://github.com/<org>/endless-sea" },
+  "languages": ["en", "fr"],
+  "types": ["MOVIE"],
+  "entryClass": "dev.endlesssea.extension.archiveorg.ArchiveOrgProvider",
+  "permissions": ["INTERNET", "DOWNLOAD"],
+  "capabilities": { "search": true, "servers": true, "subtitles": false, "downloads": true, "auth": false },
+  "sourceUrl": "https://github.com/<org>/endless-sea/tree/main/demo-extensions/archive-org",
+  "nsfw": false
+}

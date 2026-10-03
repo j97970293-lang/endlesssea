@@ -1,0 +1,90 @@
+package dev.endlesssea.app.ui.search
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+/** Shared light UI model for catalog rows across screens. */
+data class SearchItemUi(
+    val id: String,
+    val title: String,
+    val posterUrl: String? = null,
+    val bannerUrl: String? = null,
+    val subtitle: String? = null,
+)
+
+/**
+ * Recherche multi-extensions (spec §12) : une requête interroge tous les providers
+ * activés, les résultats sont regroupés/dédupliqués, les erreurs isolées par source.
+ */
+@Composable
+fun SearchScreen(
+    onMediaClick: (String) -> Unit,
+    viewModel: SearchViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsState()
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = viewModel::onQueryChange,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            placeholder = { Text("One Piece, Naruto, un film…") },
+            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            trailingIcon = {
+                if (state.query.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.onQueryChange("") }) {
+                        Icon(Icons.Filled.Clear, "Effacer")
+                    }
+                }
+            },
+            singleLine = true,
+        )
+
+        if (state.perExtensionErrors.isNotEmpty()) {
+            state.perExtensionErrors.forEach { (ext, msg) ->
+                Text(
+                    "$ext : $msg",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
+        }
+
+        if (state.results.isEmpty() && state.query.isNotBlank() && !state.loading) {
+            Text("Aucun résultat", modifier = Modifier.padding(16.dp))
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(110.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(state.results, key = { it.id }) { item ->
+                dev.endlesssea.app.ui.components.MediaCard(item = item, onClick = { onMediaClick(item.id) })
+            }
+        }
+    }
+}

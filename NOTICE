@@ -1,0 +1,37 @@
+Endless Sea
+===========
+
+Copyright (C) 2026 The Endless Sea contributors.
+Licensed under the GNU General Public License v3.0 (see LICENSE).
+
+This product includes architectural concepts inspired by — but no source code copied
+from — the following open-source projects:
+
+- AB Download Manager — Apache-2.0 — https://github.com/amir1376/ab-download-manager
+    Blueprint for the segmented download engine (probe/plan/positioned writes,
+    queue/priority/concurrency model, HLS part strategy). Concepts re-implemented
+    from scratch in Kotlin for Android. Apache-2.0 is compatible with this
+    project's GPL-3.0 distribution.
+
+- Cloudstream (CS3) — GPL-3.0 — https://github.com/recloudstream/cloudstream
+    Provider call-graph concept (search → load → loadLinks), host extractors and
+    repo model. Our API is designed independently under the same license family.
+
+- Mihon / Tachiyomi & Aniyomi — Apache-2.0 — repository-driven extension updates,
+    user-centric install flow concepts.
+
+- Kotatsu — GPL-3.0+ — parser/app separation concept, offline-first library model.
+
+- Nuvio — GPL-3.0 — scriptable providers & subtitle fidelity (libass) goals.
+
+- Stremio addons — manifest/resource protocol concept (docs/en/04, remote flavor).
+
+Demo content attribution
+------------------------
+- Blender Foundation open movies: Big Buck Bunny, Sintel, Tears of Steel,
+  Elephants Dream — Creative Commons Attribution licenses
+  (https://www.blender.org/about/projects/). Streams hosted on public demo CDNs.
+- Internet Archive public-domain films (https://archive.org) via its public APIs.
+
+Trademarks belong to their respective owners. Endless Sea bundles NO content
+sources in its main application (see README, legal notice).

@@ -1,0 +1,51 @@
+{
+  "name": "Endless Sea — Dépôt officiel (démo)",
+  "description": "Extensions de démonstration maintenues par le projet. Sources 100 % légales uniquement (domaine public / Creative Commons). Les vrais .esx + sha256 sont publiés avec chaque release GitHub ; les URLs ci-dessous sont des gabarits documentés.",
+  "url": "https://raw.githubusercontent.com/<org>/endless-sea/main/repos/official/index.json",
+  "extensions": [
+    {
+      "id": "dev.endlesssea.demo.archiveorg",
+      "name": "Internet Archive — Domaine public",
+      "version": 1,
+      "versionName": "1.0.0",
+      "apiVersion": 1,
+      "author": { "name": "Endless Sea", "url": "https://github.com/<org>/endless-sea" },
+      "description": {
+        "fr": "Films du domaine public via l'API archive.org",
+        "en": "Public-domain films via the archive.org API"
+      },
+      "languages": ["en", "fr"],
+      "types": ["MOVIE"],
+      "permissions": ["INTERNET", "DOWNLOAD"],
+      "minAppVersion": 1,
+      "size": 0,
+      "iconUrl": "https://archive.org/favicon.ico",
+      "apkUrl": "https://github.com/<org>/endless-sea/releases/download/extensions-v1/archiveorg-1.0.0.esx",
+      "sha256": "PUBLISHED_AT_RELEASE",
+      "kind": "COMPILED",
+      "nsfw": false
+    },
+    {
+      "id": "dev.endlesssea.demo.staticjson",
+      "name": "Blender Open Movies (démo)",
+      "version": 1,
+      "versionName": "1.0.0",
+      "apiVersion": 1,
+      "author": { "name": "Endless Sea" },
+      "description": {
+        "fr": "Films libres de la Blender Foundation (Big Buck Bunny, Sintel…), fournis en JSON déclaratif",
+        "en": "Blender Foundation open movies (Big Buck Bunny, Sintel…) as a declarative JSON provider"
+      },
+      "languages": ["en", "fr"],
+      "types": ["MOVIE"],
+      "permissions": ["INTERNET", "DOWNLOAD"],
+      "minAppVersion": 1,
+      "size": 0,
+      "iconUrl": "https://www.blender.org/favicon.ico",
+      "apkUrl": "https://raw.githubusercontent.com/<org>/endless-sea/main/demo-extensions/static-json/provider.json",
+      "sha256": "PUBLISHED_AT_RELEASE",
+      "kind": "DECLARATIVE",
+      "nsfw": false
+    }
+  ]
+}

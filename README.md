@@ -1,0 +1,174 @@
+<div align="center">
+
+# 🌊 Endless Sea
+
+**Plateforme Android open source — anime, films & séries : streaming, téléchargement avancé et bibliothèque locale, pilotée par des extensions.**
+
+*An open-source Android platform for anime, movies & series — streaming, advanced downloading and a local library, powered by extensions.*
+
+Android 8.0+ (API 26) • Kotlin • Jetpack Compose • GPL-3.0
+
+</div>
+
+---
+
+## 🇫🇷 Français
+
+### Qu'est-ce qu'Endless Sea ?
+
+Endless Sea est une application Android moderne et légère inspirée des meilleures idées de **Kotatsu, Mihon/Aniyomi, Cloudstream, Nuvio, Stremio et AB Download Manager/IDM**, conçue comme une **plateforme extensible** :
+
+> **L'application ne contient aucune source en dur.** L'utilisateur installe les extensions/providers qu'il souhaite depuis des dépôts. Le dépôt principal ne dépend d'aucune liste fixe de sites.
+
+- 🔌 **Système d'extensions** indépendant (plugins compilés `.esx`, providers déclaratifs JSON), dépôts multiples, permissions et signatures vérifiées
+- ⬇️ **Gestionnaire de téléchargement puissant** : multi-connexions segmentées, pause/reprise, file d'attente, arrière-plan, HLS/DASH, sous-titres en fichiers séparés, reprise après redémarrage
+- ▶️ **Lecteur moderne** (Media3/ExoPlayer, backend mpv possible plus tard) : vitesse, pistes audio, sous-titres stylés, gestes, verrouillage, reprise de position
+- 📚 **Bibliothèque locale hors-ligne** : anime, films, séries, OVA, ONA, catégories et genres personnalisables
+- 🔍 **Recherche multi-extensions** agrégée avec filtres
+- 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
+- 📱 Android 8.0+ , stockage interne ou carte SD (SAF)
+
+### Avertissement légal
+
+Endless Sea est un **logiciel neutre**, distribué sans aucune source de contenu pirate. Les extensions de démonstration fournies utilisent uniquement des sources légales et libres (Internet Archive — domaine public, films Blender Foundation — Creative Commons, fichiers d'exemple). **L'utilisateur est seul responsable des extensions tierces qu'il installe** et doit respecter les lois de son pays ainsi que les conditions d'utilisation des sources.
+
+### Arborescence complète du dépôt
+
+```
+endless-sea/
+├── README.md                        ← ce fichier (FR + EN)
+├── LICENSE                          ← GPL-3.0
+├── CONTRIBUTING.md                  ← guide de contribution
+├── settings.gradle.kts
+├── build.gradle.kts
+├── gradle.properties
+├── gradle/
+│   └── libs.versions.toml           ← catalogue de versions (source unique de vérité)
+├── .github/
+│   └── workflows/android-ci.yml     ← CI : build + tests unitaires
+│
+├── docs/                            ← documentation complète (EN, résumés FR)
+│   ├── en/
+│   │   ├── 01-reference-projects-analysis.md   ← analyse des projets de référence
+│   │   ├── 02-architecture.md                  ← architecture générale
+│   │   ├── 03-technology-choices.md            ← technologies + justification
+│   │   ├── 04-extension-model.md               ← modèle des extensions
+│   │   ├── 05-extension-api.md                 ← API complète des extensions
+│   │   ├── 06-download-system.md               ← moteur de téléchargement
+│   │   ├── 07-player.md                        ← lecteur vidéo
+│   │   ├── 08-storage.md                       ← stockage & SAF
+│   │   ├── 09-database-model.md                ← schéma de base de données
+│   │   ├── 10-android-permissions.md           ← permissions Android
+│   │   ├── 11-android-8-compatibility.md       ← compatibilité Android 8→15
+│   │   └── 12-testing-strategy.md              ← stratégie de tests
+│   └── fr/
+│       └── 00-resume.md                        ← résumé complet en français
+│
+├── core/                            ← modèles partagés, erreurs, réseau commun
+│   └── src/main/java/dev/endlesssea/core/
+│       ├── model/Models.kt          ← catégories, statuts de téléchargement…
+│       ├── net/HttpClients.kt       ← OkHttp commun (UA, cookies, logs)
+│       └── util/FileNames.kt        ← sanitisation + templates de nommage
+│
+├── extensions-api/                  ← CONTRAT des extensions (publié pour les devs tiers)
+│   └── src/main/java/dev/endlesssea/extensions/api/
+│       ├── EsExtension.kt           ← interface principale d'un provider
+│       ├── ExtractorApi.kt          ← résolveurs d'hébergeurs vidéo
+│       ├── manifest/                ← ExtensionManifest + RepositoryIndex (JSON)
+│       └── captcha/                 ← CaptchaChallenge / extensionAuth
+│
+├── extensions-loader/               ← chargeur : dépôts, signature, isolation, WebView
+│   └── src/main/java/dev/endlesssea/extensions/loader/
+│       ├── ExtensionLoader.kt       ← chargement DEX + vérification SHA-256
+│       ├── RepoManager.kt           ← ajout/sync des dépôts JSON
+│       ├── JsonProviderEngine.kt    ← interpréteur des providers déclaratifs
+│       └── captcha/CaptchaActivity.kt
+│
+├── downloader/                      ← moteur de téléchargement segmenté
+│   └── src/main/java/dev/endlesssea/downloader/
+│       ├── segment/SegmentEngine.kt ← multi-connexions + reprise + HLS
+│       ├── DownloadManager.kt       ← file d'attente, pause/reprise, priorités
+│       └── DownloadService.kt       ← service de premier plan + notifications
+│
+├── player/                          ← lecteur vidéo (backend interchangeable)
+│   └── src/main/java/dev/endlesssea/player/
+│       └── EsPlayer.kt              ← wrapper Media3 (vitesse, pistes, sous-titres)
+│
+├── data/                            ← Room (bibliothèque, téléchargements, historique)
+│   └── src/main/java/dev/endlesssea/data/
+│       └── db/                      ← EsDatabase, Entities, DAOs
+│
+├── app/                             ← application Android (Compose, MVVM, Hilt)
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       └── java/dev/endlesssea/app/
+│           ├── EndlessSeaApp.kt
+│           ├── MainActivity.kt
+│           ├── navigation/NavGraph.kt
+│           ├── ui/ (home·explore·search·library·downloads·extensions·settings·theme)
+│           └── di/AppModule.kt
+│
+├── demo-extensions/                 ← extensions de démonstration LÉGALES
+│   ├── archive-org/                 ← provider Internet Archive (domaine public) — Kotlin
+│   └── static-json/                 ← provider déclaratif + JSON (Blender® open movies, CC)
+│
+└── repos/official/index.json        ← exemple de dépôt d'extensions officiel
+```
+
+### Compiler
+
+```bash
+# Prérequis : JDK 17+, Android SDK 35
+git clone https://github.com/<org>/endless-sea.git
+cd endless-sea
+./gradlew :app:assembleDebug
+```
+
+Ouvrez ensuite le projet dans **Android Studio** (Hedgehog+) pour le développement.
+
+---
+
+## 🇬🇧 English
+
+### What is Endless Sea?
+
+Endless Sea is a modern, lightweight Android app inspired by the best ideas of **Kotatsu, Mihon/Aniyomi, Cloudstream, Nuvio, Stremio and AB Download Manager/IDM**, designed as an **extensible platform**:
+
+> **No hardcoded sources.** Users install the extensions/providers they want from pluggable repositories. The main repo has zero mandatory streaming sources.
+
+- 🔌 Independent **extension system** (compiled `.esx` plugins, declarative JSON providers), multiple repositories, verified permissions & checksums
+- ⬇️ **Powerful download manager**: segmented multi-connection downloads, pause/resume, queue, background, HLS/DASH, subtitles as sidecar files, crash/restart recovery
+- ▶️ **Modern player** (Media3/ExoPlayer, swappable mpv backend): speed, audio tracks, styled subtitles, gestures, lock, position resume
+- 📚 **Offline local library**: anime, movies, series, OVA, ONA, customizable categories & genres
+- 🔍 Aggregated **multi-extension search** with filters
+- 🛡️ **CAPTCHA/anti-bot**: user-driven WebView verification screen, per-extension cookie persistence
+- 📱 Android 8.0+, internal or SD-card storage (SAF)
+
+### Legal notice
+
+Endless Sea is **neutral software**, shipped without any pirated content source. Demo extensions use only legal, freely redistributable sources (Internet Archive — public domain, Blender Foundation open movies — Creative Commons, sample files). **Users are solely responsible for third-party extensions they install** and must respect their local laws and each source's terms of use.
+
+### Documentation
+
+Full design docs live in [`docs/en`](docs/en) (a French summary is in [`docs/fr/00-resume.md`](docs/fr/00-resume.md)):
+
+1. [Reference projects analysis](docs/en/01-reference-projects-analysis.md)
+2. [Architecture](docs/en/02-architecture.md) · 3. [Technology choices](docs/en/03-technology-choices.md)
+4. [Extension model](docs/en/04-extension-model.md) · 5. [Extension API](docs/en/05-extension-api.md)
+6. [Download system](docs/en/06-download-system.md) · 7. [Player](docs/en/07-player.md)
+8. [Storage](docs/en/08-storage.md) · 9. [Database model](docs/en/09-database-model.md)
+10. [Android permissions](docs/en/10-android-permissions.md) · 11. [Android 8+ compatibility](docs/en/11-android-8-compatibility.md)
+12. [Testing strategy](docs/en/12-testing-strategy.md)
+
+### Build
+
+```bash
+# Requires: JDK 17+, Android SDK 35
+git clone https://github.com/<org>/endless-sea.git
+cd endless-sea
+./gradlew :app:assembleDebug
+```
+
+### License
+
+**GPL-3.0** — see [LICENSE](LICENSE). Third-party extension repositories may pick their own license.

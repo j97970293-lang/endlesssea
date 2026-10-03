@@ -1,0 +1,98 @@
+{
+  "manifest": {
+    "id": "dev.endlesssea.demo.staticjson",
+    "name": "Blender Open Movies (démo)",
+    "version": 1,
+    "apiVersion": 1,
+    "languages": ["en", "fr"],
+    "types": ["MOVIE"],
+    "baseUrl": "",
+    "permissions": ["INTERNET", "DOWNLOAD"]
+  },
+  "catalog": [
+    {
+      "id": "blender:big-buck-bunny",
+      "title": "Big Buck Bunny",
+      "type": "MOVIE",
+      "year": 2008,
+      "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "bannerUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Big_Buck_Bunny_-_forest.jpg/1280px-Big_Buck_Bunny_-_forest.jpg",
+      "synopsis": "Un lapin géant affronte trois rongeurs malicieux dans la forêt. Film libre de la Blender Foundation (CC-BY 3.0).",
+      "genres": ["Animation", "Comédie", "Court-métrage"],
+      "streams": [
+        {
+          "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+          "server": "Serveur 1 · Google CDN (exemple)",
+          "quality": "720p",
+          "streamType": "DIRECT_FILE"
+        },
+        {
+          "url": "http://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_30fps_normal.mp4",
+          "server": "Serveur 2 · Blender renderfarm",
+          "quality": "1080p",
+          "streamType": "DIRECT_FILE"
+        }
+      ]
+    },
+    {
+      "id": "blender:sintel",
+      "title": "Sintel",
+      "type": "MOVIE",
+      "year": 2010,
+      "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg",
+      "synopsis": "Une jeune fille parcourt le monde à la recherche du dragon qu'elle a recueilli. Film libre Blender Foundation (CC-BY 3.0).",
+      "genres": ["Animation", "Fantasy", "Drame"],
+      "streams": [
+        {
+          "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+          "server": "Serveur 1 · Google CDN (exemple)",
+          "quality": "720p",
+          "streamType": "DIRECT_FILE",
+          "subtitles": [
+            { "url": "https://bitdash-a.akamaihd.net/content/sintel/subtitles/subtitles_en.vtt", "lang": "en", "format": "VTT" }
+          ]
+        },
+        {
+          "url": "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8",
+          "server": "Serveur 2 · Bitmovin HLS (exemple)",
+          "quality": "1080p",
+          "streamType": "HLS"
+        }
+      ]
+    },
+    {
+      "id": "blender:tears-of-steel",
+      "title": "Tears of Steel",
+      "type": "MOVIE",
+      "year": 2012,
+      "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/8/81/Tears_of_Steel_poster.jpg",
+      "synopsis": "Des scientifiques repensent aux événements qui ont changé le monde — à Amsterdam. Film libre Blender Foundation (CC-BY 3.0).",
+      "genres": ["Science-fiction", "Court-métrage"],
+      "streams": [
+        {
+          "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+          "server": "Serveur 1 · Google CDN (exemple)",
+          "quality": "720p",
+          "streamType": "DIRECT_FILE"
+        }
+      ]
+    },
+    {
+      "id": "blender:elephants-dream",
+      "title": "Elephants Dream",
+      "type": "MOVIE",
+      "year": 2006,
+      "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/e/e8/Elephants_Dream_s5_both.jpg",
+      "synopsis": "Proog et Emo explorent l'intérieur d'une machine étrange. Premier film libre de la Blender Foundation (CC-BY 2.5).",
+      "genres": ["Animation", "Science-fiction"],
+      "streams": [
+        {
+          "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+          "server": "Serveur 1 · Google CDN (exemple)",
+          "quality": "720p",
+          "streamType": "DIRECT_FILE"
+        }
+      ]
+    }
+  ]
+}

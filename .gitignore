@@ -1,0 +1,45 @@
+# Endless Sea — .gitignore
+
+# Android
+*.iml
+*.apk
+*.ap_
+*.aab
+local.properties
+.idea/
+.gradle/
+.cxx/
+*.keystore
+!debug.keystore
+
+# Build outputs
+build/
+*/build/
+out/
+captures/
+
+# Kotlin/Java
+*.class
+*.jar
+*.war
+*.ear
+*.dex
+hs_err_pid*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+*.env
+secrets.properties
+keystore.properties
+
+# Profiling
+*.hprof
+
+# Endless Sea specific (runtime data — never commit)
+/app/runtime/
+/repos/*/cache/
+/extensions-store/
+releases/
