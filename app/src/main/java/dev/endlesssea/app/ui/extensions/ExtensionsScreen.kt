@@ -1,26 +1,41 @@
 package dev.endlesssea.app.ui.extensions
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,73 +43,199 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import dev.endlesssea.app.ui.components.GlassCard
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
- * Extensions (doc 04) : dépôts (ajouter/activer/supprimer), extensions installées
- * (activer/désinstaller/permissions affichées), mises à jour, journal d'erreurs.
+ * Extensions (spec §18, doc 04) : dépôts (ajouter/synchroniser/activer/supprimer),
+ * installation depuis les dépôts OU depuis un fichier .esx local, activation,
+ * permissions visibles, journal d'erreurs. Toute action donne un retour visible.
  */
 @Composable
 fun ExtensionsScreen(
+    onExplore: () -> Unit = {},
     viewModel: ExtensionsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
     var addDialog by remember { mutableStateOf(false) }
     var repoUrl by remember { mutableStateOf("") }
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(onClick = { addDialog = true }) {
-                Icon(Icons.Filled.Add, "Ajouter un dépôt")
+    // Retours visibles — « quand j'ajoute n'importe quoi, ça donne quelque chose »
+    LaunchedEffect(state.message) {
+        state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
+    }
+
+    // Sélecteur de fichier .esx
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val tmp = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val out = File(context.cacheDir, "picked-${System.currentTimeMillis()}.esx")
+                        context.contentResolver.openInputStream(uri)!!.use { input ->
+                            out.outputStream().use { input.copyTo(it) }
+                        }
+                        out
+                    }.getOrNull()
+                }
+                if (tmp != null) viewModel.installFromFile(tmp)
+                else snackbar.showSnackbar("Impossible de lire ce fichier")
             }
         }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbar) },
+        floatingActionButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ExtendedFloatingActionButton(
+                    onClick = { filePicker.launch(arrayOf("*/*")) },
+                ) {
+                    Icon(Icons.Filled.Add, null); Spacer(Modifier.width(6.dp)); Text("Fichier .esx")
+                }
+                ExtendedFloatingActionButton(onClick = { addDialog = true }) {
+                    Icon(Icons.Filled.Add, null); Spacer(Modifier.width(6.dp)); Text("Dépôt")
+                }
+            }
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp, top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item { Text("Dépôts", style = MaterialTheme.typography.titleMedium) }
+            if (state.busy) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) { CircularProgressIndicator() }
+                }
+            }
+
+            // --------------------------------------------------------- Dépôts
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Dépôts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { viewModel.syncAll() }) {
+                        Icon(Icons.Filled.Refresh, "Synchroniser")
+                    }
+                }
+            }
             if (state.repos.isEmpty()) {
                 item {
+                    GlassCard(contentPadding = PaddingValues(16.dp)) {
+                        Column {
+                            Text(
+                                "Aucun dépôt configuré. Un dépôt est simplement une URL qui sert un index JSON listant des extensions.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(onClick = { viewModel.addRepo(ExtensionsViewModel.DEMO_REPO_URL) }) {
+                                Text("Ajouter le dépôt de démonstration (Internet Archive)")
+                            }
+                        }
+                    }
+                }
+            }
+            items(state.repos, key = { it.url }) { repo ->
+                GlassCard(contentPadding = PaddingValues(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(repo.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                repo.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        Switch(checked = repo.enabled, onCheckedChange = { viewModel.setRepoEnabled(repo.url, it) })
+                        IconButton(onClick = { viewModel.removeRepo(repo.url) }) {
+                            Icon(Icons.Filled.Close, "Supprimer", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+
+            // --------------------------------------- Extensions disponibles (dépôts)
+            if (state.repoEntries.isNotEmpty()) {
+                item { Text("Disponibles en ligne", style = MaterialTheme.typography.titleMedium) }
+                items(state.repoEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
+                    val upToDate = e.installedVersion >= e.entry.version
+                    GlassCard(contentPadding = PaddingValues(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${e.entry.name} · v${e.entry.versionName}", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "${e.entry.languages.joinToString("/").ifBlank { "multi" }} · " +
+                                        (e.entry.types.joinToString("/").ifBlank { "tous types" }) +
+                                        if (e.entry.permissions.isNotEmpty()) " · ${e.entry.permissions.size} permission(s)" else "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (upToDate) {
+                                Text("Installée", style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary)
+                            } else {
+                                Button(onClick = { viewModel.installEntry(e.entry) }) {
+                                    Text(if (e.installedVersion > 0) "Mettre à jour" else "Installer")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --------------------------------------------- Extensions installées
+            item { Text("Extensions installées", style = MaterialTheme.typography.titleMedium) }
+            if (state.extensions.isEmpty()) {
+                item {
                     Text(
-                        "Aucun dépôt. Ajoutez une URL d'index JSON pour découvrir des extensions (ex. le dépôt officiel de démonstration). L'utilisateur choisit ses sources : l'application n'impose rien.",
+                        "Rien pour l'instant. Installez depuis un dépôt (synchronisez-le d'abord) ou un fichier .esx.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            state.repos.forEach { repo ->
-                item {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(repo.name, style = MaterialTheme.typography.bodyLarge)
-                            Text(repo.url, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = repo.enabled, onCheckedChange = { viewModel.setRepoEnabled(repo.url, it) })
-                    }
-                }
-            }
-
-            item { Text("Extensions installées", style = MaterialTheme.typography.titleMedium) }
-            state.extensions.forEach { ext ->
-                item {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("${ext.name} · v${ext.versionName}", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "Permissions : ${ext.permissions.ifEmpty { "aucune" }}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (ext.lastError != null) {
-                                Text("Dernière erreur : ${ext.lastError}",
+            items(state.extensions, key = { it.pkg }) { ext ->
+                GlassCard(contentPadding = PaddingValues(14.dp)) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${ext.name} · v${ext.versionName}", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "Permissions : ${ext.permissions.ifEmpty { "aucune" }}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ext.lastError?.let {
+                                    Text(
+                                        "Dernière erreur : $it",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                            Switch(checked = ext.enabled, onCheckedChange = { viewModel.setExtensionEnabled(ext.pkg, it) })
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onExplore, enabled = ext.enabled) { Text("Ouvrir") }
+                            TextButton(onClick = { viewModel.uninstall(ext.pkg) }) {
+                                Text("Désinstaller", color = MaterialTheme.colorScheme.error)
                             }
                         }
-                        Switch(checked = ext.enabled, onCheckedChange = { viewModel.setExtensionEnabled(ext.pkg, it) })
                     }
                 }
             }
@@ -106,17 +247,27 @@ fun ExtensionsScreen(
             onDismissRequest = { addDialog = false },
             title = { Text("Ajouter un dépôt") },
             text = {
-                OutlinedTextField(
-                    value = repoUrl,
-                    onValueChange = { repoUrl = it },
-                    placeholder = { Text("https://exemple.com/index.json") },
-                    singleLine = true,
-                )
+                Column {
+                    OutlinedTextField(
+                        value = repoUrl,
+                        onValueChange = { repoUrl = it },
+                        placeholder = { Text("https://exemple.com/index.json") },
+                        singleLine = true,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Astuce : pour tester, utilisez le dépôt de démonstration (bouton « Ajouter le dépôt de démonstration » sur l'écran vide).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             },
             confirmButton = {
-                Button(onClick = { viewModel.addRepo(repoUrl.trim()); repoUrl = ""; addDialog = false }) {
-                    Text("Ajouter")
-                }
+                Button(onClick = {
+                    viewModel.addRepo(repoUrl)
+                    repoUrl = ""
+                    addDialog = false
+                }) { Text("Ajouter") }
             },
             dismissButton = { TextButton(onClick = { addDialog = false }) { Text("Annuler") } },
         )

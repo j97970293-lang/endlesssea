@@ -41,6 +41,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Lecteur immersif (spec §7) -->
+        <activity
+            android:name=".ui.player.PlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:launchMode="singleTask" />
+
         <!-- CAPTCHA / anti-bot verification (spec §3) -->
         <activity
             android:name="dev.endlesssea.extensions.loader.captcha.CaptchaActivity"

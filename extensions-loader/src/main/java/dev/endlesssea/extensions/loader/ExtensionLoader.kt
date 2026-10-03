@@ -84,6 +84,30 @@ class ExtensionLoader(
         )
     }
 
+    /**
+     * Installe un paquet `.esx` LOCAL (choisi via le sélecteur de fichiers) :
+     * mêmes vérifications que [install] hors téléchargement et checksum externe
+     * (l'intégrité est assurée par la copie + l'analyse ZIP + la vérification d'API).
+     */
+    suspend fun installLocal(src: File, locale: String): InstallResult = withContext(Dispatchers.IO) {
+        val (manifest, _) = inspectPackage(src)
+            ?: return@withContext InstallResult.Rejected("paquet .esx invalide (assets/extension.json absent ou illisible)")
+
+        if (manifest.apiVersion != API_VERSION) {
+            return@withContext InstallResult.Rejected("apiVersion ${manifest.apiVersion} ≠ $API_VERSION (extension incompatible avec cette version de l'app)")
+        }
+
+        val destDir = File(storeDir, "${manifest.id}/${manifest.version}").apply { mkdirs() }
+        val dest = File(destDir, "${manifest.id}.esx")
+        runCatching { src.copyTo(dest, overwrite = true) }
+            .getOrElse { return@withContext InstallResult.Rejected("copie impossible : ${it.message}") }
+
+        runCatching { instantiate(dest, manifest, locale) }.fold(
+            onSuccess = { InstallResult.Success(it, manifest) },
+            onFailure = { InstallResult.Rejected("chargement échoué : ${it.message}") },
+        )
+    }
+
     /** Re-instantiates a previously installed extension (fast path, no network). */
     fun instantiate(pkgFile: File, manifest: ExtensionManifest, locale: String): EsExtension {
         val entry = manifest.entryClass ?: error("declarative provider, use JsonProviderEngine")

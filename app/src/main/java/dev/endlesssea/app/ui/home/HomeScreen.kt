@@ -71,9 +71,9 @@ fun HomeScreen(
                     items = state.featured,
                     autoScroll = state.bannerAutoScroll,
                     onClick = onMediaClick,
-                    onPlay = { viewModel.onPlay(it) },
+                    onPlay = { onMediaClick(it) },          // « Lire » ouvre la fiche → épisodes + lecteur
                     onAdd = { viewModel.onAddToLibrary(it) },
-                    onDownload = { viewModel.onDownload(it) },
+                    onDownload = { onMediaClick(it) },      // « Télécharger » ouvre la fiche → feuille serveur×qualité
                 )
             } else if (state.loading) {
                 Box(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {

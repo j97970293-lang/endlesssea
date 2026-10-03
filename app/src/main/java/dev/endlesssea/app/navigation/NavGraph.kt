@@ -1,5 +1,10 @@
 package dev.endlesssea.app.navigation
 
+import android.net.Uri
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Download
@@ -7,14 +12,20 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import dev.endlesssea.app.ui.components.glass
+import dev.endlesssea.app.ui.details.DetailsScreen
 import dev.endlesssea.app.ui.downloads.DownloadsScreen
 import dev.endlesssea.app.ui.explore.ExploreScreen
 import dev.endlesssea.app.ui.extensions.ExtensionsScreen
@@ -33,39 +44,82 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     data object Settings : Screen("settings", "Paramètres", Icons.Filled.Home)
 }
 
-val bottomItems = listOf(Screen.Home, Screen.Explore, Screen.Search, Screen.Library, Screen.Downloads)
+/** Toutes les entrées possibles de la barre, dans un ordre stable. */
+val allTabScreens: List<Screen> =
+    listOf(Screen.Home, Screen.Explore, Screen.Search, Screen.Library, Screen.Downloads)
 
+/** Barre de navigation flottante « verre » — onglets filtrés par les préférences utilisateur. */
 @Composable
-fun EsBottomBar(nav: NavHostController, currentRoute: String?) {
-    NavigationBar {
-        bottomItems.forEach { screen ->
-            NavigationBarItem(
-                selected = currentRoute == screen.route,
-                onClick = {
-                    nav.navigate(screen.route) {
-                        popUpTo(Screen.Home.route) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                icon = { Icon(screen.icon, contentDescription = screen.label) },
-                label = { Text(screen.label) },
-            )
+fun EsBottomBar(nav: NavHostController, currentRoute: String?, tabs: Set<String>) {
+    val shown = allTabScreens.filter { it.route in tabs }.ifEmpty { listOf(Screen.Home) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .glass(cornerRadius = 30.dp)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        ) {
+            shown.forEach { screen ->
+                val selected = currentRoute == screen.route
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = {
+                        nav.navigate(screen.route) {
+                            popUpTo(Screen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    icon = { Icon(screen.icon, contentDescription = screen.label) },
+                    label = { Text(screen.label, style = MaterialTheme.typography.labelSmall) },
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
+            }
         }
     }
 }
 
 @Composable
 fun EsNavGraph(nav: NavHostController) {
+    // L'id composite « ext:url » peut contenir des caractères spéciaux → encodage
+    fun openDetails(nav: NavHostController, id: String) = nav.navigate("details/${Uri.encode(id)}")
+
     NavHost(navController = nav, startDestination = Screen.Home.route) {
         composable(Screen.Home.route) {
-            HomeScreen(onMediaClick = { nav.navigate("details/$it") })
+            HomeScreen(onMediaClick = { openDetails(nav, it) })
         }
-        composable(Screen.Explore.route) { ExploreScreen(onMediaClick = { nav.navigate("details/$it") }) }
-        composable(Screen.Search.route) { SearchScreen(onMediaClick = { nav.navigate("details/$it") }) }
-        composable(Screen.Library.route) { LibraryScreen(onMediaClick = { nav.navigate("details/$it") }) }
+        composable(Screen.Explore.route) {
+            ExploreScreen(onMediaClick = { openDetails(nav, it) })
+        }
+        composable(Screen.Search.route) {
+            SearchScreen(onMediaClick = { openDetails(nav, it) })
+        }
+        composable(Screen.Library.route) {
+            LibraryScreen(onMediaClick = { openDetails(nav, it) })
+        }
         composable(Screen.Downloads.route) { DownloadsScreen() }
-        composable(Screen.Extensions.route) { ExtensionsScreen() }
+        composable(Screen.Extensions.route) {
+            ExtensionsScreen(onExplore = { nav.navigate(Screen.Explore.route) })
+        }
         composable(Screen.Settings.route) { SettingsScreen() }
+
+        composable("details/{id}") { entry ->
+            val id = Uri.decode(entry.arguments?.getString("id").orEmpty())
+            DetailsScreen(
+                mediaId = id,
+                onBack = { nav.popBackStack() },
+                onDownloadQueued = { nav.navigate(Screen.Downloads.route) },
+            )
+        }
     }
 }

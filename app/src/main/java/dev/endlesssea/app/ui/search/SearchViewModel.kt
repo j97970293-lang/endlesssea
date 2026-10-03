@@ -69,7 +69,11 @@ class SearchViewModel @Inject constructor(
         registry.enabledExtensions().map { (name, ext) ->
             async {
                 runCatching { ext.search(query, page = 1, filters = FilterSet()) }
-                    .onSuccess { page -> synchronized(results) { results += page.items } }
+                    .onSuccess { page ->
+                        // id composite « ext:url » — requis par l'écran Détails pour rappeler l'extension
+                        val remapped = page.items.map { it.copy(id = "$name:${it.url}") }
+                        synchronized(results) { results += remapped }
+                    }
                     .onFailure { e ->
                         val msg = if (e is SourceException) e.toUserMessage() else "Erreur inconnue"
                         synchronized(errors) { errors[name] = msg }

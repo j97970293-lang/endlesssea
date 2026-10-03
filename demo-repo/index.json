@@ -1,0 +1,28 @@
+{
+  "name": "Endless Sea — Dépôt de démonstration",
+  "description": "Extensions de démonstration utilisant exclusivement des sources légales et gratuites (domaine public / œuvres open content).",
+  "url": "https://raw.githubusercontent.com/j97970293-lang/endlesssea/main/demo-repo/index.json",
+  "extensions": [
+    {
+      "id": "dev.endlesssea.ext.archiveorg",
+      "name": "Internet Archive (démo)",
+      "version": 1,
+      "versionName": "1.0.0",
+      "apiVersion": 1,
+      "author": { "name": "Endless Sea Devs" },
+      "description": {
+        "fr": "Films du domaine public de l'Internet Archive (archive.org).",
+        "en": "Public-domain movies from the Internet Archive (archive.org)."
+      },
+      "languages": ["fr", "en"],
+      "types": ["MOVIE"],
+      "permissions": ["INTERNET"],
+      "minAppVersion": 1,
+      "size": 819398,
+      "apkUrl": "https://github.com/j97970293-lang/endlesssea/releases/download/v0.1.0/archiveorg-1.0.0.esx",
+      "sha256": "ea59cdff7917e7df7a47157c054bdf2084d4942933c8fceac6029111e963568a",
+      "kind": "COMPILED",
+      "nsfw": false
+    }
+  ]
+}
