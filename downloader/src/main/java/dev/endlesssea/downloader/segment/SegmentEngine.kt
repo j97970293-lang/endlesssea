@@ -133,9 +133,10 @@ class SegmentEngine(private val client: OkHttpClient) {
             client.newCall(request(url, "GET", headers + ("Range" to "bytes=$from-${seg.end}")))
                 .execute().use { res ->
                     if (res.code == 416 && seg.done) return seg     // already complete
-                    if (res.code == 429 || res.code == 503) throw RateLimit(res.header("Retry-After"))
+                    if (res.code == 429 || res.code == 503) throw RateLimit(res.header("Retry-After")?.toIntOrNull())
                     if (res.code !in 200..299) throw SourceError("HTTP ${res.code}")
-                    res.body.byteStream().use { input ->
+                    val body = res.body ?: throw SourceError("HTTP ${res.code} : corps de réponse vide")
+                    body.byteStream().use { input ->
                         val buf = ByteArray(32 * 1024)
                         val wrapped = ByteBuffer.wrap(buf)
                         var lastFlush = System.currentTimeMillis()

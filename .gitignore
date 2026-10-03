@@ -43,3 +43,5 @@ keystore.properties
 /repos/*/cache/
 /extensions-store/
 releases/
+!*.jar exception for wrapper
+!gradle/wrapper/gradle-wrapper.jar

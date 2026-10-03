@@ -114,7 +114,7 @@ class DownloadManager(
 
             val table = dao.segments(taskId).ifEmpty {
                 engine.plan(expected, probe.acceptRanges, partsPerTask).map {
-                    DownloadSegmentEntity(taskId, it.idx, it.startByte, it.endByte)
+                    DownloadSegmentEntity(taskId, it.idx, it.start, it.end)
                 }.also { dao.upsertSegments(it) }
             }
             var speedWindowBytes = 0L
