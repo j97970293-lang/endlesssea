@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thème XML minimal : l'UI entière est pilotée par Compose (endlessSeaTheme()).
+     On s'appuie sur le thème plateforme pour ne dépendre d'aucune lib XML. -->
+<resources>
+    <style name="Theme.EndlessSea" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowBackground">@color/es_deep_sea</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

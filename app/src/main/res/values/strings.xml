@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Endless Sea</string>
+    <string name="download_channel_name">Téléchargements</string>
+    <string name="download_channel_desc">Progression des téléchargements en arrière-plan</string>
+</resources>

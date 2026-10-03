@@ -26,12 +26,18 @@ class RepoManager(
     }
 
     suspend fun addRepository(url: String): Result<RepositoryIndex> = runCatching {
-        val index = fetch(url, etag = null)
-        dao.upsert(
-            RepoEntity(url = url, name = index.index.name, etag = index.etag,
-                lastSyncAt = System.currentTimeMillis())
-        )
-        index.index
+        when (val r = fetch(url, etag = null)) {
+            FetchResult.NotModified -> error("Référentiel vide (304 inattendu sur ajout)")
+            is FetchResult.Fresh -> {
+                dao.upsert(
+                    RepoEntity(
+                        url = url, name = r.index.name, etag = r.etag,
+                        lastSyncAt = System.currentTimeMillis(),
+                    ),
+                )
+                r.index
+            }
+        }
     }
 
     suspend fun removeRepository(url: String) = dao.delete(url)
@@ -75,7 +81,9 @@ class RepoManager(
                 res.code == 304 -> FetchResult.NotModified
                 !res.isSuccessful -> error("HTTP ${res.code}")
                 else -> FetchResult.Fresh(
-                    ManifestParser.parseRepoIndex(res.body.string()),
+                    ManifestParser.parseRepoIndex(
+                        res.body?.string() ?: error("HTTP ${res.code} : corps de réponse vide"),
+                    ),
                     res.header("ETag"),
                 )
             }

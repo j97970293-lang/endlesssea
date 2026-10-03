@@ -54,7 +54,7 @@ class JsonProviderEngine(
     @Serializable
     data class SearchRule(
         val url: String, val items: String, val title: String,
-        val url2: String? = null, @SerialName("url") val itemUrl: String? = null,
+        val url2: String? = null, @SerialName("itemUrl") val itemUrl: String? = null,
         val poster: String? = null, val type: String? = null,
     )
 
@@ -161,7 +161,7 @@ class JsonProviderEngine(
                 bannerUrl = rule.banner?.let { doc.selectFirst(it)?.absUrl("src") },
                 type = info.types.firstOrNull() ?: MediaType.OTHER,
                 genres = rule.genres?.let { doc.select(it).eachText().map(String::trim) } ?: emptyList(),
-                seasons = if (episodes.isEmpty()) emptyList else listOf(Season(1, "Saison 1", episodes)),
+                seasons = if (episodes.isEmpty()) emptyList() else listOf(Season(1, "Saison 1", episodes)),
             )
         }
 

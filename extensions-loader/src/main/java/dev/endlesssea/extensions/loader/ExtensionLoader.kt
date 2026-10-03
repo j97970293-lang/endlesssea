@@ -52,7 +52,8 @@ class ExtensionLoader(
     ): InstallResult = withContext(Dispatchers.IO) {
         val bytes = http.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { res ->
             if (!res.isSuccessful) return@withContext InstallResult.Rejected("http ${res.code}")
-            res.body.bytes()
+            res.body?.bytes()
+                ?: return@withContext InstallResult.Rejected("http ${res.code} : corps vide")
         }
         val digest = sha256(bytes)
         if (!digest.equals(expectedSha256, ignoreCase = true)) {
@@ -135,7 +136,7 @@ class ExtensionLoader(
             client.newCall(req).execute().use { res ->
                 EsResponse(
                     code = res.code,
-                    body = res.body.string(),
+                    body = res.body?.string().orEmpty(),
                     headers = res.headers.toMultimap().mapValues { it.value.firstOrNull().orEmpty() },
                     finalUrl = res.request.url.toString(),
                 )
