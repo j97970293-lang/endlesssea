@@ -19,8 +19,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # L'image ubuntu-latest des runners GitHub inclut déjà l'Android SDK
+      # (ANDROID_HOME prédéfini, platform-35 + build-tools) : rien à installer.
 
       - name: Grant Gradle wrapper permission
         run: chmod +x gradlew
