@@ -28,6 +28,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.squareup.okhttp)
     implementation(libs.squareup.okhttp.logging)
+    implementation(libs.squareup.okhttp.urlconnection) // JavaNetCookieJar (CAPTCHA/cookies WebView)
 
     testImplementation(libs.test.junit)
     testImplementation(libs.test.truth)
