@@ -252,6 +252,7 @@ class ExtensionsViewModel @Inject constructor(
                                 dev.endlesssea.app.ui.settings.ExtSettingEntryUi(
                                     key = s.key, title = s.title, summary = s.summary,
                                     type = s.type, value = values[s.key] ?: s.defaultValue,
+                                    options = s.options,
                                 )
                             },
                         ),

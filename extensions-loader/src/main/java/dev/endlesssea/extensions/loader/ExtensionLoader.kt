@@ -116,7 +116,11 @@ class ExtensionLoader(
         val loader = PathClassLoader(pkgFile.absolutePath, EsExtension::class.java.classLoader)
         val clazz = loader.loadClass(entry)
         val ctx = ExtensionContext(HttpFacade(context), File(storeDir, "${manifest.id}/files").apply { mkdirs() }, locale)
-            .apply { settings = settingsProvider(manifest.id) }
+            .apply {
+                settings = settingsProvider(manifest.id) +
+                    mapOf("app.pref_lang" to AppEnv.preferredAudioLang)
+                cacheDir = File(storeDir, "${manifest.id}/cache").apply { mkdirs() }
+            }
         // Convention: provider constructors accept (ExtensionContext) or nothing.
         val instance = runCatching {
             clazz.getConstructor(ExtensionContext::class.java).newInstance(ctx)

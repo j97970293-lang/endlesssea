@@ -188,4 +188,14 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     var lastAutoBackupAt: Long
         get() = p.getLong("auto_backup_at", 0L)
         set(v) = p.edit().putLong("auto_backup_at", v).apply()
+
+    // ---------------------------------------------------------------- langue audio préférée
+    /** Préférence globale VF / VOSTFR appliquée au tri des liens et transmise aux sources. */
+    private val _preferredAudioLang = MutableStateFlow(p.getString("pref_audio_lang", "auto") ?: "auto")
+    val preferredAudioLang: StateFlow<String> = _preferredAudioLang
+    fun setPreferredAudioLang(v: String) {
+        val s = if (v in listOf("auto", "vf", "vostfr", "vo")) v else "auto"
+        p.edit().putString("pref_audio_lang", s).apply()
+        _preferredAudioLang.value = s
+    }
 }

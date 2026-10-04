@@ -110,10 +110,12 @@ fun EsNavGraph(nav: NavHostController) {
         composable(Screen.Explore.route) {
             ExploreScreen(
                 onMediaClick = { openDetails(nav, it) },
-                onSeeAll = { pkg -> nav.navigate("seeAll/${Uri.encode(pkg)}") },
+                onSeeAll = { pkg, category ->
+                    nav.navigate("seeAll/${Uri.encode(pkg)}/${Uri.encode(category)}")
+                },
             )
         }
-        composable("seeAll/{pkg}") { entry ->
+        composable("seeAll/{pkg}/{category}") { entry ->
             val pkg = Uri.decode(entry.arguments?.getString("pkg").orEmpty())
             dev.endlesssea.app.ui.explore.SeeAllScreen(
                 onMediaClick = { openDetails(nav, it) },

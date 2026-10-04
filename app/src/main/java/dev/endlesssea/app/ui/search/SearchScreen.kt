@@ -20,6 +20,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -30,6 +32,10 @@ data class SearchItemUi(
     val posterUrl: String? = null,
     val bannerUrl: String? = null,
     val subtitle: String? = null,
+    /** Note sur 10 fournie par la source (badge ⭐). */
+    val rating: Double? = null,
+    /** Langues audio annoncées par la source (« VF », « VOSTFR »…). */
+    val audioLangs: List<String> = emptyList(),
 )
 
 /**
@@ -59,6 +65,34 @@ fun SearchScreen(
             },
             singleLine = true,
         )
+
+        // ---- Filtres transmis aux extensions (FilterSet : type + langue)
+        androidx.compose.foundation.layout.Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("ANIME" to "Anime", "MOVIE" to "Film", "SERIES" to "Série").forEach { (key, label) ->
+                androidx.compose.material3.FilterChip(
+                    selected = key in state.selTypes,
+                    onClick = { viewModel.toggleType(key) },
+                    label = { Text(label) },
+                )
+            }
+            Text(
+                "│", color = MaterialTheme.colorScheme.outline,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(4.dp),
+            )
+            listOf("vf" to "VF", "vostfr" to "VOSTFR", "vo" to "VO").forEach { (key, label) ->
+                androidx.compose.material3.FilterChip(
+                    selected = key in state.selLangs,
+                    onClick = { viewModel.toggleLang(key) },
+                    label = { Text(label) },
+                )
+            }
+        }
 
         if (state.perExtensionErrors.isNotEmpty()) {
             state.perExtensionErrors.forEach { (ext, msg) ->

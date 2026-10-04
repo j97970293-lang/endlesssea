@@ -18,6 +18,8 @@ data class ExploreRowUi(
     val items: List<SearchItemUi>,
     /** Identifiant du paquet d'extension ayant produit la rangée. */
     val pkg: String,
+    /** Clé de catalogue (rangée) pour « Tout voir » — « main » si unique. */
+    val category: String = "main",
 )
 
 data class ExploreUiState(
@@ -40,6 +42,11 @@ class ExploreViewModel @Inject constructor(
 
     init { refresh() }
 
+    private companion object {
+        /** Plafond de rangées par source sur Explorer (évite un mur avec 14 genres). */
+        const val MAX_CATEGORIES_PER_EXT = 6
+    }
+
     fun refresh() = viewModelScope.launch {
         _uiState.value = ExploreUiState(loading = true, extensions = _uiState.value.extensions)
         val extensions = registry.enabledExtensions()
@@ -54,26 +61,38 @@ class ExploreViewModel @Inject constructor(
         coroutineScope {
             extensions.map { (pkg, ext) ->
                 async {
-                    runCatching {
-                        // « main » : catalogue par défaut — les providers ignorent la catégorie si unique
-                        ext.getMainPage(MainPageRequest(category = "main", page = 1))
-                    }.onSuccess { page ->
-                        if (page.items.isNotEmpty()) {
-                            val wrapped = ExploreRowUi(
-                                title = ext.info.name,
-                                pkg = ext.info.id,
-                                items = page.items.take(20).map {
-                                    SearchItemUi(
-                                        id = "${ext.info.id}:${it.url}", title = it.title,
-                                        posterUrl = it.posterUrl,
-                                        subtitle = it.year?.toString() ?: it.type.name,
-                                    )
-                                },
-                            )
-                            synchronized(rows) { rows += wrapped }
+                    // ---- Catalogues par genre : l'extension déclare ses rangées (api≤1 ignoré → « main »)
+                    val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
+                        .filter { it.key.isNotBlank() }
+                    val catList = declared.ifEmpty {
+                        listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+                    }
+                    catList.take(MAX_CATEGORIES_PER_EXT).forEach { cat ->
+                        val actualKey = if (declared.isEmpty()) "main" else cat.key
+                        runCatching {
+                            ext.getMainPage(MainPageRequest(category = actualKey, page = 1))
+                        }.onSuccess { page ->
+                            if (page.items.isNotEmpty()) {
+                                val wrapped = ExploreRowUi(
+                                    title = if (declared.isEmpty()) ext.info.name
+                                    else "${ext.info.name} — ${cat.title}",
+                                    pkg = ext.info.id,
+                                    category = cat.key,
+                                    items = page.items.take(20).map {
+                                        SearchItemUi(
+                                            id = "${ext.info.id}:${it.url}", title = it.title,
+                                            posterUrl = it.posterUrl,
+                                            subtitle = it.year?.toString() ?: it.type.name,
+                                            rating = it.rating,
+                                            audioLangs = it.audioLangs.map { l -> l.name },
+                                        )
+                                    },
+                                )
+                                synchronized(rows) { rows += wrapped }
+                            }
+                        }.onFailure { e ->
+                            synchronized(errors) { errors["${ext.info.name} · ${cat.title}"] = e.message ?: "erreur" }
                         }
-                    }.onFailure { e ->
-                        synchronized(errors) { errors[ext.info.name] = e.message ?: "erreur" }
                     }
                 }
             }.forEach { it.await() }

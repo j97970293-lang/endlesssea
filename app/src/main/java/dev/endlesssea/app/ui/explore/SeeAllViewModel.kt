@@ -32,6 +32,9 @@ class SeeAllViewModel @Inject constructor(
 
     val pkg: String = checkNotNull(savedStateHandle["pkg"])
 
+    /** Rangée de catalogue paginée (« main » si l'extension n'en déclare pas). */
+    private val category: String = savedStateHandle["category"] ?: "main"
+
     private val _uiState = MutableStateFlow(SeeAllUiState())
     val uiState: StateFlow<SeeAllUiState> = _uiState
 
@@ -46,13 +49,15 @@ class SeeAllViewModel @Inject constructor(
         runCatching {
             val ext = registry.instance(pkg)
             _uiState.value = _uiState.value.copy(extensionName = ext.info.name)
-            ext.getMainPage(MainPageRequest(category = "main", page = nextPage))
+            ext.getMainPage(MainPageRequest(category = category, page = nextPage))
         }.onSuccess { page ->
             val wrapped = page.items.map {
                 SearchItemUi(
                     id = "${pkg}:${it.url}", title = it.title,
                     posterUrl = it.posterUrl,
                     subtitle = it.year?.toString() ?: it.type.name,
+                    rating = it.rating,
+                    audioLangs = it.audioLangs.map { l -> l.name },
                 )
             }
             _uiState.value = _uiState.value.copy(

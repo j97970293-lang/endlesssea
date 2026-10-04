@@ -25,6 +25,10 @@ data class SearchUiState(
     val loading: Boolean = false,
     val results: List<SearchItemUi> = emptyList(),
     val perExtensionErrors: Map<String, String> = emptyMap(),
+    /** Types sélectionnés (« ANIME », « MOVIE », « SERIES ») — transmis aux sources. */
+    val selTypes: Set<String> = emptySet(),
+    /** Langues sélectionnées (« vf », « vostfr », « vo »). */
+    val selLangs: Set<String> = emptySet(),
 )
 
 /**
@@ -38,17 +42,19 @@ class SearchViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val queryFlow = MutableStateFlow("")
+    /** Filtres actifs (type + langue) — transmis aux extensions via FilterSet. */
+    private val filtersFlow = MutableStateFlow(dev.endlesssea.extensions.api.model.FilterSet())
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState
 
     init {
         viewModelScope.launch {
-            queryFlow
+            kotlinx.coroutines.flow.combine(queryFlow, filtersFlow) { q, f -> q to f }
                 .debounce(350)
                 .distinctUntilChanged()
-                .filter { it.isNotBlank() }
-                .flatMapLatest { query ->
-                    kotlinx.coroutines.flow.flow { emit(runSearch(query)) }
+                .filter { it.first.isNotBlank() }
+                .flatMapLatest { (query, filters) ->
+                    kotlinx.coroutines.flow.flow { emit(runSearch(query, filters)) }
                 }
                 .collect { (results, errors) ->
                     _uiState.value = _uiState.value.copy(loading = false, results = results, perExtensionErrors = errors)
@@ -61,14 +67,42 @@ class SearchViewModel @Inject constructor(
         queryFlow.value = query
     }
 
+    /** Active/désactive un type de média (ANIME/MOVIE/SERIES) et relance la recherche. */
+    fun toggleType(type: String) {
+        val cur = _uiState.value.selTypes.toMutableSet().apply { if (!add(type)) remove(type) }
+        _uiState.value = _uiState.value.copy(selTypes = cur)
+        rebuildFilters()
+    }
+
+    /** Active/désactive une langue (« vf » / « vostfr » / « vo ») et relance la recherche. */
+    fun toggleLang(lang: String) {
+        val cur = _uiState.value.selLangs.toMutableSet().apply { if (!add(lang)) remove(lang) }
+        _uiState.value = _uiState.value.copy(selLangs = cur)
+        rebuildFilters()
+    }
+
+    private fun rebuildFilters() {
+        val st = _uiState.value
+        filtersFlow.value = FilterSet(
+            types = st.selTypes.mapNotNull {
+                runCatching { dev.endlesssea.extensions.api.model.MediaType.valueOf(it) }.getOrNull()
+            }.toSet(),
+            languages = st.selLangs,
+        )
+        if (st.query.isNotBlank()) _uiState.value = st.copy(loading = true)
+    }
+
     /** Requête fan-out sur les extensions actives, en parallèle, erreurs isolées. */
-    private suspend fun runSearch(query: String): Pair<List<SearchItemUi>, Map<String, String>> = coroutineScope {
+    private suspend fun runSearch(
+        query: String,
+        filters: FilterSet = filtersFlow.value,
+    ): Pair<List<SearchItemUi>, Map<String, String>> = coroutineScope {
         val results = mutableListOf<dev.endlesssea.extensions.api.model.SearchItem>()
         val errors = mutableMapOf<String, String>()
 
         registry.enabledExtensions().map { (name, ext) ->
             async {
-                runCatching { ext.search(query, page = 1, filters = FilterSet()) }
+                runCatching { ext.search(query, page = 1, filters = filters) }
                     .onSuccess { page ->
                         // id composite « <pkg id>:<url> » — l'écran Détails rappelle cette extension
                         val remapPrefix = ext.info.id
@@ -87,7 +121,12 @@ class SearchViewModel @Inject constructor(
 
     private fun List<dev.endlesssea.extensions.api.model.SearchItem>.deduped(): List<SearchItemUi> =
         distinctBy { "${FileNames.normalizedKey(it.title)}#${it.year}#${it.type}" }
-            .map { SearchItemUi(it.id, it.title, it.posterUrl, subtitle = it.type.name) }
+            .map {
+                SearchItemUi(
+                    it.id, it.title, it.posterUrl, subtitle = it.type.name,
+                    rating = it.rating, audioLangs = it.audioLangs.map { l -> l.name },
+                )
+            }
 
     private fun SourceException.toUserMessage(): String = when (this) {
         is SourceException.SourceUnavailable -> "Source indisponible"

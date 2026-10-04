@@ -171,6 +171,7 @@ fun DetailsScreen(
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOfNotNull(
+                                state.details?.rating?.let { "⭐ %.1f".format(it) },
                                 state.details?.type?.name?.lowercase()?.replaceFirstChar { it.uppercase() },
                                 state.details?.year?.toString(),
                                 state.details?.episodeCount?.let { "$it ép." }

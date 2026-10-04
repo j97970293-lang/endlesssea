@@ -58,8 +58,10 @@ class MainActivity : ComponentActivity() {
             val cardStyle by prefs.cardStyle.collectAsState()
 
             // Réglages « verre »/cartes → composants globaux (sans ré-injection)
-            androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle) {
+            val preferredAudioLang by prefs.preferredAudioLang.collectAsState()
+            androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle, preferredAudioLang) {
                 dev.endlesssea.app.ui.components.UiTuning.update(glassOverlay, glassScrim, cardStyle)
+                dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
             val pendingUpdate = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)

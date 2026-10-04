@@ -28,6 +28,8 @@ data class ExtSettingEntryUi(
     val summary: String?,
     val type: dev.endlesssea.extensions.api.model.ExtensionSetting.Type,
     val value: String,
+    /** Choix proposés quand type = LIST (puces sélectionnables). */
+    val options: List<String> = emptyList(),
 )
 
 /** Ensemble de réglages d'une extension, ouvert dans la boîte de dialogue. */
@@ -57,6 +59,7 @@ data class SettingsUiState(
     val accent: String = AppPrefs.DEFAULT_ACCENT,
     val bgImageUri: String? = null,
     val bgDim: Int = 35,
+    val preferredAudioLang: String = "auto",
     val genres: List<GenreUi> = emptyList(),
     val updateAutoCheck: Boolean = true,
     val availableUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
@@ -106,6 +109,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoBackup.collect { v -> set { copy(autoBackup = v) } } }
         viewModelScope.launch { prefs.bgImageUri.collect { v -> set { copy(bgImageUri = v) } } }
         viewModelScope.launch { prefs.bgDim.collect { v -> set { copy(bgDim = v) } } }
+        viewModelScope.launch { prefs.preferredAudioLang.collect { v -> set { copy(preferredAudioLang = v) } } }
         set { copy(lastBackupAt = prefs.lastAutoBackupAt) }
         viewModelScope.launch { maybeAutoBackup() }
         viewModelScope.launch { prefs.barMargin.collect { v -> set { copy(barMargin = v) } } }
@@ -146,6 +150,10 @@ class SettingsViewModel @Inject constructor(
     /** Choisit / retire l'image de fond (URI pris en charge en dur pour survire aux redémarrages). */
     fun setBgImage(uri: String?) { prefs.setBgImage(uri); toastState(if (uri != null) "Image de fond appliquée" else "Image de fond retirée") }
     fun setBgDim(v: Int) { prefs.setBgDim(v) }
+    fun setPreferredAudioLang(v: String) {
+        prefs.setPreferredAudioLang(v)
+        toastState("Langue préférée : " + when (v) { "vf" -> "VF"; "vostfr" -> "VOSTFR"; "vo" -> "VO"; else -> "Auto" })
+    }
     fun setGlassScrim(v: Int) { prefs.setGlassScrim(v) }
     fun setCardStyle(v: String) { prefs.setCardStyle(v) }
     fun setSkipSeconds(v: Int) { prefs.setSkipSeconds(v) }
@@ -172,6 +180,7 @@ class SettingsViewModel @Inject constructor(
                         entries = decl.map { s ->
                             ExtSettingEntryUi(
                                 key = s.key, title = s.title, summary = s.summary, type = s.type,
+                                options = s.options,
                                 value = values[s.key] ?: s.defaultValue,
                             )
                         },

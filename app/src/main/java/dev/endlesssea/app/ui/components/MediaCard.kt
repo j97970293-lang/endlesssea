@@ -43,6 +43,34 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().height(185.dp),
             )
+            // ---- Badges toujours visibles (⭐ note + VF/VOSTFR fournis par la source)
+            val cardBadges = buildList {
+                item.rating?.let { add("⭐ %.1f".format(it)) }
+                if (item.audioLangs.any { it.equals("vf", ignoreCase = true) }) add("VF")
+                else if (item.audioLangs.any { it.equals("vostfr", ignoreCase = true) }) add("VOSTFR")
+            }
+            if (cardBadges.isNotEmpty()) {
+                androidx.compose.foundation.layout.Column(
+                    Modifier.align(Alignment.TopStart).padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    cardBadges.forEach { tag ->
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.62f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                tag,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFFD08A),
+                            )
+                        }
+                    }
+                }
+            }
             if (style == "detail") {
                 item.subtitle?.take(10)?.let { badge ->
                     Box(

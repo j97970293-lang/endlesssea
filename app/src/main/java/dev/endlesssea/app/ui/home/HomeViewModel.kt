@@ -90,20 +90,33 @@ class HomeViewModel @Inject constructor(
         coroutineScope {
             extensions.map { (pkg, ext) ->
                 async {
-                    runCatching { ext.getMainPage(MainPageRequest(category = "main", page = 1)) }
-                        .onSuccess { page ->
-                            if (page.items.isEmpty()) return@onSuccess
-                            val items = page.items.take(20).map {
-                                SearchItemUi(
-                                    id = "${ext.info.id}:${it.url}",
-                                    title = it.title,
-                                    posterUrl = it.posterUrl,
-                                    bannerUrl = it.posterUrl,
-                                    subtitle = it.year?.toString() ?: it.type.name,
-                                )
+                    // ---- Catalogues par genre : 2 premières rangées déclarées (ou « main »)
+                    val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
+                        .filter { it.key.isNotBlank() }
+                    val catList = declared.ifEmpty {
+                        listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+                    }.take(2)
+                    catList.forEach { cat ->
+                        val actualKey = if (declared.isEmpty()) "main" else cat.key
+                        runCatching { ext.getMainPage(MainPageRequest(category = actualKey, page = 1)) }
+                            .onSuccess { page ->
+                                if (page.items.isEmpty()) return@onSuccess
+                                val items = page.items.take(20).map {
+                                    SearchItemUi(
+                                        id = "${ext.info.id}:${it.url}",
+                                        title = it.title,
+                                        posterUrl = it.posterUrl,
+                                        bannerUrl = it.posterUrl,
+                                        subtitle = it.year?.toString() ?: it.type.name,
+                                        rating = it.rating,
+                                        audioLangs = it.audioLangs.map { l -> l.name },
+                                    )
+                                }
+                                val label = if (declared.isEmpty()) ext.info.name
+                                else "${ext.info.name} — ${cat.title}"
+                                synchronized(rows) { rows += HomeRowUi(label, items) }
                             }
-                            synchronized(rows) { rows += HomeRowUi(ext.info.name, items) }
-                        }
+                    }
                 }
             }.forEach { it.await() }
         }

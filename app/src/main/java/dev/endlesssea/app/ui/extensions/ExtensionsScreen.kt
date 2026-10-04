@@ -269,6 +269,25 @@ fun ExtensionsScreen(
                                     onCheckedChange = { viewModel.saveExtSetting(editing.pkg, entry.key, it.toString()) },
                                 )
                             }
+                        } else if (entry.type == dev.endlesssea.extensions.api.model.ExtensionSetting.Type.LIST &&
+                            entry.options.isNotEmpty()
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(entry.title, style = MaterialTheme.typography.bodyLarge)
+                                entry.summary?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    entry.options.forEach { opt ->
+                                        androidx.compose.material3.FilterChip(
+                                            selected = entry.value == opt,
+                                            onClick = { viewModel.saveExtSetting(editing.pkg, entry.key, opt) },
+                                            label = { Text(opt) },
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             var text by androidx.compose.runtime.remember(entry.key) {
                                 androidx.compose.runtime.mutableStateOf(entry.value)

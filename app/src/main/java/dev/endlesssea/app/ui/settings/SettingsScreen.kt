@@ -399,6 +399,27 @@ fun SettingsScreen(
                     )
                 }
             }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Langue audio préférée", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Utilisée pour trier les serveurs (VF/VOSTFR en premier) et transmise aux sources.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("auto" to "Auto", "vf" to "VF", "vostfr" to "VOSTFR", "vo" to "VO")
+                            .forEach { (key, label) ->
+                                FilterChip(
+                                    selected = state.preferredAudioLang == key,
+                                    onClick = { viewModel.setPreferredAudioLang(key) },
+                                    label = { Text(label) },
+                                )
+                            }
+                    }
+                }
+            }
 
             // ---------------------------------------------------------- GENRES
             }
@@ -590,6 +611,27 @@ fun SettingsScreen(
                                     checked = entry.value == "true",
                                     onCheckedChange = { viewModel.saveExtSetting(editing.pkg, entry.key, it.toString()) },
                                 )
+                            }
+                        } else if (entry.type == dev.endlesssea.extensions.api.model.ExtensionSetting.Type.LIST &&
+                            entry.options.isNotEmpty()
+                        ) {
+                            // Liste à puces : sélection = application immédiate
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(entry.title, style = MaterialTheme.typography.bodyLarge)
+                                entry.summary?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    entry.options.forEach { opt ->
+                                        FilterChip(
+                                            selected = entry.value == opt,
+                                            onClick = { viewModel.saveExtSetting(editing.pkg, entry.key, opt) },
+                                            label = { Text(opt) },
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             var text by remember(entry.key) { mutableStateOf(entry.value) }

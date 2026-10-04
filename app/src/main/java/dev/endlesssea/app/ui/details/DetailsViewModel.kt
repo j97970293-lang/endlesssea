@@ -56,6 +56,7 @@ class DetailsViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val downloads: DownloadEngine,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -179,12 +180,24 @@ class DetailsViewModel @Inject constructor(
                 message = "Aucun lien trouvé pour cet épisode",
             )
         } else {
+            // ---- Préférence VF/VOSTFR : la langue choisie passe en tête (qualité à égalité)
+            val ordered = orderByLangPref(links)
             _uiState.value = _uiState.value.copy(
                 linksLoadingEpisode = null,
-                linksByEpisode = _uiState.value.linksByEpisode + (episode.id to links),
+                linksByEpisode = _uiState.value.linksByEpisode + (episode.id to ordered),
             )
-            onDone(links)
+            onDone(ordered)
         }
+    }
+
+    /** Met la langue préférée (réglage global) en premier, sans casser l'ordre qualité. */
+    private fun orderByLangPref(links: List<VideoLink>): List<VideoLink> {
+        val pref = prefs.preferredAudioLang.value
+        if (pref == "auto" || links.size < 2) return links
+        return links.sortedWith(
+            compareByDescending<VideoLink> { it.audioLang.iso == pref }
+                .thenByDescending { it.quality.ordinal },
+        )
     }
 
     /** Lecture : met les liens dans le canal mémoire, puis [onReady] lance PlayerActivity. */
