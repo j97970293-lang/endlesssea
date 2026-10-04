@@ -42,7 +42,9 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     // ---------------------------------------------------------------- thème
     // AMOLED par défaut (esthétique cible) ; l'utilisateur peut revenir à Système.
     private val _themeMode = MutableStateFlow(p.getInt("theme_mode", THEME_AMOLED))
-    val themeMode: StateFlow<Int> = _themeMode    fun setThemeMode(mode: Int) {
+    val themeMode: StateFlow<Int> = _themeMode
+
+    fun setThemeMode(mode: Int) {
         p.edit().putInt("theme_mode", mode).apply(); _themeMode.value = mode
     }
 
