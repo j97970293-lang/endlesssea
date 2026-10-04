@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class LibraryUiState(
-    val category: String = "ANIME",
+    val category: String = "FAV",
     val items: List<SearchItemUi> = emptyList(),
 )
 
@@ -25,13 +25,15 @@ class LibraryViewModel @Inject constructor(
     private val mediaDao: MediaDao,
 ) : ViewModel() {
 
-    private val category = MutableStateFlow("ANIME")
+    private val category = MutableStateFlow("FAV")
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState
 
     init {
         viewModelScope.launch {
-            category.flatMapLatest { cat -> libraryDao.observeByCategory(cat) }.collect { entries ->
+            category.flatMapLatest { cat ->
+                if (cat == "FAV") libraryDao.observeFavorites() else libraryDao.observeByCategory(cat)
+            }.collect { entries ->
                 val items = entries.mapNotNull { entry ->
                     mediaDao.byId(entry.mediaId)?.let { media ->
                         SearchItemUi(

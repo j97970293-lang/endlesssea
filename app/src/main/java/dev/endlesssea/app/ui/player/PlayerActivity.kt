@@ -19,19 +19,32 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.activity.viewModels
 import androidx.media3.ui.PlayerView
 import dagger.hilt.android.AndroidEntryPoint
@@ -85,6 +98,23 @@ class PlayerActivity : ComponentActivity() {
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
     val isPlaying by viewModel.engine.isPlaying.collectAsState()
+    val subtitleTracks by viewModel.engine.availableSubtitles.collectAsState()
+    val audioTracks by viewModel.engine.availableAudio.collectAsState()
+
+    val context = LocalContext.current
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var showCcDialog by remember { mutableStateOf(false) }
+    var showAudioDialog by remember { mutableStateOf(false) }
+    var brightness by remember { mutableStateOf(1f) }
+    // Cycle de zoom : ajuster (fit) → zoom plein écran → remplir
+    val zoomModes = remember {
+        listOf(
+            AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+            AspectRatioFrameLayout.RESIZE_MODE_FILL,
+        )
+    }
+    var zoomIndex by remember { mutableIntStateOf(0) }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
@@ -92,7 +122,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 PlayerView(ctx).apply {
                     player = viewModel.engine.player
                     useController = false
-                }
+                }.also { playerView = it }
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -122,6 +152,29 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                 )
+                // Zoom plein écran (fit → zoom → fill)
+                IconButton(onClick = {
+                    zoomIndex = (zoomIndex + 1) % zoomModes.size
+                    playerView?.resizeMode = zoomModes[zoomIndex]
+                }) {
+                    Icon(
+                        Icons.Filled.ZoomIn,
+                        "Zoom « plein écran »",
+                        tint = if (zoomIndex == 0) Color.White else MaterialTheme.colorScheme.primary,
+                    )
+                }
+                // Sous-titres
+                if (subtitleTracks.isNotEmpty()) {
+                    IconButton(onClick = { showCcDialog = true }) {
+                        Icon(Icons.Filled.ClosedCaption, "Sous-titres", tint = Color.White)
+                    }
+                }
+                // Piste audio
+                if (audioTracks.size > 1) {
+                    IconButton(onClick = { showAudioDialog = true }) {
+                        Icon(Icons.Filled.Audiotrack, "Piste audio", tint = Color.White)
+                    }
+                }
                 IconButton(onClick = { viewModel.toggleLock() }) {
                     Icon(
                         if (state.locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
@@ -159,6 +212,28 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     )
                 }
 
+                // ---- Luminosité locale (glissière en bas à gauche)
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.BrightnessMedium, "Luminosité", tint = Color.White)
+                    Slider(
+                        value = brightness,
+                        onValueChange = { v ->
+                            brightness = v
+                            (context as? android.app.Activity)?.let { activity ->
+                                val lp = activity.window.attributes
+                                lp.screenBrightness = v.coerceIn(0f, 1f)
+                                activity.window.attributes = lp
+                            }
+                        },
+                        modifier = Modifier.padding(start = 8.dp).fillMaxWidth(0.28f),
+                    )
+                }
+
                 // ---- Vitesse
                 Row(
                     Modifier
@@ -193,6 +268,60 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    // ---- Boîte « Sous-titres »
+    if (showCcDialog) {
+        AlertDialog(
+            onDismissRequest = { showCcDialog = false },
+            confirmButton = { TextButton(onClick = { showCcDialog = false }) { Text("Fermer") } },
+            title = { Text("Sous-titres") },
+            text = {
+                Column {
+                    Text(
+                        "Désactivé",
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.engine.selectSubtitle(null); showCcDialog = false }
+                            .padding(vertical = 10.dp),
+                    )
+                    subtitleTracks.forEach { track ->
+                        Text(
+                            track.label.ifBlank { track.lang },
+                            color = Color.Unspecified,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.engine.selectSubtitle(track); showCcDialog = false }
+                                .padding(vertical = 10.dp),
+                        )
+                    }
+                }
+            },
+        )
+    }
+
+    // ---- Boîte « Piste audio »
+    if (showAudioDialog) {
+        AlertDialog(
+            onDismissRequest = { showAudioDialog = false },
+            confirmButton = { TextButton(onClick = { showAudioDialog = false }) { Text("Fermer") } },
+            title = { Text("Piste audio") },
+            text = {
+                Column {
+                    audioTracks.forEach { track ->
+                        Text(
+                            listOfNotNull(track.label.ifBlank { null }, track.language)
+                                .joinToString(" · ").ifBlank { track.id },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.engine.selectAudio(track.id); showAudioDialog = false }
+                                .padding(vertical = 10.dp),
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 

@@ -1,5 +1,7 @@
 package dev.endlesssea.app.navigation
 
+import dev.endlesssea.app.di.AppPrefs
+
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -50,12 +52,19 @@ val allTabScreens: List<Screen> =
 
 /** Barre de navigation flottante « verre » — onglets filtrés par les préférences utilisateur. */
 @Composable
-fun EsBottomBar(nav: NavHostController, currentRoute: String?, tabs: Set<String>) {
-    val shown = allTabScreens.filter { it.route in tabs }.ifEmpty { listOf(Screen.Home) }
+fun EsBottomBar(
+    nav: NavHostController,
+    currentRoute: String?,
+    tabs: Set<String>,
+    order: List<String> = AppPrefs.ALL_TAB_ROUTES,
+    marginDp: Int = 16,
+) {
+    val byRoute = allTabScreens.associateBy { it.route }
+    val shown = order.mapNotNull { byRoute[it] }.filter { it.route in tabs }.ifEmpty { listOf(Screen.Home) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 28.dp, vertical = 10.dp),
+            .padding(horizontal = marginDp.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.Center,
     ) {
         Row(

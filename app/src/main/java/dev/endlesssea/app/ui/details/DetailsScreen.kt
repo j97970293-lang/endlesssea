@@ -13,22 +13,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,8 +41,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -54,14 +60,27 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import dev.endlesssea.app.ui.player.PlayerActivity
 import dev.endlesssea.app.ui.components.GlassCard
+import dev.endlesssea.app.ui.player.PlayerActivity
+import dev.endlesssea.extensions.api.model.AudioLang
 import dev.endlesssea.extensions.api.model.Episode
+import dev.endlesssea.extensions.api.model.StreamType
 import dev.endlesssea.extensions.api.model.VideoLink
 
+/** Libellé FR des sections de langue audio (VOSTFR / VF en tête). */
+private fun audioSection(lang: AudioLang) = when (lang) {
+    AudioLang.VOSTFR -> "VOSTFR"
+    AudioLang.VF -> "VF"
+    AudioLang.MULTI -> "MULTI"
+    AudioLang.VO -> "VO (original)"
+    AudioLang.OTHER -> "Autre"
+}
+
 /**
- * Fiche détaillée (spec §13) : bannière + actions (Lire / Télécharger / Bibliothèque / Favoris),
- * épisodes regroupés par saison, serveurs visibles, mode auto, feuille « un clic ».
+ * Fiche détaillée (design de référence : captures Anymex) — bandeau dégradé, affiche
+ * arrondie 18dp, méta en pilules, boutons capsule 28dp, saisons en pilules,
+ * épisodes avec vignette + badge EP + téléchargement par épisode, feuille
+ * « Télécharger » groupée par langue audio (VOSTFR / VF / MULTI / VO).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,25 +94,31 @@ fun DetailsScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var downloadSheetEpisode by remember { mutableStateOf<Episode?>(null) }
+    var selectedSeason by remember { mutableStateOf<Int?>(null) }
+    var synopsisExpanded by remember { mutableStateOf(false) }
 
-    // Messages du VM → snackbar FR (spec : erreurs/confirmations lisibles)
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
     }
     fun launchPlayer(): () -> Unit = { context.startActivity(Intent(context, PlayerActivity::class.java)) }
 
+    val seasons = remember(state.episodes) {
+        state.episodes.mapNotNull { it.season }.distinct().sorted()
+    }
+    val episodesShown = remember(state.episodes, selectedSeason) {
+        if (selectedSeason == null) state.episodes
+        else state.episodes.filter { it.season == selectedSeason }
+            .ifEmpty { state.episodes }
+    }
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
-            contentPadding = PaddingValues(bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 110.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // ---- Bannière
+            // ---- Bandeau + affiche + méta
             item {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                ) {
+                Box(Modifier.fillMaxWidth().height(240.dp)) {
                     AsyncImage(
                         model = state.details?.bannerUrl ?: state.details?.posterUrl,
                         contentDescription = null,
@@ -101,30 +126,51 @@ fun DetailsScreen(
                         contentScale = ContentScale.Crop,
                     )
                     Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f)),
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.Black.copy(alpha = 0.25f),
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                                    MaterialTheme.colorScheme.background,
                                 ),
                             ),
+                        ),
                     )
                     IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
                         Icon(Icons.Filled.ArrowBack, "Retour", tint = Color.White)
                     }
-                    Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-                        Text(
-                            state.details?.title ?: "",
-                            style = MaterialTheme.typography.headlineSmall, color = Color.White,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                }
+                // Affiche + titre + méta (recouvre le bas du bandeau)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
+                        AsyncImage(
+                            model = state.details?.posterUrl,
+                            contentDescription = state.details?.title,
+                            modifier = Modifier.size(width = 112.dp, height = 168.dp),
+                            contentScale = ContentScale.Crop,
                         )
-                        val meta = listOfNotNull(
-                            state.details?.type?.name,
-                            state.details?.year?.toString(),
-                            state.details?.episodeCount?.let { "$it épisodes" } ?: if (state.episodes.isNotEmpty()) "${state.episodes.size} épisodes" else null,
-                        ).joinToString("  ·  ")
-                        if (meta.isNotBlank()) {
-                            Text(meta, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f).padding(top = 8.dp)) {
+                        Text(
+                            state.details?.title ?: mediaId.substringAfter(':'),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOfNotNull(
+                                state.details?.type?.name?.lowercase()?.replaceFirstChar { it.uppercase() },
+                                state.details?.year?.toString(),
+                                state.details?.episodeCount?.let { "$it ép." }
+                                    ?: if (state.episodes.isNotEmpty()) "${state.episodes.size} ép." else null,
+                            ).forEach { MetaPill(it) }
                         }
                     }
                 }
@@ -132,96 +178,167 @@ fun DetailsScreen(
 
             if (state.loading) {
                 item {
-                    Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
             } else if (state.error != null && state.details == null) {
                 item {
-                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("(˘･_･˘)", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
                         Text(state.error ?: "Erreur", color = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { viewModel.load() }) { Text("Réessayer") }
                     }
                 }
             } else {
-                // ---- Actions
+                // ---- Actions capsule
                 item {
                     Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Button(
-                            onClick = {
-                                state.episodes.firstOrNull()?.let { ep ->
-                                    viewModel.playEpisode(ep, onReady = launchPlayer())
-                                }
-                            },
-                            modifier = Modifier.weight(1.2f),
-                        ) { Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text("Lire") }
-                        OutlinedButton(
-                            onClick = {
-                                state.episodes.firstOrNull()?.let { ep -> downloadSheetEpisode = ep }
-                            },
-                            modifier = Modifier.weight(1.2f),
-                        ) { Icon(Icons.Filled.Download, null); Spacer(Modifier.width(4.dp)); Text("Télécharger") }
-                        IconButton(onClick = { viewModel.toggleLibrary(state.details?.type?.name ?: "ANIME") }) {
-                            Icon(
-                                if (state.inLibrary) Icons.Filled.Check else Icons.Filled.Add,
-                                "Bibliothèque", tint = MaterialTheme.colorScheme.primary,
-                            )
+                        // Ajouter / retirer de la liste (pilule accent)
+                        Surface(
+                            onClick = { viewModel.toggleLibrary(state.details?.type?.name ?: "ANIME") },
+                            shape = RoundedCornerShape(28.dp),
+                            color = if (state.inLibrary) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    if (state.inLibrary) Icons.Filled.Check else Icons.Filled.Add,
+                                    null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (state.inLibrary) "Dans ma liste" else "Ajouter à ma liste",
+                                    style = MaterialTheme.typography.labelLarge)
+                            }
                         }
+                        Spacer(Modifier.weight(1f))
                         IconButton(onClick = { viewModel.toggleFavorite() }) {
                             Icon(
                                 if (state.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                "Favoris", tint = MaterialTheme.colorScheme.primary,
+                                "Favori", tint = MaterialTheme.colorScheme.primary,
                             )
                         }
                     }
                 }
 
-                // ---- Synopsis / genres
-                state.details?.synopsis?.let { synopsis ->
-                    item {
-                        Text(
-                            synopsis,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                    }
-                }
-                if (state.details?.genres?.isNotEmpty() == true) {
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                // ---- Bouton principal Lire + Tout télécharger
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Button(
+                            onClick = {
+                                state.episodes.firstOrNull()?.let { viewModel.playEpisode(it, onReady = launchPlayer()) }
+                            },
+                            modifier = Modifier.weight(1.4f),
                         ) {
-                            state.details?.genres?.take(6)?.forEach { genre ->
-                                GlassCard(cornerRadius = 14.dp,
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
-                                    Text(genre, style = MaterialTheme.typography.labelMedium)
+                            Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lire")
+                        }
+                        if (state.episodes.size > 1) {
+                            OutlinedButton(
+                                onClick = { viewModel.enqueueAll() },
+                                enabled = !state.batchRunning,
+                                modifier = Modifier.weight(1.4f),
+                            ) {
+                                if (state.batchRunning) {
+                                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(6.dp))
+                                } else {
+                                    Icon(Icons.Filled.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                                 }
+                                Text("Tout télécharger")
                             }
                         }
                     }
                 }
 
-                // ---- Épisodes
+                // ---- Synopsis repliant
+                state.details?.synopsis?.takeIf { it.isNotBlank() }?.let { synopsis ->
+                    item {
+                        Column(Modifier.padding(horizontal = 16.dp)) {
+                            Text("Synopsis", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                synopsis,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = if (synopsisExpanded) 40 else 4,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clickable { synopsisExpanded = !synopsisExpanded },
+                            )
+                            Row(
+                                Modifier.clickable { synopsisExpanded = !synopsisExpanded }.padding(top = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    if (synopsisExpanded) "Réduire" else "Lire la suite",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Icon(
+                                    if (synopsisExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ---- Genres en pilules
+                if (!state.details?.genres.isNullOrEmpty()) {
+                    item {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(state.details?.genres ?: emptyList()) { genre -> MetaPill(genre, accent = true) }
+                        }
+                    }
+                }
+
+                // ---- Saisons en pilules + épisodes
                 if (state.episodes.isNotEmpty()) {
                     item {
-                        Text(
-                            "Épisodes",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Épisodes", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                "${episodesShown.size}/${state.episodes.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (seasons.size > 1) {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                item {
+                                    SeasonPill("Toutes", selectedSeason == null) { selectedSeason = null }
+                                }
+                                items(seasons) { s ->
+                                    SeasonPill("Saison $s", selectedSeason == s) { selectedSeason = s }
+                                }
+                            }
+                        }
                     }
-                    items(state.episodes, key = { it.id }) { episode ->
-                        EpisodeRow(
+                    items(episodesShown, key = { it.id }) { episode ->
+                        EpisodeRowAnymex(
                             episode = episode,
                             loading = state.linksLoadingEpisode == episode.id,
                             onPlay = { viewModel.playEpisode(episode, onReady = launchPlayer()) },
@@ -239,11 +356,10 @@ fun DetailsScreen(
                     }
                 }
 
-                if (state.error != null) {
+                state.error?.let { err ->
                     item {
                         Text(
-                            state.error ?: "",
-                            style = MaterialTheme.typography.bodySmall,
+                            err, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
@@ -255,7 +371,7 @@ fun DetailsScreen(
         SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
-    // ---- Feuille « Télécharger » (un clic : serveur × qualité)
+    // ---- Feuille « Télécharger » — groupée par langue audio, flux exclus
     downloadSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
         ModalBottomSheet(onDismissRequest = { downloadSheetEpisode = null }) {
@@ -264,49 +380,45 @@ fun DetailsScreen(
                     "Télécharger — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 if (links.isEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                        horizontalArrangement = Arrangement.Center,
-                    ) { CircularProgressIndicator() }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center) {
+                        CircularProgressIndicator()
+                    }
                 } else {
-                    // Tri qualité décroissante (valeur numérique dans le nom si présente)
-                    links.sortedByDescending { it.quality.name }.forEach { link ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                    val grouped = links.groupBy { it.audioLang }.toList()
+                        .sortedBy { AudioLang.entries.indexOf(it.first) }
+                    val downloadable = links.count { it.streamType == StreamType.DIRECT_FILE }
+                    if (downloadable == 0) {
+                        Text(
+                            "Cette source ne propose que du flux (lecture en ligne uniquement).",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    grouped.forEach { (lang, langLinks) ->
+                        Text(
+                            audioSection(lang),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                        langLinks.sortedByDescending { it.quality.pixels }.forEach { link ->
+                            DownloadRow(
+                                link = link,
+                                onEnqueue = {
                                     viewModel.enqueue(episode, link)
                                     downloadSheetEpisode = null
                                     onDownloadQueued()
-                                }
-                                .padding(vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "${link.server} · ${link.quality.name}",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                val extras = buildList {
-                                    if (link.audioLang.name != "OTHER") add(link.audioLang.name)
-                                    if (link.subtitles.isNotEmpty()) add("${link.subtitles.size} sous-titres")
-                                    add(link.streamType.name)
-                                }.joinToString(" · ")
-                                if (extras.isNotBlank()) {
-                                    Text(extras, style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            Icon(Icons.Filled.Download, null, tint = MaterialTheme.colorScheme.primary)
+                                },
+                            )
                         }
                     }
                 }
                 Spacer(Modifier.height(28.dp))
             }
         }
-        // Résolution des liens au premier affichage
         LaunchedEffect(episode.id) {
             if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
         }
@@ -314,51 +426,151 @@ fun DetailsScreen(
 }
 
 @Composable
-private fun EpisodeRow(
+private fun MetaPill(text: String, accent: Boolean = false) {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = if (accent) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (accent) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        shape = RoundedCornerShape(28.dp),
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.primary,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true, selected = selected,
+            borderColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    )
+}
+
+/** Ligne de téléchargement : serveur × qualité, badge lecture seule pour les flux. */
+@Composable
+private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
+    val direct = link.streamType == StreamType.DIRECT_FILE
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = direct, onClick = onEnqueue)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "${link.server} · ${link.quality.label}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (direct) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val extras = buildList {
+                if (link.subtitles.isNotEmpty()) add("${link.subtitles.size} sous-titres")
+                add(
+                    when (link.streamType) {
+                        StreamType.DIRECT_FILE -> "Fichier direct"
+                        StreamType.HLS -> "Flux HLS — lecture seule"
+                        StreamType.DASH -> "Flux DASH — lecture seule"
+                        StreamType.EMBED -> "Lecteur externe — lecture seule"
+                        StreamType.TORRENT -> "Torrent — lecture seule"
+                    },
+                )
+            }.joinToString(" · ")
+            Text(
+                extras, style = MaterialTheme.typography.bodySmall,
+                color = if (direct) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
+        if (direct) {
+            Icon(Icons.Filled.Download, "Télécharger", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** Ligne d'épisode style référence : vignette + badge EP + titre + icône téléchargement. */
+@Composable
+private fun EpisodeRowAnymex(
     episode: Episode,
     loading: Boolean,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
 ) {
     GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         cornerRadius = 16.dp,
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(width = 118.dp, height = 66.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onPlay),
+            ) {
+                if (episode.thumbnailUrl != null) {
+                    AsyncImage(
+                        model = episode.thumbnailUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Box(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.72f),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
+                ) {
+                    Text(
+                        "EP ${episode.number.toInt()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).clickable(onClick = onPlay)) {
                 Text(
-                    "Épisode ${episode.number.toInt()}${episode.title?.let { " — $it" } ?: ""}",
-                    style = MaterialTheme.typography.bodyLarge, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    episode.title ?: "Épisode ${episode.number.toInt()}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
-                episode.durationMs?.let {
-                    Text("${it / 60_000} min", style = MaterialTheme.typography.bodySmall,
+                val meta = buildList {
+                    episode.season?.let { add("Saison $it") }
+                    episode.durationMs?.let { add("${it / 60_000} min") }
+                }.joinToString(" · ")
+                if (meta.isNotBlank()) {
+                    Text(meta, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (loading) {
-                CircularProgressIndicator(Modifier.padding(12.dp).width(20.dp).height(20.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
+            } else {
+                IconButton(onClick = onDownload) {
+                    Icon(Icons.Filled.Download, "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
+                }
             }
-            IconButton(onClick = onDownload) { Icon(Icons.Filled.Download, "Télécharger") }
         }
     }
-}
-
-// ---- petite boîte de confirmation « un clic » (serveurs auto) — conservée pour un usage futur
-@Composable
-private fun ConfirmDownload(
-    link: VideoLink,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { Button(onClick = onConfirm) { Text("Télécharger") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
-        title = { Text("${link.server} · ${link.quality.name}") },
-        text = { Text("Le segment démarre en parallèle (${link.quality.name}).") },
-    )
 }

@@ -24,6 +24,17 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         // Toutes les destinations possibles de la barre
         val ALL_TAB_ROUTES = listOf("home", "explore", "search", "library", "downloads")
         val DEFAULT_TABS = setOf("home", "explore", "search", "library", "downloads")
+
+        // Palettes d'accent (primary) proposées dans les réglages
+        val ACCENTS = linkedMapOf(
+            "lavande" to 0xFFB9C1FF,
+            "cyan" to 0xFF7AD8FF,
+            "menthe" to 0xFF8CD6C3,
+            "corail" to 0xFFFFB4A2,
+            "ambre" to 0xFFFFD08A,
+            "rose" to 0xFFFFB1C5,
+        )
+        const val DEFAULT_ACCENT = "lavande"
     }
 
     private val p = context.getSharedPreferences("endless_sea_prefs", Context.MODE_PRIVATE)
@@ -31,8 +42,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     // ---------------------------------------------------------------- thème
     // AMOLED par défaut (esthétique cible) ; l'utilisateur peut revenir à Système.
     private val _themeMode = MutableStateFlow(p.getInt("theme_mode", THEME_AMOLED))
-    val themeMode: StateFlow<Int> = _themeMode
-    fun setThemeMode(mode: Int) {
+    val themeMode: StateFlow<Int> = _themeMode    fun setThemeMode(mode: Int) {
         p.edit().putInt("theme_mode", mode).apply(); _themeMode.value = mode
     }
 
@@ -47,6 +57,35 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         // jamais moins d'un onglet
         val safe = if (next.isEmpty()) setOf("home") else next
         p.edit().putStringSet("bar_tabs", safe).apply(); _barTabs.value = safe
+    }
+
+    // ---------------------------------------------------------------- accent
+    private val _accent = MutableStateFlow(p.getString("accent", DEFAULT_ACCENT) ?: DEFAULT_ACCENT)
+    val accent: StateFlow<String> = _accent
+    fun setAccent(name: String) {
+        val safe = if (ACCENTS.containsKey(name)) name else DEFAULT_ACCENT
+        p.edit().putString("accent", safe).apply(); _accent.value = safe
+    }
+
+    // Ordre des onglets dans la barre flottante (CSV de routes)
+    private val _tabOrder = MutableStateFlow(
+        (p.getString("tab_order", null)?.split(",")?.filter { it in ALL_TAB_ROUTES }
+            ?.takeIf { it.isNotEmpty() } ?: ALL_TAB_ROUTES),
+    )
+    val tabOrder: StateFlow<List<String>> = _tabOrder
+    fun moveTab(route: String, delta: Int) {
+        val cur = _tabOrder.value.toMutableList()
+        val i = cur.indexOf(route); val j = i + delta
+        if (i < 0 || j !in cur.indices) return
+        cur.add(j, cur.removeAt(i))
+        p.edit().putString("tab_order", cur.joinToString(",")).apply(); _tabOrder.value = cur
+    }
+
+    // Marge horizontale de la barre flottante (dp)
+    private val _barMargin = MutableStateFlow(p.getInt("bar_margin", 16))
+    val barMargin: StateFlow<Int> = _barMargin
+    fun setBarMargin(dp: Int) {
+        val c = dp.coerceIn(0, 64); p.edit().putInt("bar_margin", c).apply(); _barMargin.value = c
     }
 
     // ---------------------------------------------------------------- stockage

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -97,8 +98,10 @@ private fun DownloadCard(
                 when (row.status) {
                     DownloadStatus.DOWNLOADING.name, DownloadStatus.QUEUED.name ->
                         IconButton(onClick = onPause) { Icon(Icons.Filled.Pause, "Pause") }
-                    DownloadStatus.PAUSED.name, DownloadStatus.FAILED.name ->
+                    DownloadStatus.PAUSED.name ->
                         IconButton(onClick = onResume) { Icon(Icons.Filled.PlayArrow, "Reprendre") }
+                    DownloadStatus.FAILED.name ->
+                        IconButton(onClick = onResume) { Icon(Icons.Filled.Refresh, "Réessayer", tint = MaterialTheme.colorScheme.error) }
                     else -> {}
                 }
                 IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, "Annuler") }

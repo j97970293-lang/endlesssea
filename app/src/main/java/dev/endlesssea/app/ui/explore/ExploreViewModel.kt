@@ -13,13 +13,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class ExploreRowUi(val title: String, val items: List<SearchItemUi>)
+data class ExploreRowUi(
+    val title: String,
+    val items: List<SearchItemUi>,
+    /** Identifiant du paquet d'extension ayant produit la rangée. */
+    val pkg: String,
+)
 
 data class ExploreUiState(
     val loading: Boolean = true,
     val rows: List<ExploreRowUi> = emptyList(),
     val errors: Map<String, String> = emptyMap(),
     val extensionCount: Int = 0,
+    /** (pkg → nom d'affichage) de toutes les extensions activées, même en erreur. */
+    val extensions: List<Pair<String, String>> = emptyList(),
 )
 
 /** Explore (spec §11) : pour chaque extension activée, une rangée de son catalogue principal. */
@@ -34,12 +41,13 @@ class ExploreViewModel @Inject constructor(
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
-        _uiState.value = ExploreUiState(loading = true)
+        _uiState.value = ExploreUiState(loading = true, extensions = _uiState.value.extensions)
         val extensions = registry.enabledExtensions()
         if (extensions.isEmpty()) {
-            _uiState.value = ExploreUiState(loading = false, extensionCount = 0)
+            _uiState.value = ExploreUiState(loading = false, extensionCount = 0, extensions = emptyList())
             return@launch
         }
+        val extLabels = extensions.map { (pkg, ext) -> pkg to ext.info.name }
         val rows = mutableListOf<ExploreRowUi>()
         val errors = mutableMapOf<String, String>()
 
@@ -53,6 +61,7 @@ class ExploreViewModel @Inject constructor(
                         if (page.items.isNotEmpty()) {
                             val wrapped = ExploreRowUi(
                                 title = "${ext.info.name}" + if (page.hasNextPage) " · suite →" else "",
+                                pkg = pkg,
                                 items = page.items.take(20).map {
                                     SearchItemUi(
                                         id = "${ext.info.id}:${it.url}", title = it.title,
@@ -75,6 +84,7 @@ class ExploreViewModel @Inject constructor(
             rows = rows.sortedBy { it.title },
             errors = errors,
             extensionCount = extensions.size,
+            extensions = extLabels,
         )
     }
 }

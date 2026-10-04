@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,10 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -30,6 +35,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -145,6 +152,40 @@ fun SettingsScreen(
                             modifier = Modifier.padding(top = 4.dp),
                         )
                     }
+                    Spacer(Modifier.height(14.dp))
+                    // Couleur d'accent (boutons, onglets actifs, badges)
+                    Text("Couleur d'accent", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        AppPrefs.ACCENTS.forEach { (name, argb) ->
+                            val selected = state.accent == name
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable { viewModel.setAccent(name) },
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(36.dp)
+                                        .height(36.dp)
+                                        .border(
+                                            width = if (selected) 3.dp else 1.dp,
+                                            color = if (selected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = CircleShape,
+                                        )
+                                        .padding(3.dp)
+                                        .background(androidx.compose.ui.graphics.Color(argb), CircleShape),
+                                )
+                                Text(
+                                    name.replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
             item {
@@ -156,20 +197,38 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    allTabScreens.forEach { screen ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(screen.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.width(10.dp))
-                            Text(screen.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            Switch(
-                                checked = screen.route in state.barTabs,
-                                onCheckedChange = { viewModel.setBarTab(screen.route, it) },
-                            )
+                    state.tabOrder.mapNotNull { route -> allTabScreens.find { it.route == route } }
+                        .forEach { screen ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(screen.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.width(10.dp))
+                                Text(screen.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                // Ordre : monter / descendre dans la barre
+                                IconButton(onClick = { viewModel.moveTab(screen.route, -1) }) {
+                                    Icon(Icons.Filled.KeyboardArrowUp, "Monter")
+                                }
+                                IconButton(onClick = { viewModel.moveTab(screen.route, 1) }) {
+                                    Icon(Icons.Filled.KeyboardArrowDown, "Descendre")
+                                }
+                                Switch(
+                                    checked = screen.route in state.barTabs,
+                                    onCheckedChange = { viewModel.setBarTab(screen.route, it) },
+                                )
+                            }
                         }
-                    }
+                    Text(
+                        "Marge de la barre : ${state.barMargin} dp",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Slider(
+                        value = state.barMargin.toFloat(),
+                        onValueChange = { viewModel.setBarMargin(it.toInt()) },
+                        valueRange = 0f..64f,
+                    )
                 }
             }
 
@@ -228,6 +287,44 @@ fun SettingsScreen(
                     subtitle = "ajouter · renommer · réordonner · afficher/masquer · supprimer",
                     onClick = { showGenreManager = true },
                 )
+            }
+
+            // -------------------------------------- RÉGLAGES PAR EXTENSION
+            item { SectionHeader("Extensions — réglages par source") }
+            item {
+                if (state.extWithSettings.isEmpty()) {
+                    Text(
+                        "Aucune extension activée. Les réglages déclarés par une source (adresse du site, options…) apparaissent ici.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                } else {
+                    Column {
+                        state.extWithSettings.forEach { (pkg, name) ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { viewModel.openExtSettings(pkg, name) }
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Filled.Extension, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(name, style = MaterialTheme.typography.bodyLarge)
+                                    Text("Options de la source", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (state.extSettingsLoading) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.Center,
+                            ) { androidx.compose.material3.CircularProgressIndicator(Modifier.width(28.dp).height(28.dp), strokeWidth = 2.dp) }
+                        }
+                    }
+                }
             }
 
             // ------------------------------------------------------- SAUVEGARDE
@@ -312,6 +409,63 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            },
+        )
+    }
+
+    // ---------------------------------------- Réglages d'une extension
+    state.editingExt?.let { editing ->
+        AlertDialog(
+            onDismissRequest = { viewModel.closeExtSettings() },
+            confirmButton = { TextButton(onClick = { viewModel.closeExtSettings() }) { Text("Fermer") } },
+            title = { Text("Réglages — ${editing.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    editing.entries.forEach { entry ->
+                        if (entry.type == dev.endlesssea.extensions.api.model.ExtensionSetting.Type.SWITCH) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.title, style = MaterialTheme.typography.bodyLarge)
+                                    entry.summary?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                Switch(
+                                    checked = entry.value == "true",
+                                    onCheckedChange = { viewModel.saveExtSetting(editing.pkg, entry.key, it.toString()) },
+                                )
+                            }
+                        } else {
+                            var text by remember(entry.key) { mutableStateOf(entry.value) }
+                            OutlinedTextField(
+                                value = text,
+                                onValueChange = { text = it },
+                                label = { Text(entry.title) },
+                                supportingText = entry.summary?.let { { Text(it) } },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                visualTransformation = if (entry.type == dev.endlesssea.extensions.api.model.ExtensionSetting.Type.PASSWORD)
+                                    androidx.compose.ui.text.input.PasswordVisualTransformation()
+                                else androidx.compose.ui.text.input.VisualTransformation.None,
+                            )
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(
+                                    onClick = { viewModel.saveExtSetting(editing.pkg, entry.key, text) },
+                                    enabled = text != entry.value,
+                                ) { Text("Enregistrer") }
+                            }
+                        }
+                    }
+                    Text(
+                        "Pris en compte par la source à la prochaine ouverture de catalogue.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             },
         )

@@ -21,6 +21,22 @@ import javax.inject.Inject
 
 data class GenreUi(val id: Long, val name: String, val visible: Boolean, val position: Int)
 
+/** Une entrée éditable déclarée par une extension + sa valeur courante. */
+data class ExtSettingEntryUi(
+    val key: String,
+    val title: String,
+    val summary: String?,
+    val type: dev.endlesssea.extensions.api.model.ExtensionSetting.Type,
+    val value: String,
+)
+
+/** Ensemble de réglages d'une extension, ouvert dans la boîte de dialogue. */
+data class ExtSettingsUi(
+    val pkg: String,
+    val name: String,
+    val entries: List<ExtSettingEntryUi>,
+)
+
 data class SettingsUiState(
     val storageUri: String? = null,
     val wifiOnly: Boolean = true,
@@ -30,10 +46,18 @@ data class SettingsUiState(
     val autoResume: Boolean = true,
     val themeMode: Int = AppPrefs.THEME_SYSTEM,
     val barTabs: Set<String> = AppPrefs.DEFAULT_TABS,
+    val tabOrder: List<String> = AppPrefs.ALL_TAB_ROUTES,
+    val barMargin: Int = 16,
+    val accent: String = AppPrefs.DEFAULT_ACCENT,
     val genres: List<GenreUi> = emptyList(),
     val updateAutoCheck: Boolean = true,
     val availableUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
     val updateChecking: Boolean = false,
+    /** Extensions activées (pkg → nom) proposées pour les réglages par extension. */
+    val extWithSettings: List<Pair<String, String>> = emptyList(),
+    /** Boîte de dialogue de réglages d'extension actuellement ouverte. */
+    val editingExt: ExtSettingsUi? = null,
+    val extSettingsLoading: Boolean = false,
     val message: String? = null,
 )
 
@@ -44,6 +68,9 @@ class SettingsViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val historyDao: WatchHistoryDao,
     private val updateChecker: dev.endlesssea.app.update.UpdateChecker,
+    private val extensionDao: dev.endlesssea.data.db.ExtensionDao,
+    private val extSettingsStore: dev.endlesssea.app.data.ExtensionSettingsStore,
+    private val registry: dev.endlesssea.extensions.loader.ExtensionRegistry,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -58,7 +85,17 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoResume.collect { v -> set { copy(autoResume = v) } } }
         viewModelScope.launch { prefs.themeMode.collect { v -> set { copy(themeMode = v) } } }
         viewModelScope.launch { prefs.barTabs.collect { v -> set { copy(barTabs = v) } } }
+        viewModelScope.launch { prefs.tabOrder.collect { v -> set { copy(tabOrder = v) } } }
+        viewModelScope.launch { prefs.barMargin.collect { v -> set { copy(barMargin = v) } } }
+        viewModelScope.launch { prefs.accent.collect { v -> set { copy(accent = v) } } }
         viewModelScope.launch { prefs.updateAutoCheck.collect { v -> set { copy(updateAutoCheck = v) } } }
+        viewModelScope.launch {
+            extensionDao.observeInstalled().collect { list ->
+                set {
+                    copy(extWithSettings = list.filter { it.status == "ENABLED" }.map { it.pkg to it.name })
+                }
+            }
+        }
         viewModelScope.launch {
             genreDao.observeAll()
                 .catch { /* la table est créée par seed — jamais vide de fait */ }
@@ -84,6 +121,54 @@ class SettingsViewModel @Inject constructor(
     fun setAutoResume(v: Boolean) { prefs.setAutoResume(v); toastState(if (v) "Reprise automatique activée" else "Reprise automatique désactivée") }
     fun setThemeMode(mode: Int) { prefs.setThemeMode(mode) }
     fun setBarTab(route: String, enabled: Boolean) { prefs.setBarTab(route, enabled) }
+    fun moveTab(route: String, delta: Int) { prefs.moveTab(route, delta) }
+    fun setBarMargin(dp: Int) { prefs.setBarMargin(dp) }
+    fun setAccent(name: String) { prefs.setAccent(name) }
+
+    // ------------------------------------------------- réglages par extension
+
+    /** Ouvre la boîte des réglages de l'extension [pkg] (déclaration chargée à la demande). */
+    fun openExtSettings(pkg: String, name: String) = viewModelScope.launch {
+        set { copy(extSettingsLoading = true, editingExt = null) }
+        val decl = runCatching { registry.instance(pkg).settings() }
+            .onFailure { toastState("Impossible de lire les réglages de « $name » : ${it.message}") }
+            .getOrNull()
+        if (!decl.isNullOrEmpty()) {
+            val values = extSettingsStore.getAll(pkg)
+            set {
+                copy(
+                    editingExt = ExtSettingsUi(
+                        pkg = pkg, name = name,
+                        entries = decl.map { s ->
+                            ExtSettingEntryUi(
+                                key = s.key, title = s.title, summary = s.summary, type = s.type,
+                                value = values[s.key] ?: s.defaultValue,
+                            )
+                        },
+                    ),
+                )
+            }
+        } else if (decl != null) {
+            toastState("« $name » ne déclare aucun réglage")
+        }
+        set { copy(extSettingsLoading = false) }
+    }
+
+    /** Écrit une valeur, invalide l'instance (l'extension la relira au prochain appel). */
+    fun saveExtSetting(pkg: String, key: String, value: String) {
+        extSettingsStore.set(pkg, key, value)
+        viewModelScope.launch { registry.invalidate(pkg) }
+        set {
+            copy(
+                editingExt = editingExt?.let { cur ->
+                    cur.copy(entries = cur.entries.map { if (it.key == key) it.copy(value = value) else it })
+                },
+            )
+        }
+        toastState("Réglage enregistré — pris en compte à la prochaine ouverture")
+    }
+
+    fun closeExtSettings() { set { copy(editingExt = null) } }
 
     // ---------------------------------------------------------------- genres
 

@@ -48,6 +48,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by prefs.themeMode.collectAsState()
             val barTabs by prefs.barTabs.collectAsState()
+            val tabOrder by prefs.tabOrder.collectAsState()
+            val barMargin by prefs.barMargin.collectAsState()
+            val accentName by prefs.accent.collectAsState()
             val autoCheckUpdate by prefs.updateAutoCheck.collectAsState()
             val pendingUpdate = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)
@@ -63,7 +66,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            EndlessSeaTheme(themeMode = themeMode) {
+            EndlessSeaTheme(themeMode = themeMode, accentArgb = AppPrefs.ACCENTS[accentName] ?: 0xFFB9C1FF) {
                 // Boîte « nouvelle version »
                 pendingUpdate.value?.let { update ->
                     androidx.compose.material3.AlertDialog(
@@ -121,7 +124,7 @@ class MainActivity : ComponentActivity() {
                             ),
                         )
                     },
-                    bottomBar = { EsBottomBar(nav, currentRoute = route, tabs = barTabs) },
+                    bottomBar = { EsBottomBar(nav, currentRoute = route, tabs = barTabs, order = tabOrder, marginDp = barMargin) },
                 ) { padding ->
                     EsNavGraphContainer(
                         modifier = Modifier.fillMaxSize().padding(padding),

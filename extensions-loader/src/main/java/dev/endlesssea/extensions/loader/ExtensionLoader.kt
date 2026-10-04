@@ -36,6 +36,8 @@ class ExtensionLoader(
     private val context: Context,
     private val http: OkHttpClient,
     private val storeDir: File = File(context.filesDir, "extensions"),
+    /** Réglages utilisateur par extension : (id extension) -> map clé/valeur. */
+    private val settingsProvider: (String) -> Map<String, String> = { emptyMap() },
 ) {
 
     sealed interface InstallResult {
@@ -114,6 +116,7 @@ class ExtensionLoader(
         val loader = PathClassLoader(pkgFile.absolutePath, EsExtension::class.java.classLoader)
         val clazz = loader.loadClass(entry)
         val ctx = ExtensionContext(HttpFacade(context), File(storeDir, "${manifest.id}/files").apply { mkdirs() }, locale)
+            .apply { settings = settingsProvider(manifest.id) }
         // Convention: provider constructors accept (ExtensionContext) or nothing.
         val instance = runCatching {
             clazz.getConstructor(ExtensionContext::class.java).newInstance(ctx)

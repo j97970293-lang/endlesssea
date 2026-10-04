@@ -42,10 +42,8 @@ fun ExploreScreen(
     viewModel: ExploreViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    var selectedGenre by remember { mutableStateOf<String?>(null) }
-    val genreChips = remember {
-        listOf("Action", "Romance", "Isekai", "Thriller", "Comédie", "Péplum", "Sci-fi")
-    }
+    // Sélecteur d'extension : « Toutes » agrège les catalogues, sinon une seule source
+    var selectedPkg by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -57,14 +55,23 @@ fun ExploreScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Filled.Refresh, "Rafraîchir") }
-            genreChips.forEach { genre ->
+            FilterChip(
+                selected = selectedPkg == null,
+                onClick = { selectedPkg = null },
+                label = { Text("Toutes") },
+            )
+            state.extensions.forEach { (pkg, name) ->
                 FilterChip(
-                    selected = selectedGenre == genre,
-                    onClick = { selectedGenre = if (selectedGenre == genre) null else genre },
-                    label = { Text(genre) },
+                    selected = selectedPkg == pkg,
+                    onClick = { selectedPkg = if (selectedPkg == pkg) null else pkg },
+                    label = { Text(name) },
                 )
             }
         }
+
+        val visibleRows = if (selectedPkg == null) state.rows else state.rows.filter { it.pkg == selectedPkg }
+        val visibleErrors = if (selectedPkg == null) state.errors
+        else state.errors.filterKeys { name -> state.extensions.any { it.first == selectedPkg && it.second == name } }
 
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -90,20 +97,26 @@ fun ExploreScreen(
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                if (state.rows.isEmpty() && state.errors.isEmpty()) {
+                if (visibleRows.isEmpty() && visibleErrors.isEmpty()) {
                     item {
-                        Text(
-                            "Les extensions répondent mais leur catalogue « principal » est vide pour l'instant.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text("(¬‿¬)", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Catalogue vide pour l'instant — essayez une autre source ci-dessus.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
                     }
                 }
-                items(state.rows, key = { it.title }) { row ->
+                items(visibleRows, key = { it.title }) { row ->
                     MediaRow(title = row.title, items = row.items, onMediaClick = onMediaClick)
                 }
-                state.errors.forEach { (name, err) ->
+                visibleErrors.forEach { (name, err) ->
                     item(key = "err-$name") {
                         Text(
                             "« $name » : $err",

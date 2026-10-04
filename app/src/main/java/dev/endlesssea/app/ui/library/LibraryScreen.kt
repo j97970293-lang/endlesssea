@@ -26,7 +26,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.ui.components.MediaCard
 
-val LIBRARY_TABS = listOf("Anime", "Films", "Séries", "OVA", "ONA") // catégories configurables (spec §8)
+// Onglet → catégorie de stockage (identifiants MediaType de l'API extensions)
+val LIBRARY_TABS = listOf(
+    "Favoris" to "FAV",
+    "Anime" to "ANIME",
+    "Films" to "MOVIE",
+    "Séries" to "SERIES",
+    "OVA" to "OVA",
+    "ONA" to "ONA",
+)
 
 /**
  * Bibliothèque locale (spec §8) : fonctionne hors ligne, catégories, favoris,
@@ -42,17 +50,29 @@ fun LibraryScreen(
 
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
-            LIBRARY_TABS.forEachIndexed { i, label ->
-                Tab(selected = tab == i, onClick = { tab = i; viewModel.onCategory(LIBRARY_TABS[i]) }, text = { Text(label) })
+            LIBRARY_TABS.forEachIndexed { i, (label, key) ->
+                Tab(selected = tab == i, onClick = { tab = i; viewModel.onCategory(key) }, text = { Text(label) })
             }
         }
         if (state.items.isEmpty()) {
-            Text(
-                "Bibliothèque vide dans « ${LIBRARY_TABS[tab]} ». Ajoutez des contenus depuis une fiche ou la bannière d'accueil.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(24.dp),
-            )
+            Column(
+                Modifier.fillMaxSize().padding(32.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("(っ˘̩╭╮˘̩)っ", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "« ${LIBRARY_TABS[tab].first} » est vide",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                Text(
+                    "Ajoutez des titres depuis une fiche (boutons « Ajouter à ma liste » / cœur) ou la bannière d'accueil.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(110.dp),

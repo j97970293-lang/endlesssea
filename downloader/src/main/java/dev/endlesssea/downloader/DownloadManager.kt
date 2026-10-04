@@ -117,6 +117,15 @@ class DownloadManager(
                     DownloadSegmentEntity(taskId, it.idx, it.start, it.end)
                 }.also { dao.upsertSegments(it) }
             }
+            // Plan vide = le serveur n'a pas donné de taille exploitable (le plus souvent
+            // un lien « lecture seule » — flux, page de lecteur, URL éphémère). On le dit
+            // clairement au lieu de planter plus bas sur une liste vide (« List is empty. »).
+            if (table.isEmpty()) {
+                throw SegmentEngine.SourceError(
+                    "Téléchargement impossible : la source ne fournit pas un fichier direct " +
+                        "(lecture en ligne uniquement, ou lien expiré).",
+                )
+            }
             var speedWindowBytes = 0L
             var speedWindowStart = System.currentTimeMillis()
 

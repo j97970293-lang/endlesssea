@@ -66,6 +66,7 @@ private val SeaLight = lightColorScheme(
 @Composable
 fun EndlessSeaTheme(
     themeMode: Int = AppPrefs.THEME_SYSTEM,
+    accentArgb: Long = 0xFFB9C1FF,   // accent primaire choisi dans les réglages
     dynamicColor: Boolean = false,   // verre + AMOLED demandent la palette fixe « mer »
     content: @Composable () -> Unit,
 ) {
@@ -82,5 +83,9 @@ fun EndlessSeaTheme(
         dark -> SeaDark
         else -> SeaLight
     }
-    MaterialTheme(colorScheme = colors, content = content)
+    val tinted = if (accentArgb == 0L) colors else colors.copy(
+        primary = Color(accentArgb),
+        primaryContainer = Color(accentArgb).copy(alpha = 0.22f),
+    )
+    MaterialTheme(colorScheme = tinted, content = content)
 }

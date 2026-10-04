@@ -40,6 +40,8 @@ data class DetailsUiState(
     // Liens déjà résolus pour l'épisode demandé (clé = id d'épisode)
     val linksByEpisode: Map<String, List<VideoLink>> = emptyMap(),
     val linksLoadingEpisode: String? = null,
+    /** « Tout télécharger » en cours (sélection auto meilleure qualité directe). */
+    val batchRunning: Boolean = false,
 )
 
 @HiltViewModel
@@ -204,6 +206,71 @@ class DetailsViewModel @Inject constructor(
         )
         downloads.enqueue(task)
         _uiState.value = _uiState.value.copy(message = "Téléchargement ajouté : $fileName")
+    }
+
+    /**
+     * « Tout télécharger » : pour chaque épisode, résout les liens et met en file
+     * la meilleure qualité en fichier direct (les flux HLS/embed ne sont pas
+     * téléchargeables — ils restent en lecture seule).
+     */
+    fun enqueueAll(episodes: List<Episode> = this._uiState.value.episodes) = viewModelScope.launch {
+        if (_uiState.value.batchRunning || episodes.isEmpty()) return@launch
+        _uiState.value = _uiState.value.copy(batchRunning = true, message = "Résolution des liens…")
+        val extInstance = registry.instance(extensionId)
+        var added = 0; var streamOnly = 0; var failed = 0
+        episodes.forEachIndexed { i, episode ->
+            _uiState.value = _uiState.value.copy(
+                message = "Résolution des liens… (${i + 1}/${episodes.size})",
+            )
+            val cached = _uiState.value.linksByEpisode[episode.id]
+            val links = if (cached != null) cached else runCatching {
+                extInstance.loadLinks(LinkRequest(episode = episode, mediaId = mediaId))
+            }.getOrNull()
+            if (links == null) { failed++; return@forEachIndexed }
+            if (cached == null && links.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    linksByEpisode = _uiState.value.linksByEpisode + (episode.id to links),
+                )
+            }
+            val best = links.filter { it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE }
+                .maxByOrNull { it.quality.pixels }
+            if (best == null) { streamOnly++; return@forEachIndexed }
+            enqueueAndWait(episode, best); added++
+        }
+        val parts = buildList {
+            if (added > 0) add("$added téléchargement${if (added > 1) "s" else ""} ajouté${if (added > 1) "s" else ""}")
+            if (streamOnly > 0) add("$streamOnly en lecture seule (flux)")
+            if (failed > 0) add("$failed sans réponse de la source")
+        }
+        _uiState.value = _uiState.value.copy(
+            batchRunning = false,
+            message = if (parts.isEmpty()) "Aucun fichier téléchargeable trouvé" else parts.joinToString(" · "),
+        )
+    }
+
+    private fun enqueueAndWait(episode: Episode, link: VideoLink) {
+        val title = buildEpisodeTitle(episode)
+        val quality = link.quality.name
+        val fileName = FileNames.sanitize(
+            "$title [$quality]${if (link.subtitles.isNotEmpty()) " [subs]" else ""}",
+        ) + extensionFor(link)
+        val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
+        val task = DownloadTaskEntity(
+            id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
+            mediaId = mediaId, episodeId = episode.id,
+            url = link.url,
+            headersJson = if (link.headers.isEmpty()) "{}" else
+                link.headers.entries.joinToString(",", "{", "}") { (k, v) ->
+                    "\"${k.replace("\"", "")}\":\"${v.replace("\"", "'")}\""
+                },
+            server = link.server, quality = quality,
+            streamType = link.streamType.name,
+            targetUri = File(dir, fileName).toURI().toString(),
+            fileName = fileName,
+            displayPath = "EndlessSea/$fileName",
+            status = "QUEUED",
+        )
+        downloads.enqueue(task)
     }
 
     fun clearMessage() { _uiState.value = _uiState.value.copy(message = null) }

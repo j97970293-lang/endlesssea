@@ -50,8 +50,11 @@ object AppModule {
         DownloadManager(dao = dao, http = http, tempDirProvider = { context.filesDir })
 
     @Provides @Singleton
-    fun provideExtensionLoader(@ApplicationContext context: Context, http: OkHttpClient): ExtensionLoader =
-        ExtensionLoader(context, http)
+    fun provideExtensionLoader(
+        @ApplicationContext context: Context,
+        http: OkHttpClient,
+        store: dev.endlesssea.app.data.ExtensionSettingsStore,
+    ): ExtensionLoader = ExtensionLoader(context, http, settingsProvider = store.provider)
 
     @Provides @Singleton
     fun provideRepoManager(dao: RepoDao, http: OkHttpClient): RepoManager = RepoManager(dao, http)
