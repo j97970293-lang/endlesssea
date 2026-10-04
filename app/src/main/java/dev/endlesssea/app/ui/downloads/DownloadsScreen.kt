@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.endlesssea.app.ui.components.glass
 import dev.endlesssea.core.model.DownloadStatus
 
 /** Onglet Téléchargements : file live, filtres par statut, tri, réorganisation. */
@@ -135,7 +135,12 @@ private fun DownloadCard(
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
+    // Conteneur « verre » (liquid glass sur toutes les surfaces, pas seulement les boutons)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .glass(18.dp),
+    ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

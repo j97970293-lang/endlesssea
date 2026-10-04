@@ -75,6 +75,21 @@ fun SettingsScreen(
     var showNumbersDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showGenreManager by remember { mutableStateOf(false) }
+    /** Catégories repliables (la 1re ouverte par défaut) — sinon l'écran est illisible tant il est long. */
+    var openCategories by remember { mutableStateOf(setOf("interface")) }
+    fun toggleCategory(key: String) {
+        openCategories = if (key in openCategories) openCategories - key else openCategories + key
+    }
+
+    // Image de fond personnalisée (persistée longue durée)
+    val bgImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            viewModel.setBgImage(it.toString())
+        }
+    }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
@@ -125,7 +140,10 @@ fun SettingsScreen(
             contentPadding = PaddingValues(vertical = 4.dp, horizontal = 0.dp),
         ) {
             // ------------------------------------------------------ APPARENCE
-            item { SectionHeader("Apparence") }
+            item {
+                SettingCategory("🎨", "Interface & thème", expanded = "interface" in openCategories) { toggleCategory("interface") }
+            }
+            if ("interface" in openCategories) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Text("Thème", style = MaterialTheme.typography.bodyLarge)
@@ -223,6 +241,38 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Image d'arrière-plan", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (state.bgImageUri != null) "Personnalisée — dessinée derrière toute l'application"
+                        else "Aucune — fond uni du thème",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.OutlinedButton(onClick = { bgImagePicker.launch("image/*") }) {
+                            Text("🖼 Choisir…")
+                        }
+                        if (state.bgImageUri != null) {
+                            TextButton(onClick = { viewModel.setBgImage(null) }) { Text("Retirer") }
+                        }
+                    }
+                    if (state.bgImageUri != null) {
+                        Text(
+                            "Assombrissement : ${state.bgDim} % (lisibilité)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                        Slider(
+                            value = state.bgDim.toFloat(),
+                            onValueChange = { viewModel.setBgDim(it.toInt()) },
+                            valueRange = 0f..90f,
+                        )
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("Barre de navigation flottante", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Choisissez les onglets affichés",
@@ -266,7 +316,11 @@ fun SettingsScreen(
             }
 
             // ------------------------------------------------------- STOCKAGE
-            item { SectionHeader("Stockage") }
+            }
+            item {
+                SettingCategory("📦", "Stockage", expanded = "stockage" in openCategories) { toggleCategory("stockage") }
+            }
+            if ("stockage" in openCategories) {
             item {
                 SettingRow(
                     title = "Emplacement des téléchargements",
@@ -277,7 +331,11 @@ fun SettingsScreen(
             }
 
             // --------------------------------------------------- TÉLÉCHARGEMENT
-            item { SectionHeader("Téléchargement") }
+            }
+            item {
+                SettingCategory("📥", "Téléchargement", expanded = "download" in openCategories) { toggleCategory("download") }
+            }
+            if ("download" in openCategories) {
             item {
                 SettingSwitch(
                     title = "Wi-Fi uniquement",
@@ -295,7 +353,11 @@ fun SettingsScreen(
             }
 
             // --------------------------------------------------------- LECTEUR
-            item { SectionHeader("Lecteur") }
+            }
+            item {
+                SettingCategory("⏯", "Lecteur", expanded = "player" in openCategories) { toggleCategory("player") }
+            }
+            if ("player" in openCategories) {
             item {
                 SettingRow(
                     title = "Vitesse par défaut",
@@ -339,7 +401,11 @@ fun SettingsScreen(
             }
 
             // ---------------------------------------------------------- GENRES
-            item { SectionHeader("Genres") }
+            }
+            item {
+                SettingCategory("🏷", "Genres", expanded = "genres" in openCategories) { toggleCategory("genres") }
+            }
+            if ("genres" in openCategories) {
             item {
                 SettingRow(
                     title = "Gérer les genres (${state.genres.size})",
@@ -349,7 +415,11 @@ fun SettingsScreen(
             }
 
             // -------------------------------------- RÉGLAGES PAR EXTENSION
-            item { SectionHeader("Extensions — réglages par source") }
+            }
+            item {
+                SettingCategory("🧩", "Sources — réglages par extension", expanded = "sources" in openCategories) { toggleCategory("sources") }
+            }
+            if ("sources" in openCategories) {
             item {
                 if (state.extWithSettings.isEmpty()) {
                     Text(
@@ -387,7 +457,11 @@ fun SettingsScreen(
             }
 
             // ------------------------------------------------------- SAUVEGARDE
-            item { SectionHeader("Sauvegarde") }
+            }
+            item {
+                SettingCategory("💾", "Sauvegarde", expanded = "backup" in openCategories) { toggleCategory("backup") }
+            }
+            if ("backup" in openCategories) {
             item {
                 SettingSwitch(
                     title = "Sauvegarde automatique locale",
@@ -416,7 +490,11 @@ fun SettingsScreen(
             }
 
             // --------------------------------------------------- MISES À JOUR
-            item { SectionHeader("Mises à jour de l'application") }
+            }
+            item {
+                SettingCategory("🔄", "Mises à jour de l'application", expanded = "updates" in openCategories) { toggleCategory("updates") }
+            }
+            if ("updates" in openCategories) {
             item {
                 SettingSwitch(
                     title = "Mise à jour automatique",
@@ -434,13 +512,18 @@ fun SettingsScreen(
             }
 
             // --------------------------------------------------------- À PROPOS
-            item { SectionHeader("À propos") }
+            }
+            item {
+                SettingCategory("🍥", "À propos", expanded = "about" in openCategories) { toggleCategory("about") }
+            }
+            if ("about" in openCategories) {
             item {
                 SettingRow(
-                    title = "Endless Sea 0.3.0",
+                    title = "Endless Sea 0.6.0",
                     subtitle = "GPL-3.0 · aucune source incluse · github.com/j97970293-lang/endlesssea",
                     onClick = { },
                 )
+            }
             }
         }
 
@@ -667,15 +750,31 @@ private fun GenreManagerDialog(
     }
 }
 
+
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        title.uppercase(),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
-    HorizontalDivider()
+private fun SettingCategory(
+    icon: String,
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(icon, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.width(10.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f))
+        Icon(
+            if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
+            contentDescription = if (expanded) "Replier" else "Déplier",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (expanded) HorizontalDivider()
 }
 
 @Composable

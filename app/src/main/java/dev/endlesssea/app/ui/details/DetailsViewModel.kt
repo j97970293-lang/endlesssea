@@ -42,6 +42,9 @@ data class DetailsUiState(
     val linksLoadingEpisode: String? = null,
     /** « Tout télécharger » en cours (sélection auto meilleure qualité directe). */
     val batchRunning: Boolean = false,
+    /** « Continuer » : dernier épisode commencé sur cette fiche (historique local). */
+    val resumeEpisodeId: String? = null,
+    val resumeLabel: String? = null,
 )
 
 @HiltViewModel
@@ -51,6 +54,7 @@ class DetailsViewModel @Inject constructor(
     private val mediaDao: MediaDao,
     private val episodeDao: EpisodeDao,
     private val libraryDao: LibraryDao,
+    private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val downloads: DownloadEngine,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -79,6 +83,7 @@ class DetailsViewModel @Inject constructor(
                 loading = false, details = details, episodes = episodes,
             )
             refreshLibraryFlags()
+            refreshResume()
         }
         remote.onFailure { e ->
             // Repli sur le cache local (hors-ligne)
@@ -105,6 +110,27 @@ class DetailsViewModel @Inject constructor(
             season.episodes.map { it.toEntity(mediaId) }
         }
         if (episodes.isNotEmpty()) episodeDao.upsertAll(episodes)
+    }
+
+    /** Met à jour l'état « Continuer » depuis l'historique local de cette fiche. */
+    private fun refreshResume() = viewModelScope.launch {
+        val resume = historyDao.resumeForMedia(mediaId)
+        val ep = _uiState.value.episodes.firstOrNull { it.id == resume?.episodeId }
+        _uiState.value = _uiState.value.copy(
+            resumeEpisodeId = if (ep != null) resume?.episodeId else null,
+            resumeLabel = if (ep != null && resume != null) {
+                val mm = resume.positionMs / 60_000
+                val ss = (resume.positionMs / 1000) % 60
+                "▶ Continuer — Ép. ${ep.number.toInt()} · ${mm}:${"%02d".format(ss)}"
+            } else null,
+        )
+    }
+
+    /** Joue l'épisode « Continuer » (la position est restaurée par la reprise auto du lecteur). */
+    fun playResume(onReady: () -> Unit) {
+        val id = _uiState.value.resumeEpisodeId ?: return
+        _uiState.value.episodes.firstOrNull { it.id == id }
+            ?.let { playEpisode(it, onReady = onReady) }
     }
 
     private fun refreshLibraryFlags() = viewModelScope.launch {

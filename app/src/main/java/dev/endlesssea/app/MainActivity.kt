@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -111,9 +112,26 @@ class MainActivity : ComponentActivity() {
                     else -> "Endless Sea"
                 }
 
+                // ---- Fond d'écran personnalisé (image choisie dans Réglages), assombri pour la lisibilité
+                val bgImage by prefs.bgImageUri.collectAsState()
+                val bgDim by prefs.bgDim.collectAsState()
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    bgImage?.let { uri ->
+                        coil.compose.AsyncImage(
+                            model = uri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        )
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.fillMaxSize()
+                                .background(Color.Black.copy(alpha = (bgDim / 100f * 0.92f))),
+                        )
+                    }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    containerColor = if (amoled) Color.Black else MaterialTheme.colorScheme.background,
+                    containerColor = if (bgImage != null) Color.Transparent
+                    else if (amoled) Color.Black else MaterialTheme.colorScheme.background,
                     topBar = {
                         CenterAlignedTopAppBar(
                             title = { Text(title) },
@@ -138,6 +156,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().padding(padding),
                         nav = nav,
                     )
+                }
                 }
             }
         }

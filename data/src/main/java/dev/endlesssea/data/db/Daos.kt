@@ -43,6 +43,9 @@ interface WatchHistoryDao {
     /** "Continue watching": started, not finished (spec §10). */
     @Query("SELECT * FROM watch_history WHERE watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT :limit")
     fun observeContinueWatching(limit: Int = 12): Flow<List<WatchHistoryEntity>>
+    /** Reprendre sur une fiche : dernier épisode commencé non terminé de ce média. */
+    @Query("SELECT * FROM watch_history WHERE mediaId = :mediaId AND watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun resumeForMedia(mediaId: String): WatchHistoryEntity?
 }
 
 @Dao
@@ -57,6 +60,9 @@ interface DownloadsDao {
     @Query("SELECT * FROM download_tasks WHERE status IN ('QUEUED','PROBING','DOWNLOADING') ORDER BY priority DESC, createdAt ASC")
     suspend fun schedulable(): List<DownloadTaskEntity>
     @Query("SELECT * FROM download_tasks WHERE id = :id") suspend fun byId(id: String): DownloadTaskEntity?
+    /** Médias ayant au moins un fichier téléchargé (filtre « Sur l'appareil » de la bibliothèque). */
+    @Query("SELECT DISTINCT mediaId FROM download_tasks WHERE status = 'COMPLETED' AND mediaId IS NOT NULL")
+    suspend fun completedMediaIds(): List<String>
     @Query("SELECT EXISTS(SELECT 1 FROM download_tasks WHERE episodeId = :episodeId AND quality = :quality AND status = 'COMPLETED')")
     suspend fun alreadyDownloaded(episodeId: String, quality: String): Boolean
     @Query("UPDATE download_tasks SET priority = :p WHERE id = :id") suspend fun setPriority(id: String, p: Int)

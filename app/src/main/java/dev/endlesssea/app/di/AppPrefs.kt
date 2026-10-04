@@ -171,6 +171,20 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val autoBackup: StateFlow<Boolean> = _autoBackup
     fun setAutoBackup(v: Boolean) { p.edit().putBoolean("auto_backup", v).apply(); _autoBackup.value = v }
 
+    // ---------------------------------------------------------------- fond d'écran
+    /** Image de fond personnalisée (URI de contenu), dessinée derrière toute l'app. */
+    private val _bgImageUri = MutableStateFlow(p.getString("bg_image_uri", null))
+    val bgImageUri: StateFlow<String?> = _bgImageUri
+    fun setBgImage(uri: String?) {
+        p.edit().apply { if (uri == null) remove("bg_image_uri") else putString("bg_image_uri", uri) }.apply()
+        _bgImageUri.value = uri
+    }
+
+    /** Assombrissement de l'image de fond (%) pour garder le texte lisible. */
+    private val _bgDim = MutableStateFlow(p.getInt("bg_dim", 35))
+    val bgDim: StateFlow<Int> = _bgDim
+    fun setBgDim(v: Int) { val c = v.coerceIn(0, 90); p.edit().putInt("bg_dim", c).apply(); _bgDim.value = c }
+
     var lastAutoBackupAt: Long
         get() = p.getLong("auto_backup_at", 0L)
         set(v) = p.edit().putLong("auto_backup_at", v).apply()

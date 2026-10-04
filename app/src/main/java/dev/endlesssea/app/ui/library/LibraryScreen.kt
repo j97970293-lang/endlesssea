@@ -54,6 +54,25 @@ fun LibraryScreen(
                 Tab(selected = tab == i, onClick = { tab = i; viewModel.onCategory(key) }, text = { Text(label) })
             }
         }
+        // ---- Filtre bibliothèque (comme Anymex : Tous / Sur l'appareil)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            androidx.compose.material3.FilterChip(
+                selected = !state.onDeviceOnly,
+                onClick = { viewModel.setOnDeviceOnly(false) },
+                label = { Text("Tous") },
+            )
+            androidx.compose.material3.FilterChip(
+                selected = state.onDeviceOnly,
+                onClick = { viewModel.setOnDeviceOnly(true) },
+                label = { Text("💾 Sur l'appareil") },
+            )
+        }
         if (state.items.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),

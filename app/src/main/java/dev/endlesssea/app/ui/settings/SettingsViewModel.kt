@@ -55,6 +55,8 @@ data class SettingsUiState(
     val tabOrder: List<String> = AppPrefs.ALL_TAB_ROUTES,
     val barMargin: Int = 16,
     val accent: String = AppPrefs.DEFAULT_ACCENT,
+    val bgImageUri: String? = null,
+    val bgDim: Int = 35,
     val genres: List<GenreUi> = emptyList(),
     val updateAutoCheck: Boolean = true,
     val availableUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
@@ -102,6 +104,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.tabOrder.collect { v -> set { copy(tabOrder = v) } } }
         viewModelScope.launch { prefs.skipSeconds.collect { v -> set { copy(skipSeconds = v) } } }
         viewModelScope.launch { prefs.autoBackup.collect { v -> set { copy(autoBackup = v) } } }
+        viewModelScope.launch { prefs.bgImageUri.collect { v -> set { copy(bgImageUri = v) } } }
+        viewModelScope.launch { prefs.bgDim.collect { v -> set { copy(bgDim = v) } } }
         set { copy(lastBackupAt = prefs.lastAutoBackupAt) }
         viewModelScope.launch { maybeAutoBackup() }
         viewModelScope.launch { prefs.barMargin.collect { v -> set { copy(barMargin = v) } } }
@@ -139,6 +143,9 @@ class SettingsViewModel @Inject constructor(
     fun setAutoResume(v: Boolean) { prefs.setAutoResume(v); toastState(if (v) "Reprise automatique activée" else "Reprise automatique désactivée") }
     fun setThemeMode(mode: Int) { prefs.setThemeMode(mode) }
     fun setGlassOverlay(v: Int) { prefs.setGlassOverlay(v) }
+    /** Choisit / retire l'image de fond (URI pris en charge en dur pour survire aux redémarrages). */
+    fun setBgImage(uri: String?) { prefs.setBgImage(uri); toastState(if (uri != null) "Image de fond appliquée" else "Image de fond retirée") }
+    fun setBgDim(v: Int) { prefs.setBgDim(v) }
     fun setGlassScrim(v: Int) { prefs.setGlassScrim(v) }
     fun setCardStyle(v: String) { prefs.setCardStyle(v) }
     fun setSkipSeconds(v: Int) { prefs.setSkipSeconds(v) }

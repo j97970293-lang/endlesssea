@@ -58,6 +58,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import dev.endlesssea.app.ui.components.GlassCard
@@ -141,11 +145,12 @@ fun DetailsScreen(
                         Icon(Icons.Filled.ArrowBack, "Retour", tint = Color.White)
                     }
                 }
-                // Affiche + titre + méta (recouvre le bas du bandeau)
+                // Affiche + titre + méta (chevauche le bas du bandeau, haut d'écran plus haut)
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 16.dp)
+                        .offset(y = (-44).dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
@@ -229,23 +234,56 @@ fun DetailsScreen(
                                 "Favori", tint = MaterialTheme.colorScheme.primary,
                             )
                         }
+                        // ---- Menu ⋮ : navigateur / partager / télécharger l'affiche
+                        Box {
+                            var moreMenu by remember { mutableStateOf(false) }
+                            IconButton(onClick = { moreMenu = true }) {
+                                Icon(Icons.Filled.MoreVert, "Plus d'actions")
+                            }
+                            DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                                state.details?.url?.takeIf { it.startsWith("http") }?.let { url ->
+                                    DropdownMenuItem(
+                                        text = { Text("🌐 Ouvrir dans le navigateur") },
+                                        onClick = { moreMenu = false; openExternal(context, url) },
+                                    )
+                                }
+                                (state.details?.posterUrl ?: state.details?.bannerUrl)?.let { img ->
+                                    val title = state.details?.title ?: "EndlessSea"
+                                    DropdownMenuItem(
+                                        text = { Text("🔗 Partager l'affiche") },
+                                        onClick = { moreMenu = false; sharePoster(context, title, img) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("🖼 Télécharger l'affiche") },
+                                        onClick = { moreMenu = false; downloadPoster(context, title, img) },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                // ---- Bouton principal Lire + Tout télécharger
+                // ---- Bouton « Continuer » pleine largeur (reprise) + Lire / Tout télécharger
                 item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Button(
-                            onClick = {
-                                state.episodes.firstOrNull()?.let { viewModel.playEpisode(it, onReady = launchPlayer()) }
-                            },
-                            modifier = Modifier.weight(1.4f),
-                        ) {
-                            Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lire")
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                        state.resumeLabel?.let { label ->
+                            Button(
+                                onClick = { viewModel.playResume(onReady = launchPlayer()) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(label)
+                            }
+                            Spacer(Modifier.height(8.dp))
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    state.episodes.firstOrNull()?.let { viewModel.playEpisode(it, onReady = launchPlayer()) }
+                                },
+                                modifier = Modifier.weight(1.4f),
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lire")
+                            }
                         if (state.episodes.size > 1) {
                             OutlinedButton(
                                 onClick = { viewModel.enqueueAll() },
@@ -260,6 +298,7 @@ fun DetailsScreen(
                                 }
                                 Text("Tout télécharger")
                             }
+                        }
                         }
                     }
                 }
@@ -471,6 +510,31 @@ fun DetailsScreen(
 }
 
 /** Ouvre un lien externe (bande-annonce → lecteur/navigateur par défaut). */
+/** Partage le lien de l'affiche (apps de la fiche de partage Android). */
+private fun sharePoster(context: android.content.Context, title: String, url: String) {
+    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(android.content.Intent.EXTRA_TEXT, "$title\n$url")
+    }
+    context.startActivity(android.content.Intent.createChooser(intent, "Partager l'affiche"))
+}
+
+/** Enregistre l'affiche via le gestionnaire de téléchargement système (Images/EndlessSea). */
+private fun downloadPoster(context: android.content.Context, title: String, url: String) {
+    runCatching {
+        val dm = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val clean = title.replace(Regex("[^\\p{L}0-9._-]+"), "_").take(60)
+        val req = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+            .setTitle("Affiche — $title")
+            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(context, android.os.Environment.DIRECTORY_PICTURES, "EndlessSea/$clean.jpg")
+        dm.enqueue(req)
+        android.widget.Toast.makeText(context, "Affiche enregistrée dans Android ▸ Images/EndlessSea", android.widget.Toast.LENGTH_LONG).show()
+    }.onFailure {
+        android.widget.Toast.makeText(context, "Téléchargement de l'affiche impossible", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
 private fun openExternal(context: android.content.Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
