@@ -248,7 +248,7 @@ class DetailsViewModel @Inject constructor(
         )
     }
 
-    private fun enqueueAndWait(episode: Episode, link: VideoLink) {
+    private suspend fun enqueueAndWait(episode: Episode, link: VideoLink) {
         val title = buildEpisodeTitle(episode)
         val quality = link.quality.name
         val fileName = FileNames.sanitize(
