@@ -36,6 +36,10 @@ interface DownloadEngine {
     suspend fun resume(taskId: String)
     suspend fun cancel(taskId: String, deleteFiles: Boolean = true)
     suspend fun recoverQueue()
+
+    /** Réorganise la file : [up]=true fait remonter la tâche (prioritaire). */
+    suspend fun reorder(taskId: String, up: Boolean)
+
     val progress: Flow<DownloadProgress>
     val notifications: Flow<DownloadNotice>
 }
@@ -52,6 +56,7 @@ class DownloadManager(
 ) : DownloadEngine {
 
     private val engine = SegmentEngine(http)
+    private val hlsEngine = dev.endlesssea.downloader.hls.HlsEngine(http)
     private val jobs = mutableMapOf<String, Job>()
     private val semaphore = Semaphore(maxParallel)
     private val progressFlow = MutableStateFlow(DownloadProgress("", DownloadStatus.QUEUED, 0, 0, 0, 0))
@@ -90,6 +95,16 @@ class DownloadManager(
         dao.schedulable().forEach { kick(it.id) }
     }
 
+    override suspend fun reorder(taskId: String, up: Boolean) {
+        val queue = dao.schedulable()
+        if (queue.isEmpty()) return
+        if (up) {
+            dao.setPriority(taskId, (queue.maxOfOrNull { it.priority } ?: 0) + 1)
+        } else {
+            dao.setPriority(taskId, (queue.minOfOrNull { it.priority } ?: 0) - 1)
+        }
+    }
+
     // ------------------------------------------------------------ scheduling
 
     private fun kick(taskId: String) {
@@ -103,6 +118,22 @@ class DownloadManager(
 
     private suspend fun runTask(taskId: String) {
         val task = dao.byId(taskId) ?: return
+        // Aiguillage par type de source (un m3u8/dash mal renseigné est détecté aussi)
+        val cleanUrl = task.url.substringBefore('?').lowercase()
+        val isHls = task.streamType == "HLS" || cleanUrl.endsWith(".m3u8")
+        val isDash = task.streamType == "DASH" || cleanUrl.endsWith(".mpd")
+        if (isDash) {
+            dao.updateStatus(
+                taskId, DownloadStatus.FAILED.name,
+                "Ce lien est un flux DASH : lecture en ligne uniquement pour l'instant.",
+            )
+            notices.trySend(DownloadNotice(taskId, task.fileName, "Flux DASH — non téléchargeable", ok = false))
+            return
+        }
+        if (isHls) {
+            runHlsTask(taskId, task)
+            return
+        }
         try {
             dao.updateStatus(taskId, DownloadStatus.PROBING.name)
             val probe = engine.probe(task.url, task.headersMap())
@@ -166,6 +197,55 @@ class DownloadManager(
         } catch (e: Exception) {
             dao.updateStatus(taskId, DownloadStatus.FAILED.name, e.message)
             notices.trySend(DownloadNotice(taskId, task.fileName, "Téléchargement interrompu : ${e.message}", ok = false))
+        } finally {
+            jobs.remove(taskId)
+        }
+    }
+
+    /** Chemin flux HLS : segments récupérés un par un avec reprise par index (diag « 36 Ko »). */
+    private suspend fun runHlsTask(taskId: String, task: DownloadTaskEntity) {
+        try {
+            dao.updateStatus(taskId, DownloadStatus.PROBING.name)
+            val plan = hlsEngine.resolve(task.url, task.headersMap())
+            val partsDir = tempDirProvider().resolve(".tmp").apply { mkdirs() }
+            val part = File(partsDir, "${task.fileName}.part")
+            val table = dao.segments(taskId).ifEmpty {
+                plan.segments.map { DownloadSegmentEntity(taskId, it.idx, 0, 0) }
+                    .also { dao.upsertSegments(it) }
+            }
+            val doneIdx = table.filter { it.done }.map { it.idx }.toSet()
+            val fromIdx = plan.segments.firstOrNull { it.idx !in doneIdx }?.idx ?: plan.segments.size
+            dao.updateStatus(taskId, DownloadStatus.DOWNLOADING.name)
+            var doneCount = doneIdx.size
+            val totalCount = plan.segments.size
+            progressFlow.value = DownloadProgress(
+                taskId, DownloadStatus.DOWNLOADING, totalCount.toLong(), doneCount.toLong(), 0, -1,
+            )
+            val bytes = hlsEngine.download(plan, task.headersMap(), part, fromIdx) { idx ->
+                dao.checkpoint(taskId, idx, 0, true)
+                doneCount++
+                progressFlow.value = DownloadProgress(
+                    taskId, DownloadStatus.DOWNLOADING,
+                    totalCount.toLong(), doneCount.toLong(), 0, etaSeconds = -1,
+                )
+            }
+            dao.updateStatus(taskId, DownloadStatus.VERIFYING.name)
+            val finalName = task.fileName.removeSuffix(".part")
+            val finalFile = part.parentFile?.resolve(finalName) ?: File(finalName)
+            part.renameTo(finalFile)
+            dao.upsert(task.copy(totalBytes = bytes, updatedAt = System.currentTimeMillis()))
+            dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
+            notices.trySend(
+                DownloadNotice(taskId, finalName, "Téléchargement terminé ($totalCount segments)", ok = true),
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            dao.updateStatus(taskId, DownloadStatus.PAUSED.name)
+            throw e
+        } catch (e: Exception) {
+            dao.updateStatus(taskId, DownloadStatus.FAILED.name, e.message)
+            notices.trySend(
+                DownloadNotice(taskId, task.fileName, "Téléchargement interrompu : ${e.message}", ok = false),
+            )
         } finally {
             jobs.remove(taskId)
         }

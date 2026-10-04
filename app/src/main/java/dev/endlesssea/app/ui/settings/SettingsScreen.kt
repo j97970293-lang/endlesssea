@@ -190,6 +190,39 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Liquid Mode (verre)", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Opacité : ${state.glassOverlay} %   ·   intensité du flou : ${state.glassScrim} %",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Slider(
+                        value = state.glassOverlay.toFloat(),
+                        onValueChange = { viewModel.setGlassOverlay(it.toInt()) },
+                        valueRange = 0f..30f,
+                    )
+                    Slider(
+                        value = state.glassScrim.toFloat(),
+                        onValueChange = { viewModel.setGlassScrim(it.toInt()) },
+                        valueRange = 0f..100f,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Style des cartes", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("detail" to "Détaillé", "poster" to "Poster seul", "minimal" to "Minimal")
+                            .forEach { (key, label) ->
+                                FilterChip(
+                                    selected = state.cardStyle == key,
+                                    onClick = { viewModel.setCardStyle(key) },
+                                    label = { Text(label) },
+                                )
+                            }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("Barre de navigation flottante", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Choisissez les onglets affichés",
@@ -278,6 +311,32 @@ fun SettingsScreen(
                     onChange = viewModel::setAutoResume,
                 )
             }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Saut du double appui (lecteur)", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Appui double à gauche/droite : ±${state.skipSeconds} s",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(5, 10, 15, 30, 85).forEach { sec ->
+                            FilterChip(
+                                selected = state.skipSeconds == sec,
+                                onClick = { viewModel.setSkipSeconds(sec) },
+                                label = { Text("${sec}s") },
+                            )
+                        }
+                    }
+                    Text(
+                        "Filtres vidéo (luminosité/teinte/saturation) : réglés dans le lecteur, bouton 🎛, avec préréglages sauvegardés.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
 
             // ---------------------------------------------------------- GENRES
             item { SectionHeader("Genres") }
@@ -329,6 +388,18 @@ fun SettingsScreen(
 
             // ------------------------------------------------------- SAUVEGARDE
             item { SectionHeader("Sauvegarde") }
+            item {
+                SettingSwitch(
+                    title = "Sauvegarde automatique locale",
+                    subtitle = "Chaque jour : bibliothèque + historique + favoris → endlesssea-backup-AAAAMMJJ.json " +
+                        "(dossier privé de l'app)" +
+                        if (state.lastBackupAt > 0)
+                            "\nDernière : ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.FRANCE).format(java.util.Date(state.lastBackupAt))}"
+                        else "",
+                    checked = state.autoBackup,
+                    onChange = viewModel::setAutoBackup,
+                )
+            }
             item {
                 SettingRow(
                     title = "Exporter la bibliothèque + historique",

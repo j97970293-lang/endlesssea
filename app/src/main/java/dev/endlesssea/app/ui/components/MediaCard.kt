@@ -23,9 +23,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import dev.endlesssea.app.ui.search.SearchItemUi
 
-/** Affiche 2:3 à grand rayon + badge (année/type) — inspiration Anymex. */
+/** Affiche 2:3 à grand rayon + badge (année/type) — inspiration Anymex, styles réglables. */
 @Composable
 fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
+    val style = androidx.compose.runtime.collectAsState(UiTuning.cardStyle).value
     Column(
         modifier = Modifier.width(130.dp).clickable(onClick = onClick),
     ) {
@@ -40,30 +41,34 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().height(185.dp),
             )
-            item.subtitle?.take(10)?.let { badge ->
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                ) {
-                    Text(
-                        badge,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFB9C1FF),
-                    )
+            if (style == "detail") {
+                item.subtitle?.take(10)?.let { badge ->
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    ) {
+                        Text(
+                            badge,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
         }
-        Text(
-            item.title,
-            modifier = Modifier.padding(top = 6.dp, start = 2.dp),
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (style != "poster") {
+            Text(
+                item.title,
+                modifier = Modifier.padding(top = 6.dp, start = 2.dp),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }

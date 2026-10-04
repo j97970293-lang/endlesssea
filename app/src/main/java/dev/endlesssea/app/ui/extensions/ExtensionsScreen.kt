@@ -232,6 +232,10 @@ fun ExtensionsScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = onExplore, enabled = ext.enabled) { Text("Ouvrir") }
+                            TextButton(
+                                onClick = { viewModel.openExtSettings(ext.pkg, ext.name) },
+                                enabled = ext.enabled,
+                            ) { Text("Réglages") }
                             TextButton(onClick = { viewModel.uninstall(ext.pkg) }) {
                                 Text("Désinstaller", color = MaterialTheme.colorScheme.error)
                             }
@@ -240,6 +244,62 @@ fun ExtensionsScreen(
                 }
             }
         }
+    }
+
+    // Boîte de réglages d'extension (SWITCH = application immédiate, champs = « Enregistrer » par entrée)
+    state.editingExt?.let { editing ->
+        AlertDialog(
+            onDismissRequest = { viewModel.closeExtSettings() },
+            confirmButton = { TextButton(onClick = { viewModel.closeExtSettings() }) { Text("Fermer") } },
+            title = { Text("Réglages — ${editing.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    editing.entries.forEach { entry ->
+                        if (entry.type == dev.endlesssea.extensions.api.model.ExtensionSetting.Type.SWITCH) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.title, style = MaterialTheme.typography.bodyLarge)
+                                    entry.summary?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                Switch(
+                                    checked = entry.value == "true",
+                                    onCheckedChange = { viewModel.saveExtSetting(editing.pkg, entry.key, it.toString()) },
+                                )
+                            }
+                        } else {
+                            var text by androidx.compose.runtime.remember(entry.key) {
+                                androidx.compose.runtime.mutableStateOf(entry.value)
+                            }
+                            OutlinedTextField(
+                                value = text,
+                                onValueChange = { text = it },
+                                label = { Text(entry.title) },
+                                supportingText = entry.summary?.let { { Text(it) } },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                visualTransformation = if (entry.type == dev.endlesssea.extensions.api.model.ExtensionSetting.Type.PASSWORD)
+                                    androidx.compose.ui.text.input.PasswordVisualTransformation()
+                                else androidx.compose.ui.text.input.VisualTransformation.None,
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(
+                                    onClick = { viewModel.saveExtSetting(editing.pkg, entry.key, text) },
+                                    enabled = text != entry.value,
+                                ) { Text("Enregistrer") }
+                            }
+                        }
+                    }
+                    Text(
+                        "Pris en compte par la source à la prochaine ouverture de catalogue.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+        )
     }
 
     if (addDialog) {

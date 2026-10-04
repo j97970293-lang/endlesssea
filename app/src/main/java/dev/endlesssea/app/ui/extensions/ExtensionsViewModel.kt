@@ -31,6 +31,8 @@ data class ExtensionsUiState(
     val repoEntries: List<RepoEntryUi> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null,
+    /** Boîte de réglages d'extension ouverte (déclaration chargée à la demande). */
+    val editingExt: dev.endlesssea.app.ui.settings.ExtSettingsUi? = null,
 )
 
 @HiltViewModel
@@ -40,6 +42,7 @@ class ExtensionsViewModel @Inject constructor(
     private val repoManager: RepoManager,
     private val loader: ExtensionLoader,
     private val registry: dev.endlesssea.extensions.loader.ExtensionRegistry,
+    private val extSettingsStore: dev.endlesssea.app.data.ExtensionSettingsStore,
 ) : ViewModel() {
 
     companion object {
@@ -229,6 +232,54 @@ class ExtensionsViewModel @Inject constructor(
         registry.invalidate(pkg)
         _uiState.value = _uiState.value.copy(message = "Extension désinstallée")
     }
+
+    // ------------------------------------------------- réglages par extension
+
+    /** Ouvre la boîte des réglages déclarés par l'extension [pkg] (charge à la demande). */
+    fun openExtSettings(pkg: String, name: String) = viewModelScope.launch {
+        if (extSettingsLoading.value) return@launch
+        extSettingsLoading.value = true
+        runCatching { registry.instance(pkg).settings() }
+            .onSuccess { decl ->
+                if (decl.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(message = "« $name » ne déclare aucun réglage")
+                } else {
+                    val values = extSettingsStore.getAll(pkg)
+                    _uiState.value = _uiState.value.copy(
+                        editingExt = dev.endlesssea.app.ui.settings.ExtSettingsUi(
+                            pkg = pkg, name = name,
+                            entries = decl.map { s ->
+                                dev.endlesssea.app.ui.settings.ExtSettingEntryUi(
+                                    key = s.key, title = s.title, summary = s.summary,
+                                    type = s.type, value = values[s.key] ?: s.defaultValue,
+                                )
+                            },
+                        ),
+                    )
+                }
+            }
+            .onFailure {
+                _uiState.value = _uiState.value.copy(
+                    message = "Impossible de lire les réglages de « $name » : ${it.message}",
+                )
+            }
+        extSettingsLoading.value = false
+    }
+
+    private val extSettingsLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    fun saveExtSetting(pkg: String, key: String, value: String) {
+        extSettingsStore.set(pkg, key, value)
+        viewModelScope.launch { registry.invalidate(pkg) }
+        _uiState.value = _uiState.value.copy(
+            editingExt = _uiState.value.editingExt?.let { cur ->
+                cur.copy(entries = cur.entries.map { if (it.key == key) it.copy(value = value) else it })
+            },
+            message = "Réglage enregistré",
+        )
+    }
+
+    fun closeExtSettings() { _uiState.value = _uiState.value.copy(editingExt = null) }
 
     fun clearMessage() { _uiState.value = _uiState.value.copy(message = null) }
 

@@ -124,4 +124,54 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _autoResume = MutableStateFlow(p.getBoolean("auto_resume", true))
     val autoResume: StateFlow<Boolean> = _autoResume
     fun setAutoResume(v: Boolean) { p.edit().putBoolean("auto_resume", v).apply(); _autoResume.value = v }
+
+    // ---------------------------------------------------------------- liquid mode
+    private val _glassOverlay = MutableStateFlow(p.getInt("glass_overlay", 12))
+    val glassOverlay: StateFlow<Int> = _glassOverlay
+    fun setGlassOverlay(v: Int) { val c = v.coerceIn(0, 30); p.edit().putInt("glass_overlay", c).apply(); _glassOverlay.value = c }
+
+    private val _glassScrim = MutableStateFlow(p.getInt("glass_scrim", 25))
+    val glassScrim: StateFlow<Int> = _glassScrim
+    fun setGlassScrim(v: Int) { val c = v.coerceIn(0, 100); p.edit().putInt("glass_scrim", c).apply(); _glassScrim.value = c }
+
+    // ---------------------------------------------------------------- cartes
+    private val _cardStyle = MutableStateFlow(p.getString("card_style", "detail") ?: "detail")
+    val cardStyle: StateFlow<String> = _cardStyle
+    fun setCardStyle(v: String) { val c = if (v in setOf("detail", "poster", "minimal")) v else "detail"; p.edit().putString("card_style", c).apply(); _cardStyle.value = c }
+
+    // ---------------------------------------------------------------- lecteur avancé
+    private val _skipSeconds = MutableStateFlow(p.getInt("skip_sec", 10))
+    val skipSeconds: StateFlow<Int> = _skipSeconds
+    fun setSkipSeconds(v: Int) { val c = if (v in setOf(5, 10, 15, 30, 85)) v else 10; p.edit().putInt("skip_sec", c).apply(); _skipSeconds.value = c }
+
+    // Filtre vidéo appliqué à la lecture (teinte / saturation / luminosité)
+    private val _videoBrightness = MutableStateFlow(p.getFloat("vf_bright", 0f))
+    val videoBrightness: StateFlow<Float> = _videoBrightness
+    private val _videoSaturation = MutableStateFlow(p.getFloat("vf_sat", 0f))
+    val videoSaturation: StateFlow<Float> = _videoSaturation
+    private val _videoHue = MutableStateFlow(p.getFloat("vf_hue", 0f))
+    val videoHue: StateFlow<Float> = _videoHue
+    private val _videoPreset = MutableStateFlow(p.getString("vf_preset", "none") ?: "none")
+    val videoPreset: StateFlow<String> = _videoPreset
+
+    /** Applique & persiste un triplet de filtre (valeurs -100..100). [preset] = nom affiché. */
+    fun setVideoFilter(brightness: Float, saturation: Float, hue: Float, preset: String) {
+        val b = brightness.coerceIn(-100f, 100f); val s = saturation.coerceIn(-100f, 100f); val h = hue.coerceIn(-180f, 180f)
+        p.edit().putFloat("vf_bright", b).putFloat("vf_sat", s).putFloat("vf_hue", h).putString("vf_preset", preset).apply()
+        _videoBrightness.value = b; _videoSaturation.value = s; _videoHue.value = h; _videoPreset.value = preset
+    }
+
+    // Préréglages personnalisés sauvegardés : JSON [{name,b,s,h}]
+    private val _videoPresetsJson = MutableStateFlow(p.getString("vf_presets", "[]") ?: "[]")
+    val videoPresetsJson: StateFlow<String> = _videoPresetsJson
+    fun setVideoPresetsJson(json: String) { p.edit().putString("vf_presets", json).apply(); _videoPresetsJson.value = json }
+
+    // ---------------------------------------------------------------- sauvegarde
+    private val _autoBackup = MutableStateFlow(p.getBoolean("auto_backup", true))
+    val autoBackup: StateFlow<Boolean> = _autoBackup
+    fun setAutoBackup(v: Boolean) { p.edit().putBoolean("auto_backup", v).apply(); _autoBackup.value = v }
+
+    var lastAutoBackupAt: Long
+        get() = p.getLong("auto_backup_at", 0L)
+        set(v) = p.edit().putLong("auto_backup_at", v).apply()
 }

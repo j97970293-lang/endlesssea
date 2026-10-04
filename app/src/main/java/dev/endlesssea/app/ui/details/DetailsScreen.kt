@@ -308,6 +308,49 @@ fun DetailsScreen(
                     }
                 }
 
+                // ---- Studios + bande-annonce + personnages (si fournis par la source)
+                val studios = state.details?.studios?.filter { it.isNotBlank() } ?: emptyList()
+                if (studios.isNotEmpty() || state.details?.trailerUrl != null) {
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (studios.isNotEmpty()) MetaPill("🎬 ${studios.take(3).joinToString(", ")}")
+                            state.details?.trailerUrl?.let { trailer ->
+                                Surface(
+                                    onClick = { openExternal(context, trailer) },
+                                    shape = RoundedCornerShape(28.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                ) {
+                                    Text(
+                                        "▶ Bande-annonce",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                val characters = state.details?.characters ?: emptyList()
+                if (characters.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Personnages & doubleurs",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(characters) { credit -> CharacterCard(credit) }
+                        }
+                    }
+                }
+
                 // ---- Saisons en pilules + épisodes
                 if (state.episodes.isNotEmpty()) {
                     item {
@@ -388,7 +431,9 @@ fun DetailsScreen(
                 } else {
                     val grouped = links.groupBy { it.audioLang }.toList()
                         .sortedBy { AudioLang.entries.indexOf(it.first) }
-                    val downloadable = links.count { it.streamType == StreamType.DIRECT_FILE }
+                    val downloadable = links.count {
+                        it.streamType == StreamType.DIRECT_FILE || it.streamType == StreamType.HLS
+                    }
                     if (downloadable == 0) {
                         Text(
                             "Cette source ne propose que du flux (lecture en ligne uniquement).",
@@ -421,6 +466,55 @@ fun DetailsScreen(
         }
         LaunchedEffect(episode.id) {
             if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
+        }
+    }
+}
+
+/** Ouvre un lien externe (bande-annonce → lecteur/navigateur par défaut). */
+private fun openExternal(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    }
+}
+
+@Composable
+private fun CharacterCard(credit: dev.endlesssea.extensions.api.model.CharacterCredit) {
+    GlassCard(cornerRadius = 16.dp, contentPadding = PaddingValues(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                AsyncImage(
+                    model = credit.imageUrl,
+                    contentDescription = credit.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    credit.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                val va = buildString {
+                    credit.voiceActor?.let { append("VA : $it") }
+                    credit.voiceActorLang?.let { if (isNotEmpty()) append(" ($it)") else append(it) }
+                }
+                if (va.isNotBlank()) {
+                    Text(va, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (credit.role.isNotBlank()) {
+                    Text(credit.role, style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+            }
         }
     }
 }
@@ -460,10 +554,10 @@ private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
-/** Ligne de téléchargement : serveur × qualité, badge lecture seule pour les flux. */
+/** Ligne de téléchargement : serveur × qualité, badge lecture seule pour les flux non supportés. */
 @Composable
 private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
-    val direct = link.streamType == StreamType.DIRECT_FILE
+    val direct = link.streamType == StreamType.DIRECT_FILE || link.streamType == StreamType.HLS
     Row(
         Modifier
             .fillMaxWidth()
@@ -483,7 +577,7 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
                 add(
                     when (link.streamType) {
                         StreamType.DIRECT_FILE -> "Fichier direct"
-                        StreamType.HLS -> "Flux HLS — lecture seule"
+                        StreamType.HLS -> "Flux HLS — assemblé par segments"
                         StreamType.DASH -> "Flux DASH — lecture seule"
                         StreamType.EMBED -> "Lecteur externe — lecture seule"
                         StreamType.TORRENT -> "Torrent — lecture seule"

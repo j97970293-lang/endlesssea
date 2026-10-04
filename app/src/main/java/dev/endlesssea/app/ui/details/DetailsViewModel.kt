@@ -232,8 +232,15 @@ class DetailsViewModel @Inject constructor(
                     linksByEpisode = _uiState.value.linksByEpisode + (episode.id to links),
                 )
             }
-            val best = links.filter { it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE }
+            // Meilleur lien téléchargeable : fichier direct prioritaire, sinon flux HLS
+            val downloadable = links.filter {
+                it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE ||
+                    it.streamType == dev.endlesssea.extensions.api.model.StreamType.HLS
+            }
+            val best = downloadable
+                .filter { it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE }
                 .maxByOrNull { it.quality.pixels }
+                ?: downloadable.maxByOrNull { it.quality.pixels }
             if (best == null) { streamOnly++; return@forEachIndexed }
             enqueueAndWait(episode, best); added++
         }
@@ -283,7 +290,7 @@ class DetailsViewModel @Inject constructor(
     }
 
     private fun extensionFor(link: VideoLink): String = when (link.streamType) {
-        dev.endlesssea.extensions.api.model.StreamType.HLS -> ".mp4"   // muxé après assemblage
+        dev.endlesssea.extensions.api.model.StreamType.HLS -> ".ts"   // segments MPEG-TS assemblés
         dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE ->
             link.url.substringAfterLast('.', "").let { if (it.length in 2..4) ".$it" else ".mp4" }
         else -> ".mp4"

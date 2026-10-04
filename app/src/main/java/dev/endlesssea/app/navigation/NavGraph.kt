@@ -108,7 +108,17 @@ fun EsNavGraph(nav: NavHostController) {
             HomeScreen(onMediaClick = { openDetails(nav, it) })
         }
         composable(Screen.Explore.route) {
-            ExploreScreen(onMediaClick = { openDetails(nav, it) })
+            ExploreScreen(
+                onMediaClick = { openDetails(nav, it) },
+                onSeeAll = { pkg -> nav.navigate("seeAll/${Uri.encode(pkg)}") },
+            )
+        }
+        composable("seeAll/{pkg}") { entry ->
+            val pkg = Uri.decode(entry.arguments?.getString("pkg").orEmpty())
+            dev.endlesssea.app.ui.explore.SeeAllScreen(
+                onMediaClick = { openDetails(nav, it) },
+                onBack = { nav.popBackStack() },
+            )
         }
         composable(Screen.Search.route) {
             SearchScreen(onMediaClick = { openDetails(nav, it) })

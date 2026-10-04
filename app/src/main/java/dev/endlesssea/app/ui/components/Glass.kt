@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -31,19 +32,25 @@ fun Modifier.glass(
     cornerRadius: Dp = 20.dp,
     dark: Boolean = isSystemInDarkTheme(),
 ): Modifier {
+    // Réglages « Liquid Mode » : couche translucide et intensité de flou (simulé
+    // par assombrissement du fond, compatible Android 8+).
+    val overlay = UiTuning.glassOverlay.collectAsState().value / 100f
+    val scrim = UiTuning.glassScrim.collectAsState().value / 100f
     val shape: Shape = RoundedCornerShape(cornerRadius)
-    val tint = if (dark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.55f)
+    val scale = if (dark) 1f else 3f   // le blanc ressort plus sur thème clair
+    val baseHi = (overlay * scale).coerceIn(0f, 1f)
+    val baseLo = (overlay * scale * 0.45f).coerceIn(0f, 1f)
     return this
         .clip(shape)
+        .background(Color.Black.copy(alpha = scrim * if (dark) 0.55f else 0.20f))
         .background(
             Brush.verticalGradient(
                 listOf(
-                    if (dark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.65f),
-                    if (dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.42f),
+                    Color.White.copy(alpha = baseHi),
+                    Color.White.copy(alpha = baseLo),
                 ),
             ),
         )
-        .background(tint)
 }
 
 /** Carte en verre : Surface translucide + bord lumineux, prête à l'emploi. */

@@ -39,6 +39,7 @@ import dev.endlesssea.app.ui.home.MediaRow
 @Composable
 fun ExploreScreen(
     onMediaClick: (String) -> Unit,
+    onSeeAll: (String) -> Unit,
     viewModel: ExploreViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -113,8 +114,11 @@ fun ExploreScreen(
                         }
                     }
                 }
-                items(visibleRows, key = { it.title }) { row ->
-                    MediaRow(title = row.title, items = row.items, onMediaClick = onMediaClick)
+                items(visibleRows, key = { "${it.pkg}:${it.title}" }) { row ->
+                    MediaRow(
+                        title = row.title, items = row.items, onMediaClick = onMediaClick,
+                        onSeeAll = { onSeeAll(row.pkg) },
+                    )
                 }
                 visibleErrors.forEach { (name, err) ->
                     item(key = "err-$name") {

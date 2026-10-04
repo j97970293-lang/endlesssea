@@ -44,7 +44,13 @@ data class SettingsUiState(
     val parallelTasks: Int = 2,
     val defaultSpeed: Float = 1f,
     val autoResume: Boolean = true,
+    val skipSeconds: Int = 10,
+    val autoBackup: Boolean = true,
+    val lastBackupAt: Long = 0,
     val themeMode: Int = AppPrefs.THEME_SYSTEM,
+    val glassOverlay: Int = 12,
+    val glassScrim: Int = 25,
+    val cardStyle: String = "detail",
     val barTabs: Set<String> = AppPrefs.DEFAULT_TABS,
     val tabOrder: List<String> = AppPrefs.ALL_TAB_ROUTES,
     val barMargin: Int = 16,
@@ -71,7 +77,12 @@ class SettingsViewModel @Inject constructor(
     private val extensionDao: dev.endlesssea.data.db.ExtensionDao,
     private val extSettingsStore: dev.endlesssea.app.data.ExtensionSettingsStore,
     private val registry: dev.endlesssea.extensions.loader.ExtensionRegistry,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
+
+    companion object {
+        private const val BACKUP_INTERVAL_MS = 24L * 60 * 60 * 1000
+    }
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState
@@ -84,8 +95,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.defaultSpeed.collect { v -> set { copy(defaultSpeed = v) } } }
         viewModelScope.launch { prefs.autoResume.collect { v -> set { copy(autoResume = v) } } }
         viewModelScope.launch { prefs.themeMode.collect { v -> set { copy(themeMode = v) } } }
+        viewModelScope.launch { prefs.glassOverlay.collect { v -> set { copy(glassOverlay = v) } } }
+        viewModelScope.launch { prefs.glassScrim.collect { v -> set { copy(glassScrim = v) } } }
+        viewModelScope.launch { prefs.cardStyle.collect { v -> set { copy(cardStyle = v) } } }
         viewModelScope.launch { prefs.barTabs.collect { v -> set { copy(barTabs = v) } } }
         viewModelScope.launch { prefs.tabOrder.collect { v -> set { copy(tabOrder = v) } } }
+        viewModelScope.launch { prefs.skipSeconds.collect { v -> set { copy(skipSeconds = v) } } }
+        viewModelScope.launch { prefs.autoBackup.collect { v -> set { copy(autoBackup = v) } } }
+        set { copy(lastBackupAt = prefs.lastAutoBackupAt) }
+        viewModelScope.launch { maybeAutoBackup() }
         viewModelScope.launch { prefs.barMargin.collect { v -> set { copy(barMargin = v) } } }
         viewModelScope.launch { prefs.accent.collect { v -> set { copy(accent = v) } } }
         viewModelScope.launch { prefs.updateAutoCheck.collect { v -> set { copy(updateAutoCheck = v) } } }
@@ -120,6 +138,11 @@ class SettingsViewModel @Inject constructor(
     fun setDefaultSpeed(v: Float) { prefs.setDefaultSpeed(v); toastState("Vitesse par défaut : ${v}×") }
     fun setAutoResume(v: Boolean) { prefs.setAutoResume(v); toastState(if (v) "Reprise automatique activée" else "Reprise automatique désactivée") }
     fun setThemeMode(mode: Int) { prefs.setThemeMode(mode) }
+    fun setGlassOverlay(v: Int) { prefs.setGlassOverlay(v) }
+    fun setGlassScrim(v: Int) { prefs.setGlassScrim(v) }
+    fun setCardStyle(v: String) { prefs.setCardStyle(v) }
+    fun setSkipSeconds(v: Int) { prefs.setSkipSeconds(v) }
+    fun setAutoBackup(v: Boolean) { prefs.setAutoBackup(v) }
     fun setBarTab(route: String, enabled: Boolean) { prefs.setBarTab(route, enabled) }
     fun moveTab(route: String, delta: Int) { prefs.moveTab(route, delta) }
     fun setBarMargin(dp: Int) { prefs.setBarMargin(dp) }
@@ -306,6 +329,24 @@ class SettingsViewModel @Inject constructor(
         }
         "Sauvegarde restaurée : $libCount entrée(s) de bibliothèque, $histCount historique(s)"
     }.getOrElse { "Sauvegarde illisible : ${it.message}" }
+
+    /** Sauvegarde planifiée locale : une fois par jour, fichiers datés dans le dossier privé. */
+    private suspend fun maybeAutoBackup() {
+        if (!prefs.autoBackup.value) return
+        val now = System.currentTimeMillis()
+        if (now - prefs.lastAutoBackupAt < BACKUP_INTERVAL_MS) return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val dir = (context.getExternalFilesDir(null) ?: context.filesDir)
+                    .resolve("EndlessSea/backups").apply { mkdirs() }
+                val stamp = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    .format(java.util.Date(now))
+                dir.resolve("endlesssea-backup-$stamp.json").writeText(buildBackupJson())
+                prefs.lastAutoBackupAt = now
+                set { copy(lastBackupAt = now) }
+            }
+        }
+    }
 
     fun onBackupExported(ok: Boolean) = toastState(if (ok) "Fichier de sauvegarde écrit" else "Export annulé")
     fun onBackupImported(message: String) = toastState(message)

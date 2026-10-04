@@ -59,6 +59,7 @@ interface DownloadsDao {
     @Query("SELECT * FROM download_tasks WHERE id = :id") suspend fun byId(id: String): DownloadTaskEntity?
     @Query("SELECT EXISTS(SELECT 1 FROM download_tasks WHERE episodeId = :episodeId AND quality = :quality AND status = 'COMPLETED')")
     suspend fun alreadyDownloaded(episodeId: String, quality: String): Boolean
+    @Query("UPDATE download_tasks SET priority = :p WHERE id = :id") suspend fun setPriority(id: String, p: Int)
     @Query("DELETE FROM download_tasks WHERE id = :id") suspend fun delete(id: String)
 
     @Upsert suspend fun upsertSegments(segments: List<DownloadSegmentEntity>)

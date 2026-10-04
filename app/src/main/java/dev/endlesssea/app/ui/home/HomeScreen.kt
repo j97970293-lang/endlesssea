@@ -252,6 +252,8 @@ fun MediaRow(
     title: String,
     items: List<SearchItemUi>,
     onMediaClick: (String) -> Unit,
+    /** « Tout voir » : affiché uniquement si une action est fournie. */
+    onSeeAll: (() -> Unit)? = null,
 ) {
     Column {
         Row(
@@ -260,7 +262,9 @@ fun MediaRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = { /* voir tout */ }) { Text("Tout voir") }
+            if (onSeeAll != null) {
+                TextButton(onClick = onSeeAll) { Text("Tout voir") }
+            }
         }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),

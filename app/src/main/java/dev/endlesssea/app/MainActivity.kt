@@ -52,6 +52,14 @@ class MainActivity : ComponentActivity() {
             val barMargin by prefs.barMargin.collectAsState()
             val accentName by prefs.accent.collectAsState()
             val autoCheckUpdate by prefs.updateAutoCheck.collectAsState()
+            val glassOverlay by prefs.glassOverlay.collectAsState()
+            val glassScrim by prefs.glassScrim.collectAsState()
+            val cardStyle by prefs.cardStyle.collectAsState()
+
+            // Réglages « verre »/cartes → composants globaux (sans ré-injection)
+            androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle) {
+                dev.endlesssea.app.ui.components.UiTuning.update(glassOverlay, glassScrim, cardStyle)
+            }
             val pendingUpdate = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)
             }

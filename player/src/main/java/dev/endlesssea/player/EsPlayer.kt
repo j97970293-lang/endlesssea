@@ -125,6 +125,15 @@ class EsPlayer(
         player.playbackParameters = PlaybackParameters(factor.coerceIn(0.25f, 3f))
     }
 
+    /**
+     * Filtres vidéo temps réel (luminosité/teinte/saturation via HslAdjustment composé
+     * par l'app) — la surface du player DOIT être une TextureView pour être visible.
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun applyVideoEffects(effects: List<androidx.media3.common.Effect>) {
+        player.setVideoEffects(effects)
+    }
+
     override fun selectSubtitle(track: SubtitleTrack?) {
         // Sidecar subtitles are attached as SubtitleConfigurations; toggling is a track override.
         player.trackSelectionParameters = player.trackSelectionParameters

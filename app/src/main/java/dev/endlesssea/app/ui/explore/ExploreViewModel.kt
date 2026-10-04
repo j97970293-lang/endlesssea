@@ -47,7 +47,7 @@ class ExploreViewModel @Inject constructor(
             _uiState.value = ExploreUiState(loading = false, extensionCount = 0, extensions = emptyList())
             return@launch
         }
-        val extLabels = extensions.map { (pkg, ext) -> pkg to ext.info.name }
+        val extLabels = extensions.map { (_, ext) -> ext.info.id to ext.info.name }
         val rows = mutableListOf<ExploreRowUi>()
         val errors = mutableMapOf<String, String>()
 
@@ -60,8 +60,8 @@ class ExploreViewModel @Inject constructor(
                     }.onSuccess { page ->
                         if (page.items.isNotEmpty()) {
                             val wrapped = ExploreRowUi(
-                                title = "${ext.info.name}" + if (page.hasNextPage) " · suite →" else "",
-                                pkg = pkg,
+                                title = ext.info.name,
+                                pkg = ext.info.id,
                                 items = page.items.take(20).map {
                                     SearchItemUi(
                                         id = "${ext.info.id}:${it.url}", title = it.title,
