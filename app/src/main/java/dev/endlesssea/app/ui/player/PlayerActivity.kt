@@ -43,7 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,8 +54,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import androidx.media3.common.VideoSize
 import dagger.hilt.android.AndroidEntryPoint
 import dev.endlesssea.app.ui.theme.EndlessSeaTheme
 
@@ -115,34 +114,51 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val audioTracks by viewModel.engine.availableAudio.collectAsState()
 
     val context = LocalContext.current
-    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var textureView by remember { mutableStateOf<android.view.TextureView?>(null) }
+    var videoSize by remember { mutableStateOf(VideoSize(0, 0)) }
     var showCcDialog by remember { mutableStateOf(false) }
     var showAudioDialog by remember { mutableStateOf(false) }
     var showFilterDialog by remember { mutableStateOf(false) }
     var brightness by remember { mutableStateOf(1f) }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
+    var zoomFit by remember { mutableStateOf(true) } // true = contenir, false = remplir
 
-    val zoomModes = remember {
-        listOf(
-            AspectRatioFrameLayout.RESIZE_MODE_FIT,
-            AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-            AspectRatioFrameLayout.RESIZE_MODE_FILL,
-        )
+    LaunchedEffect(Unit) {
+        viewModel.engine.player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(size: VideoSize) { videoSize = size }
+        })
     }
-    var zoomIndex by remember { mutableIntStateOf(0) }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    // TextureView : requis pour voir les filtres vidéo (HslAdjustment)
-                    videoTextureView = android.view.TextureView(ctx)
-                    player = viewModel.engine.player
-                    useController = false
-                }.also { playerView = it }
+                android.view.TextureView(ctx).also {
+                    viewModel.engine.player.setVideoTextureView(it)
+                    textureView = it
+                }
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxSize(),
         )
+
+        // Zoom (contenir ↔ remplir) appliqué par matrice sur la TextureView
+        LaunchedEffect(zoomFit, videoSize) {
+            val tv = textureView ?: return@LaunchedEffect
+            val w = tv.width.takeIf { it > 0 } ?: return@LaunchedEffect
+            val h = tv.height.takeIf { it > 0 } ?: return@LaunchedEffect
+            val vw = videoSize.width.takeIf { it > 0 } ?: return@LaunchedEffect
+            val vh = videoSize.height.takeIf { it > 0 } ?: return@LaunchedEffect
+            val m = android.graphics.Matrix()
+            if (!zoomFit) {
+                val scale = maxOf(w / vw.toFloat(), h / vh.toFloat())
+                val scaleFit = minOf(w / vw.toFloat(), h / vh.toFloat())
+                val factor = if (scaleFit > 0f) scale / scaleFit else 1f
+                m.setScale(factor, factor, w / 2f, h / 2f)
+            }
+            tv.setTransform(m)
+        }
 
         // Gestuel : tap = contrôles, double tap ±skip (gauche / droite)
         Box(
@@ -201,13 +217,10 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                 )
-                IconButton(onClick = {
-                    zoomIndex = (zoomIndex + 1) % zoomModes.size
-                    playerView?.resizeMode = zoomModes[zoomIndex]
-                }) {
+                IconButton(onClick = { zoomFit = !zoomFit }) {
                     Icon(
                         Icons.Filled.ZoomIn, "Zoom plein écran",
-                        tint = if (zoomIndex == 0) Color.White else MaterialTheme.colorScheme.primary,
+                        tint = if (zoomFit) Color.White else MaterialTheme.colorScheme.primary,
                     )
                 }
                 if (subtitleTracks.isNotEmpty()) {

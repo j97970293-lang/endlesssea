@@ -112,7 +112,7 @@ class PlayerViewModel @Inject constructor(
     /** Applique le triplet au moteur (et persiste si [persist]=true). Valeurs -100..100 / hue -180..180. */
     fun applyFilter(brightness: Float, saturation: Float, hue: Float, presetName: String, persist: Boolean = true) {
         val hl = androidx.media3.effect.HslAdjustment.Builder()
-            .adjustBrightness(brightness)
+            .adjustLightness(brightness)
             .adjustSaturation(saturation)
             .adjustHue(hue)
             .build()

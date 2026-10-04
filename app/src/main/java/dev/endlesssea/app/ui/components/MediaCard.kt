@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,7 +28,7 @@ import dev.endlesssea.app.ui.search.SearchItemUi
 /** Affiche 2:3 à grand rayon + badge (année/type) — inspiration Anymex, styles réglables. */
 @Composable
 fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
-    val style = androidx.compose.runtime.collectAsState(UiTuning.cardStyle).value
+    val style by UiTuning.cardStyle.collectAsState()
     Column(
         modifier = Modifier.width(130.dp).clickable(onClick = onClick),
     ) {

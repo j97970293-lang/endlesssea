@@ -73,7 +73,7 @@ class DownloadsViewModel @Inject constructor(
                             },
                             progressLabel = if (isLive && live.totalBytes > 0) {
                                 "${formatBytes(live.downloadedBytes)} / ${formatBytes(live.totalBytes)}" +
-                                    if (live.bytesPerSecond > 0) " · ${formatBytes(live.bytesPerSecond)}/s" else ""
+                                    if (live.speedBytesPerSec > 0) " · ${formatBytes(live.speedBytesPerSec)}/s" else ""
                             } else "",
                             error = t.error,
                             createdAt = t.createdAt,
