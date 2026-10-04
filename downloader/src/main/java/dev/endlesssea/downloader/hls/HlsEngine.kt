@@ -167,7 +167,7 @@ class HlsEngine(private val client: OkHttpClient) {
         keyBytes: ByteArray?,
     ): ByteArray = withContext(Dispatchers.IO) {
         var last: Exception? = null
-        repeat(3) { attempt ->
+        for (attempt in 0..2) {
             try {
                 coroutineContext.ensureActive()
                 return@withContext get(seg.url, headers).use { r ->
@@ -188,7 +188,6 @@ class HlsEngine(private val client: OkHttpClient) {
                 throw e
             } catch (e: Exception) {
                 last = e
-                if (attempt == 2) break
                 kotlinx.coroutines.delay((attempt + 1) * 1_500L)
             }
         }
