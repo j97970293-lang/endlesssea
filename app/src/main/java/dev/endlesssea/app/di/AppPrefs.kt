@@ -227,9 +227,12 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _serverOrder = MutableStateFlow<List<String>>(loadJsonStringList("server_order"))
     val serverOrder: StateFlow<List<String>> = _serverOrder
     fun setServerOrder(order: List<String>) {
-        p.edit().putString("server_order", "[\"" + order.joinToString("\",\"") { it.replace(""", "'") } + "\"]").apply()
-        _serverOrder.value = order
+        val safe = order.map { it.replace("\\", " ").replace("\"", "'") }
+        val json = "[\"" + safe.joinToString("\",\"") + "\"]"
+        p.edit().putString("server_order", json).apply()
+        _serverOrder.value = safe
     }
+
     private fun loadJsonStringList(key: String): List<String> =
         p.getString(key, null)?.let { json ->
             Regex("\"([^\"]*)\"").findAll(json).map { it.groupValues[1] }.toList()
