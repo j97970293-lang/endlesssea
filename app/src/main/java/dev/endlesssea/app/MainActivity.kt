@@ -74,6 +74,10 @@ class MainActivity : ComponentActivity() {
             val pendingUpdate = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)
             }
+            /** Dernière MAJ tentée — survit à la fermeture de la boîte §5 (bouton Réessayer). */
+            val lastUpdateAttempt = androidx.compose.runtime.remember {
+                androidx.compose.runtime.mutableStateOf<AppUpdateInfo?>(null)
+            }
             val context = androidx.compose.ui.platform.LocalContext.current
 
             // Vérification automatique à l'ouverture (« mise à jour auto »)
@@ -106,6 +110,7 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
                             // §5 : tout se passe dans l'app (dialogue de progression)
                             androidx.compose.material3.Button(onClick = {
+                                lastUpdateAttempt.value = update
                                 lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     updateChecker.downloadUpdate(context, update)
                                 }
@@ -125,7 +130,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 dev.endlesssea.app.update.UpdateProgressDialog(
-                    onRetry = pendingUpdate.value?.let { update ->
+                    onRetry = (pendingUpdate.value ?: lastUpdateAttempt.value)?.let { update ->
                         {
                             lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 updateChecker.downloadUpdate(context, update)
