@@ -49,6 +49,8 @@ class JsonProviderEngine(
         val types: List<String> = emptyList(),
         val baseUrl: String = "",
         val permissions: List<String> = listOf("INTERNET"),
+        /** §4 : icône affichée dans l'accueil/recherche/réglages. Optionnelle. */
+        val iconUrl: String? = null,
     )
 
     @Serializable

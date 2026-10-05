@@ -85,6 +85,7 @@ class CaptchaActivity : Activity() {
                 finish()
             }
         }
+        val errPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(48, 48, 48, 48)
