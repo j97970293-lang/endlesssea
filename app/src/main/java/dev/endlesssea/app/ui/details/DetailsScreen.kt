@@ -989,7 +989,9 @@ private fun EpisodeRowAnymex(
                 dev.endlesssea.app.ui.components.ExpandableText(
                     text = episode.title ?: "Épisode ${episode.number.toInt()}",
                     style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
+                    // §textes-longs : 1 ligne — les longs titres ne remplissent plus
+                    // l'écran verticalement ; tap = titre entier en dialogue.
+                    maxLines = 1,
                     dialogTitle = "Titre de l'épisode",
                 )
                 val meta = buildList {

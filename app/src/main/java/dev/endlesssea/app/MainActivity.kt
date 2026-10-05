@@ -158,6 +158,11 @@ class MainActivity : ComponentActivity() {
                 val backStack by nav.currentBackStackEntryAsState()
                 val route = backStack?.destination?.route
                 val amoled = themeMode == AppPrefs.THEME_AMOLED
+                val darkBg = amoled || themeMode == AppPrefs.THEME_DARK ||
+                    (themeMode == AppPrefs.THEME_SYSTEM &&
+                        isSystemInDarkTheme())
+                // §verre-liquide-fond : le fond sombre entier devient du verre liquide animé
+                val showLiquid = darkBg && liquidGlass > 0
                 val titleRoute = route ?: Screen.Home.route
                 val title = when (titleRoute) {
                     in setOf("home", "explore", "search", "library", "downloads", "extensions", "settings") ->
@@ -172,6 +177,9 @@ class MainActivity : ComponentActivity() {
                 val bgImage by prefs.bgImageUri.collectAsState()
                 val bgDim by prefs.bgDim.collectAsState()
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    if (showLiquid && bgImage == null) {
+                        dev.endlesssea.app.ui.components.LiquidBackground(Modifier.fillMaxSize())
+                    }
                     bgImage?.let { uri ->
                         coil.compose.AsyncImage(
                             model = uri,
@@ -186,7 +194,7 @@ class MainActivity : ComponentActivity() {
                     }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    containerColor = if (bgImage != null) Color.Transparent
+                    containerColor = if (bgImage != null || showLiquid) Color.Transparent
                     else if (amoled) Color.Black else MaterialTheme.colorScheme.background,
                     topBar = {
                         // §réglages-pleine-page : sur Paramètres, AUCUNE barre — page dédiée.

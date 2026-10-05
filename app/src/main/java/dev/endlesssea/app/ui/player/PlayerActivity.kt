@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -185,7 +186,24 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             tv.setTransform(m)
         }
 
-        // Gestuel : tap = contrôles, double tap ±skip (gauche / droite)
+        // ---- §gestes-lecteur (façon mpv-android) :
+        // tap = contrôles · double-tap gauche/droite = ±skip · long-press = vitesse ×2
+        // (restaurée au relâchement) · glisser horizontal = seek avec aperçu ·
+        // glisser vertical = luminosité à gauche / volume à droite.
+        val playerCtx = androidx.compose.ui.platform.LocalContext.current
+        val playerActivity = playerCtx as? android.app.Activity
+        val exo = viewModel.engine.player
+        var gestureOverlay by remember { mutableStateOf<String?>(null) }
+        var gestureSeq by remember { mutableStateOf(0) }
+        var speedBoost = remember { false }
+        fun flash(text: String) { gestureOverlay = text; gestureSeq += 1 }
+        LaunchedEffect(gestureSeq) {
+            val seq = gestureSeq
+            if (gestureOverlay != null && !speedBoost) {
+                kotlinx.coroutines.delay(1_200)
+                if (gestureSeq == seq) gestureOverlay = null
+            }
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -195,12 +213,119 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         onDoubleTap = { offset ->
                             if (!state.locked) {
                                 val half = size.width / 2
-                                viewModel.jumpBy(if (offset.x < half) -state.skipSeconds else state.skipSeconds)
+                                val delta = if (offset.x < half) -state.skipSeconds else state.skipSeconds
+                                viewModel.jumpBy(delta)
+                                flash(if (delta > 0) "⏩ +${delta}s" else "⏪ ${delta}s")
                             }
+                        },
+                        onLongPress = {
+                            if (!state.locked) {
+                                exo.setPlaybackSpeed(2f)
+                                speedBoost = true
+                                gestureOverlay = "⚡ Vitesse ×2"
+                            }
+                        },
+                        onPress = {
+                            tryAwaitRelease()
+                            if (speedBoost) {
+                                exo.setPlaybackSpeed(1f)
+                                speedBoost = false
+                                gestureOverlay = null
+                            }
+                        },
+                    )
+                }
+                .pointerInput(state.locked, state.durationMs) {
+                    val audio = playerCtx.getSystemService(android.content.Context.AUDIO_SERVICE)
+                        as android.media.AudioManager
+                    val maxVol = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    var accX = 0f; var accY = 0f
+                    var mode = 0           // 0 rien · 1 seek · 2 luminosité · 3 volume
+                    var baseMs = 0L
+                    var seekTarget = 0L
+                    var startX = 0f
+                    var baseVol = 0
+                    var baseBright = 0.5f
+                    detectDragGestures(
+                        onDragStart = { start ->
+                            accX = 0f; accY = 0f; mode = 0
+                            baseMs = viewModel.uiState.value.positionMs
+                            seekTarget = baseMs
+                            startX = start.x
+                            baseVol = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                            baseBright = playerActivity?.window?.attributes?.screenBrightness
+                                ?.takeIf { it in 0f..1f } ?: 0.5f
+                        },
+                        onDrag = { _, amount ->
+                            if (state.locked) return@detectDragGestures
+                            accX += amount.x; accY += amount.y
+                            if (mode == 0 &&
+                                (kotlin.math.abs(accX) > 24 || kotlin.math.abs(accY) > 24)
+                            ) {
+                                mode = if (kotlin.math.abs(accX) >= kotlin.math.abs(accY)) 1
+                                else if (startX < size.width / 2f) 2 else 3
+                            }
+                            when (mode) {
+                                1 -> {
+                                    val dur = state.durationMs
+                                    val span = 120_000L    // pleine largeur ≈ ±120 s
+                                    seekTarget = baseMs +
+                                        ((accX / size.width) * span).toLong()
+                                    if (dur > 0) seekTarget = seekTarget.coerceIn(0L, dur)
+                                    val d = (seekTarget - baseMs) / 1000
+                                    flash("⏩ %+ds · %s".format(d, formatTime(seekTarget)))
+                                }
+                                2 -> {
+                                    val b = (baseBright - accY / size.height).coerceIn(0.01f, 1f)
+                                    playerActivity?.window?.let { w ->
+                                        val lp = w.attributes
+                                        lp.screenBrightness = b
+                                        w.attributes = lp
+                                    }
+                                    flash("☀ Luminosité ${(b * 100).toInt()} %")
+                                }
+                                3 -> {
+                                    val v = (baseVol + (-accY / size.height) * maxVol)
+                                        .toInt().coerceIn(0, maxVol)
+                                    audio.setStreamVolume(
+                                        android.media.AudioManager.STREAM_MUSIC, v, 0,
+                                    )
+                                    flash("🔊 Volume $v/$maxVol")
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            if (mode == 1 && seekTarget != baseMs) exo.seekTo(seekTarget)
+                            if (speedBoost) { exo.setPlaybackSpeed(1f); speedBoost = false }
+                            gestureOverlay = null
+                            mode = 0
+                        },
+                        onDragCancel = {
+                            if (speedBoost) { exo.setPlaybackSpeed(1f); speedBoost = false }
+                            gestureOverlay = null
+                            mode = 0
                         },
                     )
                 },
         )
+
+        // ---- Bandeau flash du geste en cours (non bloquant, auto-effacé)
+        gestureOverlay?.let { txt ->
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 88.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = Color.Black.copy(alpha = 0.66f),
+            ) {
+                Text(
+                    txt,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                )
+            }
+        }
 
         // ---- §marqueurs intro/outro : bouton « Passer » dans les plages éditées (vidéos locales)
         run {

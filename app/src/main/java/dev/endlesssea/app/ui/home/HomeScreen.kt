@@ -236,7 +236,7 @@ private fun FeaturedBanner(
                             item.subtitle,
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.85f),
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
                     Spacer(Modifier.height(8.dp))
@@ -338,7 +338,7 @@ fun MediaRow(
                             item.title,
                             modifier = Modifier.padding(8.dp),
                             style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }

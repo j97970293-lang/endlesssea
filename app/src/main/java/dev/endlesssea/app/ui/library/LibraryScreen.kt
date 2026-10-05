@@ -307,7 +307,7 @@ private fun LocalFilesPanel(
                                 dev.endlesssea.app.ui.components.ExpandableText(
                                     text = video.displayName,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 2,
+                                    maxLines = 1,
                                     dialogTitle = "Fichier local",
                                 )
                                 Text(

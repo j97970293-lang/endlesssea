@@ -49,7 +49,10 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
                 // §4 : URL purgée (null → placeholder bleu, jamais de plantage) + crop
                 model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                     .data(EsImages.safeImageUrl(item.posterUrl))
-                    .crossfade(true)
+                    // §4-placeholder : mêmes clés mémoire → pas de flash vide
+                    // quand on passe de la grille à la fiche (Coil réutilise l'image).
+                    .memoryCacheKey(item.posterUrl)
+                    .crossfade(180)
                     .build(),
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
@@ -117,7 +120,7 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
                 item.title,
                 modifier = Modifier.padding(top = 6.dp, start = 2.dp),
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
