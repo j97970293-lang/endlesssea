@@ -23,7 +23,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import dev.endlesssea.app.EsImagePlaceholder
+import dev.endlesssea.app.EsImages
 import dev.endlesssea.app.ui.search.SearchItemUi
 
 /** Affiche 2:3 à grand rayon + badge (année/type) — inspiration Anymex, styles réglables. */
@@ -38,12 +39,25 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(18.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            AsyncImage(
-                model = item.posterUrl,
+            coil.compose.SubcomposeAsyncImage(
+                // §4 : URL purgée (null → placeholder bleu, jamais de plantage) + crop
+                model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                    .data(EsImages.safeImageUrl(item.posterUrl))
+                    .crossfade(true)
+                    .build(),
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().height(185.dp),
-            )
+            ) {
+                when (painter.state) {
+                    is coil.compose.AsyncImagePainter.State.Error ->
+                        EsImagePlaceholder(tint = Color(0xFFB3261E), modifier = Modifier.fillMaxWidth().height(185.dp))
+                    is coil.compose.AsyncImagePainter.State.Loading,
+                    is coil.compose.AsyncImagePainter.State.Empty ->
+                        EsImagePlaceholder(tint = Color(0xFF2A5F8F), modifier = Modifier.fillMaxWidth().height(185.dp))
+                    else -> coil.compose.SubcomposeAsyncImageContent()
+                }
+            }
             // ---- Badges toujours visibles (⭐ note + VF/VOSTFR fournis par la source)
             val cardBadges = buildList {
                 item.rating?.let { add("⭐ %.1f".format(it)) }

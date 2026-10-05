@@ -28,6 +28,10 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
 - 📱 Android 8.0+ , stockage interne ou carte SD (SAF)
 
+### État des lieux & audit
+
+Un audit vivant, par composant, est maintenu dans [`docs/fr/AUDIT.md`](docs/fr/AUDIT.md) (compilation, mise à jour, WebView, images d'extensions, téléchargements, erreurs, Android 8, DNS — + fondations Phase 2).
+
 ### Avertissement légal
 
 Endless Sea est un **logiciel neutre**, distribué sans aucune source de contenu pirate. Les extensions de démonstration fournies utilisent uniquement des sources légales et libres (Internet Archive — domaine public, films Blender Foundation — Creative Commons, fichiers d'exemple). **L'utilisateur est seul responsable des extensions tierces qu'il installe** et doit respecter les lois de son pays ainsi que les conditions d'utilisation des sources.

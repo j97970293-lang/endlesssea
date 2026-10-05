@@ -20,6 +20,9 @@ class EndlessSeaApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // §4 — Images des extensions : Coil partagé avec cache disque, UA honnête
+        // et DNS DoH. Doit être initialisé AVANT la première AsyncImage.
+        EsImages.imageLoader(this)
         appScope.launch {
             // Seed user-editable genres/categories once (spec §8/§9 — everything stays editable).
             database.genreDao().insertAll(EsDatabase.SEED_GENRES)

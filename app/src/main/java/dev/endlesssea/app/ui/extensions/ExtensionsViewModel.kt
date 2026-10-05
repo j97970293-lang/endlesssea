@@ -18,10 +18,11 @@ import java.io.File
 import java.util.Locale
 import javax.inject.Inject
 
-data class RepoUi(val url: String, val name: String, val enabled: Boolean)
+data class RepoUi(val url: String, val name: String, val enabled: Boolean, val iconUrl: String? = null)
 data class ExtensionUi(
     val pkg: String, val name: String, val version: Int, val versionName: String,
     val enabled: Boolean, val permissions: List<String>, val lastError: String?,
+    val iconUrl: String? = null,
 )
 data class RepoEntryUi(val entry: RepoExtensionEntry, val repoUrl: String, val installedVersion: Int)
 
@@ -61,14 +62,17 @@ class ExtensionsViewModel @Inject constructor(
         viewModelScope.launch {
             repoDao.observeAll().collect { repos ->
                 _uiState.value = _uiState.value.copy(
-                    repos = repos.map { RepoUi(it.url, it.name, it.enabled) },
+                    // §4 — l'icône du dépôt vient de son index (disponible après sync)
+                    repos = repos.map { RepoUi(it.url, it.name, it.enabled, cachedIndexes[it.url]?.iconUrl) },
                 )
             }
         }
         viewModelScope.launch {
             extensionDao.observeInstalled().collect { exts ->
+                // §4 — icône résolue via les index déjà synchronisés (aucune migration Room)
+                val icons = cachedIndexes.values.flatMap { it.extensions }.associate { it.id to it.iconUrl }
                 _uiState.value = _uiState.value.copy(
-                    extensions = exts.map { it.toUi() },
+                    extensions = exts.map { it.toUi().copy(iconUrl = icons[it.pkg]) },
                     repoEntries = buildEntries(exts),
                 )
             }

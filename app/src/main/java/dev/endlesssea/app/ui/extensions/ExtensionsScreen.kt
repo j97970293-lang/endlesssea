@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.ui.components.GlassCard
+import dev.endlesssea.app.SafeAsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,6 +152,15 @@ fun ExtensionsScreen(
             items(state.repos, key = { it.url }) { repo ->
                 GlassCard(contentPadding = PaddingValues(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        // §4 — Icône du dépôt : SafeAsyncImage charge en parallèle,
+                        // affiche la « vague » pendant le load, croix rouge si échec.
+                        SafeAsyncImage(
+                            url = repo.iconUrl,
+                            contentDescription = null,
+                            modifier = Modifier.width(44.dp).height(44.dp),
+                            placeholderModifier = Modifier.width(44.dp).height(44.dp),
+                        )
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(repo.name, style = MaterialTheme.typography.bodyLarge)
                             Text(
@@ -171,31 +181,37 @@ fun ExtensionsScreen(
             // --------------------------------------- Extensions disponibles (dépôts)
             if (state.repoEntries.isNotEmpty()) {
                 item { Text("Disponibles en ligne", style = MaterialTheme.typography.titleMedium) }
-                items(state.repoEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
-                    val upToDate = e.installedVersion >= e.entry.version
-                    GlassCard(contentPadding = PaddingValues(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("${e.entry.name} · v${e.entry.versionName}", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "${e.entry.languages.joinToString("/").ifBlank { "multi" }} · " +
-                                        (e.entry.types.joinToString("/").ifBlank { "tous types" }) +
-                                        if (e.entry.permissions.isNotEmpty()) " · ${e.entry.permissions.size} permission(s)" else "",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            if (upToDate) {
-                                Text("Installée", style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary)
-                            } else {
-                                Button(onClick = { viewModel.installEntry(e.entry) }) {
-                                    Text(if (e.installedVersion > 0) "Mettre à jour" else "Installer")
-                                }
+            items(state.repoEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
+                val upToDate = e.installedVersion >= e.entry.version
+                GlassCard(contentPadding = PaddingValues(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SafeAsyncImage(
+                            url = e.entry.iconUrl,
+                            contentDescription = null,
+                            modifier = Modifier.width(44.dp).height(44.dp),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${e.entry.name} · v${e.entry.versionName}", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "${e.entry.languages.joinToString("/").ifBlank { "multi" }} · " +
+                                    (e.entry.types.joinToString("/").ifBlank { "tous types" }) +
+                                    if (e.entry.permissions.isNotEmpty()) " · ${e.entry.permissions.size} permission(s)" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (upToDate) {
+                            Text("Installée", style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            Button(onClick = { viewModel.installEntry(e.entry) }) {
+                                Text(if (e.installedVersion > 0) "Mettre à jour" else "Installer")
                             }
                         }
                     }
                 }
+            }
             }
 
             // --------------------------------------------- Extensions installées
@@ -213,6 +229,12 @@ fun ExtensionsScreen(
                 GlassCard(contentPadding = PaddingValues(14.dp)) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            SafeAsyncImage(
+                                url = ext.iconUrl,
+                                contentDescription = null,
+                                modifier = Modifier.width(44.dp).height(44.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("${ext.name} · v${ext.versionName}", style = MaterialTheme.typography.bodyLarge)
                                 Text(

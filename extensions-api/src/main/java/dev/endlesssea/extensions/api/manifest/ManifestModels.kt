@@ -63,6 +63,8 @@ data class RepositoryIndex(
     val name: String,
     val description: String = "",
     val url: String,
+    /** §4 — icône du dépôt (optionnel ; champ ignoré par les vieux clients). */
+    val iconUrl: String? = null,
     val extensions: List<RepoExtensionEntry> = emptyList(),
 )
 
