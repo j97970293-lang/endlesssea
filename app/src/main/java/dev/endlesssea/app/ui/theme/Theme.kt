@@ -108,19 +108,19 @@ private fun fontFamilyFor(fontId: String): androidx.compose.ui.text.font.FontFam
     "outfit" -> androidx.compose.ui.text.font.FontFamily(
         androidx.compose.ui.text.googlefonts.Font(
             googleFont = androidx.compose.ui.text.googlefonts.GoogleFont("Outfit"),
-            fontProvider = esFontProvider, bestEffort = true,
+            fontProvider = esFontProvider,
         ),
     )
     "rubik" -> androidx.compose.ui.text.font.FontFamily(
         androidx.compose.ui.text.googlefonts.Font(
             googleFont = androidx.compose.ui.text.googlefonts.GoogleFont("Rubik"),
-            fontProvider = esFontProvider, bestEffort = true,
+            fontProvider = esFontProvider,
         ),
     )
     "lora" -> androidx.compose.ui.text.font.FontFamily(
         androidx.compose.ui.text.googlefonts.Font(
             googleFont = androidx.compose.ui.text.googlefonts.GoogleFont("Lora"),
-            fontProvider = esFontProvider, bestEffort = true,
+            fontProvider = esFontProvider,
         ),
     )
     else -> null
