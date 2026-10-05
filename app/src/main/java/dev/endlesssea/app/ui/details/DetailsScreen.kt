@@ -607,7 +607,7 @@ fun DetailsScreen(
                                     Text(
                                         listOfNotNull(
                                             best.quality.label,
-                                            best.audioLang.label.takeIf { it.isNotBlank() },
+                                            best.audioLang.label.takeIf { l -> l.isNotBlank() },
                                             "${srvLinks.size} qualité(s)",
                                         ).joinToString(" · "),
                                         style = MaterialTheme.typography.bodySmall,
