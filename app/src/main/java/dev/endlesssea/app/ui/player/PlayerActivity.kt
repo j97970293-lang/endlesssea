@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessMedium
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.VideoSize
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import dev.endlesssea.app.ui.theme.EndlessSeaTheme
 
 @AndroidEntryPoint
@@ -65,9 +68,17 @@ class PlayerActivity : ComponentActivity() {
 
     private val viewModel: PlayerViewModel by viewModels()
 
+    @Inject lateinit var prefs: dev.endlesssea.app.di.AppPrefs
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // §orientation-lecteur : horizontal par défaut, modifiable (bouton rotation + réglage)
+        requestedOrientation = if (prefs.playerOrientation.value == "portrait") {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
         val launch = PlayerLaunchStore.consume()
         viewModel.prepare(
             mediaId = launch.mediaId,
@@ -96,6 +107,16 @@ private val BUILTIN_PRESETS = listOf(
     VideoFilterPreset("Qualité+", 8f, 12f, 0f),
     VideoFilterPreset("Cinéma", -4f, -8f, 4f),
     VideoFilterPreset("Nuit douce", -12f, 0f, 0f),
+    // §couleurs-lecteur : demande « noir et blanc, vibrant, viv anime, autres »
+    VideoFilterPreset("Noir & blanc", 0f, -100f, 0f),
+    VideoFilterPreset("N&B doux", -4f, -85f, 0f),
+    VideoFilterPreset("Vibrant", 4f, 40f, 0f),
+    VideoFilterPreset("Anime vif", 6f, 55f, 4f),
+    VideoFilterPreset("Pastel", 8f, -25f, 0f),
+    VideoFilterPreset("Sepia rétro", 2f, -35f, 18f),
+    VideoFilterPreset("Sombre", -14f, 10f, 0f),
+    VideoFilterPreset("Froid", 0f, 8f, -14f),
+    VideoFilterPreset("Chaud", 2f, 6f, 14f),
 )
 
 private fun formatTime(ms: Long): String {
@@ -124,6 +145,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var brightness by remember { mutableStateOf(1f) }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     var zoomFit by remember { mutableStateOf(true) } // true = contenir, false = remplir
+    var showQualityDialog by remember { mutableStateOf(false) }
+    var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
 
     LaunchedEffect(Unit) {
         viewModel.engine.player.addListener(object : androidx.media3.common.Player.Listener {
@@ -213,6 +236,73 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             }
         }
 
+        // ---- §auto-skip : saut automatique des marqueurs (une fois par plage)
+        run {
+            var introDoneAt by remember { mutableStateOf(-1L) }
+            var outroDoneAt by remember { mutableStateOf(-1L) }
+            LaunchedEffect(state.positionMs, state.autoSkipMarkers) {
+                if (!state.autoSkipMarkers) return@LaunchedEffect
+                val m = PlayerLaunchStore.lastMarkers
+                if (!m.hasAny) return@LaunchedEffect
+                val pos = state.positionMs / 1000
+                val iS = m.introStartSec; val iE = m.introEndSec
+                if (iS != null && iE != null && pos >= iS && pos < iE && introDoneAt < iS.toLong()) {
+                    introDoneAt = iE.toLong()
+                    viewModel.engine.player.seekTo(iE * 1000L)
+                }
+                val oS = m.outroStartSec
+                if (oS != null && pos >= oS && outroDoneAt < 0 && state.durationMs - state.positionMs > 5_000) {
+                    outroDoneAt = pos
+                    viewModel.engine.player.seekTo(state.durationMs)
+                }
+            }
+        }
+
+        // ---- §qualité-lecteur : dialogue des liens (serveur + qualité) pendant la lecture
+        if (showQualityDialog && state.links.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { showQualityDialog = false },
+                confirmButton = {
+                    TextButton(onClick = { showQualityDialog = false }) { Text("Fermer") }
+                },
+                title = { Text("Qualité / serveur") },
+                text = {
+                    Column {
+                        state.links.forEachIndexed { i, link ->
+                            val active = i == state.currentLinkIndex
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.switchQuality(i)
+                                        showQualityDialog = false
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "${link.server} — ${link.quality.label}",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = if (active) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (link.streamType.name != "DIRECT_FILE") {
+                                        Text(
+                                            link.streamType.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                if (active) Text("✓", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                },
+            )
+        }
+
         // Retour visuel du saut (double appui)
         state.skipFlash?.let { flash ->
             Box(
@@ -253,6 +343,26 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                 )
+                if (state.links.size > 1) {
+                    IconButton(onClick = { showQualityDialog = true }) {
+                        Icon(Icons.Filled.HighQuality, "Qualité / serveur", tint = Color.White)
+                    }
+                }
+                IconButton(onClick = {
+                    val act = context as? android.app.Activity
+                    landscapeNow = !landscapeNow
+                    viewModel.setOrientationPreference(if (landscapeNow) "landscape" else "portrait")
+                    act?.requestedOrientation = if (!landscapeNow) {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                    } else {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    }
+                }) {
+                    Icon(
+                        Icons.Filled.ScreenRotation, "Basculer portrait/paysage",
+                        tint = Color.White,
+                    )
+                }
                 IconButton(onClick = { zoomFit = !zoomFit }) {
                     Icon(
                         Icons.Filled.ZoomIn, "Zoom plein écran",
@@ -334,6 +444,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             modifier = Modifier.width(120.dp),
                         )
                         Spacer(Modifier.weight(1f))
+                        // §mégaskip : grand saut ±85s (réglable) autour du play
+                        IconButton(onClick = { viewModel.megaJump(-state.megaSkipSeconds) }) {
+                            Text("−${state.megaSkipSeconds}", color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.labelMedium)
+                        }
                         IconButton(onClick = { viewModel.jumpBy(-state.skipSeconds) }) {
                             Text("−${state.skipSeconds}s", color = Color.White,
                                 style = MaterialTheme.typography.labelLarge)
@@ -354,6 +469,10 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         IconButton(onClick = { viewModel.jumpBy(state.skipSeconds) }) {
                             Text("+${state.skipSeconds}s", color = Color.White,
                                 style = MaterialTheme.typography.labelLarge)
+                        }
+                        IconButton(onClick = { viewModel.megaJump(state.megaSkipSeconds) }) {
+                            Text("+${state.megaSkipSeconds}", color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.labelMedium)
                         }
                         Spacer(Modifier.weight(1f))
                         // Vitesse (cycle)

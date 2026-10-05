@@ -41,7 +41,11 @@ class EsPlayer(
 
     private val appContext = context.applicationContext
 
-    private val dataSourceFactory = OkHttpDataSource.Factory(httpClient)
+    private val httpFactory = OkHttpDataSource.Factory(httpClient)
+
+    /** §lecture-locale : DefaultDataSource choisit selon le schéma (http→OkHttp, content/file→natif).
+     * Auparavant tout passait par OkHttpDataSource → les vidéos locales (content://) échouaient. */
+    private val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(appContext, httpFactory)
 
     val player: ExoPlayer = ExoPlayer.Builder(appContext)
         .setMediaSourceFactory(DefaultMediaSourceFactory(appContext).setDataSourceFactory(dataSourceFactory))
@@ -113,7 +117,7 @@ class EsPlayer(
 
     /** Sets extension headers (Referer/UA/cookies) on the shared OkHttpDataSource. */
     fun prepareWithHeaders(headers: Map<String, String>) {
-        dataSourceFactory.setDefaultRequestProperties(headers)
+        httpFactory.setDefaultRequestProperties(headers)
     }
 
     override fun play() = player.play()

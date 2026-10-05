@@ -32,6 +32,14 @@ data class PlayerUiState(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val skipSeconds: Int = 10,
+    /** §mégaskip : secondes du grand saut (bouton dédié). */
+    val megaSkipSeconds: Int = 85,
+    /** §auto-skip : sauter seul les marqueurs intro/outro. */
+    val autoSkipMarkers: Boolean = true,
+    /** Liens de la lecture courante (sélecteur qualité §qualité-lecteur). */
+    val links: List<VideoLink> = emptyList(),
+    /** Index du lien actuellement joué (pour le badge du dialogue qualité). */
+    val currentLinkIndex: Int = 0,
     // Filtre vidéo courant (constant : aucun = tout à 0)
     val filterBrightness: Float = 0f,
     val filterSaturation: Float = 0f,
@@ -80,6 +88,12 @@ class PlayerViewModel @Inject constructor(
         // Préférences lecteur : saut double appui + dernier filtre utilisé
         viewModelScope.launch {
             prefs.skipSeconds.collect { v -> _uiState.value = _uiState.value.copy(skipSeconds = v) }
+        }
+        viewModelScope.launch {
+            prefs.megaSkipSeconds.collect { v -> _uiState.value = _uiState.value.copy(megaSkipSeconds = v) }
+        }
+        viewModelScope.launch {
+            prefs.autoSkipMarkers.collect { v -> _uiState.value = _uiState.value.copy(autoSkipMarkers = v) }
         }
         viewModelScope.launch {
             prefs.videoPresetsJson.collect { _uiState.value = _uiState.value.copy(savedPresets = parsePresets(it)) }
@@ -179,6 +193,7 @@ class PlayerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(title = title, loading = true, error = null)
         this@PlayerViewModel.mediaId = mediaId
         this@PlayerViewModel.episodeId = episodeId
+        _uiState.value = _uiState.value.copy(links = links, currentLinkIndex = startIndex.coerceAtLeast(0))
         val resumeMs = episodeId?.let { historyDao.byEpisode(it)?.positionMs } ?: 0L
         runCatching {
             engine.prepare(links, startPositionMs = resumeMs)
@@ -193,6 +208,22 @@ class PlayerViewModel @Inject constructor(
     fun setSpeed(speed: Float) {
         engine.setSpeed(speed)
         _uiState.value = _uiState.value.copy(speed = speed)
+    }
+
+    /** §orientation-lecteur : mémorise le choix portrait/paysage. */
+    fun setOrientationPreference(v: String) = prefs.setPlayerOrientation(v)
+
+    /** §qualité-lecteur : bascule vers le lien i (même position) sans relancer l'activité. */
+    fun switchQuality(index: Int) {
+        if (index !in _uiState.value.links.indices || index == _uiState.value.currentLinkIndex) return
+        val pos = engine.player.currentPosition.coerceAtLeast(0)
+        engine.player.seekTo(index, pos)
+        engine.play()
+        _uiState.value = _uiState.value.copy(currentLinkIndex = index)
+    }
+
+    fun megaJump(deltaSec: Int) = viewModelScope.launch {
+        engine.player.seekTo((engine.player.currentPosition + deltaSec * 1000L).coerceAtLeast(0))
     }
 
     fun toggleLock() = _uiState.value.let { _uiState.value = it.copy(locked = !it.locked) }

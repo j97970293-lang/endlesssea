@@ -9,6 +9,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Extension
@@ -177,6 +180,7 @@ class MainActivity : ComponentActivity() {
                         // §réglages-pleine-page : sur Paramètres, AUCUNE barre — page dédiée.
                         if (route != Screen.Settings.route) {
                         CenterAlignedTopAppBar(
+                            modifier = Modifier.statusBarsPadding(),
                             title = { Text(title) },
                             actions = {
                                 IconButton(onClick = { nav.navigate(Screen.Extensions.route) }) {
@@ -196,7 +200,9 @@ class MainActivity : ComponentActivity() {
                     },
                     bottomBar = {
                         if (route != Screen.Settings.route) {
-                            EsBottomBar(nav, currentRoute = route, tabs = barTabs, order = tabOrder, marginDp = barMargin)
+                            Box(Modifier.navigationBarsPadding()) {
+                                EsBottomBar(nav, currentRoute = route, tabs = barTabs, order = tabOrder, marginDp = barMargin)
+                            }
                         }
                     },
                 ) { padding ->

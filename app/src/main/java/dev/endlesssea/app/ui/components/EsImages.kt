@@ -55,7 +55,26 @@ object EsImages {
                     .build()
             }
             .okHttpClient {
-                dev.endlesssea.core.net.HttpClients.baseBuilder().build() // UA + DoH + timeouts
+                dev.endlesssea.core.net.HttpClients.baseBuilder()
+                    .addInterceptor { chain ->
+                        val req = chain.request()
+                        var res = chain.proceed(req)
+                        // Beaucoup de CDN d'affiches bloquent sans Referer du domaine (anti-hotlink) :
+                        // on réessaie une fois avec Referer = origine + Accept image.
+                        if (res.code == 401 || res.code == 403 || res.code == 404) {
+                            if (req.header("Referer") == null) {
+                                res.close()
+                                val origin = req.url.scheme + "://" + req.url.host + "/"
+                                val retry = req.newBuilder()
+                                    .header("Referer", origin)
+                                    .header("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
+                                    .build()
+                                res = chain.proceed(retry)
+                            }
+                        }
+                        res
+                    }
+                    .build() // UA + DoH + timeouts + anti-hotlink
             }
             .respectCacheHeaders(false) // certains serveurs d'extensions ferment le cache
             .crossfade(true)

@@ -162,6 +162,27 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val skipSeconds: StateFlow<Int> = _skipSeconds
     fun setSkipSeconds(v: Int) { val c = if (v in setOf(5, 10, 15, 30, 85)) v else 10; p.edit().putInt("skip_sec", c).apply(); _skipSeconds.value = c }
 
+    /** §mégaskip : secondes du « grand saut » (+85s façon anime), réglable 30..180. Défaut 85. */
+    private val _megaSkipSeconds = MutableStateFlow(p.getInt("mega_skip_sec", 85))
+    val megaSkipSeconds: StateFlow<Int> = _megaSkipSeconds
+    fun setMegaSkipSeconds(v: Int) {
+        val c = v.coerceIn(30, 180)
+        p.edit().putInt("mega_skip_sec", c).apply(); _megaSkipSeconds.value = c
+    }
+
+    /** §auto-skip : passer automatiquement les plages intro/outro marquées (fichiers locaux). */
+    private val _autoSkipMarkers = MutableStateFlow(p.getBoolean("auto_skip_markers", true))
+    val autoSkipMarkers: StateFlow<Boolean> = _autoSkipMarkers
+    fun setAutoSkipMarkers(v: Boolean) { p.edit().putBoolean("auto_skip_markers", v).apply(); _autoSkipMarkers.value = v }
+
+    /** §orientation-lecteur : "landscape" (défaut, lecture à l'horizontale) ou "portrait". */
+    private val _playerOrientation = MutableStateFlow(p.getString("player_orientation", "landscape") ?: "landscape")
+    val playerOrientation: StateFlow<String> = _playerOrientation
+    fun setPlayerOrientation(v: String) {
+        val safe = if (v == "portrait") "portrait" else "landscape"
+        p.edit().putString("player_orientation", safe).apply(); _playerOrientation.value = safe
+    }
+
     // Filtre vidéo appliqué à la lecture (teinte / saturation / luminosité)
     private val _videoBrightness = MutableStateFlow(p.getFloat("vf_bright", 0f))
     val videoBrightness: StateFlow<Float> = _videoBrightness
