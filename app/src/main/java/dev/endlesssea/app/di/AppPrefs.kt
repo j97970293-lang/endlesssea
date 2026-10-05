@@ -234,21 +234,35 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     /** §bibliothèque-locale : métadonnées éditées par fileUri (JSON objet). */
     fun localFileMeta(uri: String): Pair<String?, String?> {
+        val q = "\""
         val json = p.getString("local_file_meta", "{}") ?: "{}"
-        val m = Regex(java.util.regex.Pattern.quote(""" + uri + """) +
-            "\s*:\s*\[\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\]").find(json)
+        val m = Regex(
+            java.util.regex.Pattern.quote(q + uri + q) +
+                """\s*:\s*\[\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\]""",
+        ).find(json)
         return if (m != null) {
             val t = m.groupValues[1].takeIf { it.isNotBlank() }
             val c = m.groupValues[2].takeIf { it.isNotBlank() }
             t to c
-        } else null to null
+        } else {
+            null to null
+        }
     }
     fun setLocalFileMeta(uri: String, title: String?, coverUri: String?) {
+        val q = "\""
         val json = p.getString("local_file_meta", "{}") ?: "{}"
-        val key = """ + uri.replace(""", " ") + """
-        val entry = "$key:["${title.orEmpty().replace(""", "'")}","${coverUri.orEmpty().replace(""", "'")}"]"
+        val key = q + uri.replace(q, " ") + q
+        val safeTitle = title.orEmpty().replace(q, "'")
+        val safeCover = coverUri.orEmpty().replace(q, "'")
+        val entry = key + ":[" + q + safeTitle + q + "," + q + safeCover + q + "]"
         val base = json.trim().removePrefix("{").removeSuffix("}").trim()
-        val parts = base.split(Regex(",\s*(?=")")).filterNot { it.startsWith(key + ":") }.filter { it.isNotBlank() }
+        val parts = if (base.isBlank()) {
+            emptyList()
+        } else {
+            base.split(Regex(""",\s*(?=")"""))
+                .filterNot { it.startsWith(key + ":") }
+                .filter { it.isNotBlank() }
+        }
         val newBody = (parts + entry).joinToString(",")
         p.edit().putString("local_file_meta", "{" + newBody + "}").apply()
         _visibleLocalMetaTick.value++
