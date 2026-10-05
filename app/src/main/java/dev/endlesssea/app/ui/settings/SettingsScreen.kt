@@ -590,7 +590,6 @@ fun SettingsScreen(
                 }
             }
             }
-            }
             item {
                 SettingCategory("💾", "Sauvegarde", expanded = "backup" in openCategories) { toggleCategory("backup") }
             }
@@ -690,7 +689,6 @@ fun SettingsScreen(
                 }
             }
             }
-            }
             item {
                 SettingCategory("🔄", "Mises à jour de l'application", expanded = "updates" in openCategories) { toggleCategory("updates") }
             }
@@ -719,7 +717,7 @@ fun SettingsScreen(
             if ("about" in openCategories) {
             item {
                 SettingRow(
-                    title = "Endless Sea 0.6.0",
+                    title = "Endless Sea 0.8.0",
                     subtitle = "GPL-3.0 · aucune source incluse · github.com/j97970293-lang/endlesssea",
                     onClick = { },
                 )
