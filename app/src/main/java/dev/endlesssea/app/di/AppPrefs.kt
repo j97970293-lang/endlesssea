@@ -198,4 +198,36 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putString("pref_audio_lang", s).apply()
         _preferredAudioLang.value = s
     }
+
+    // ---------------------------------------------------------------- apparence avancée
+    /** Teinte appliquée sur le logo de démarrage ("original" ou un nom de ACCENTS). */
+    private val _logoTint = MutableStateFlow(p.getString("logo_tint", "original") ?: "original")
+    val logoTint: StateFlow<String> = _logoTint
+    fun setLogoTint(v: String) { p.edit().putString("logo_tint", v).apply(); _logoTint.value = v }
+
+    /** Variante Glass §24 : teinte dominante du verre ("auto" ou nom de ACCENTS). */
+    private val _glassVariant = MutableStateFlow(p.getString("glass_variant", "auto") ?: "auto")
+    val glassVariant: StateFlow<String> = _glassVariant
+    fun setGlassVariant(v: String) { p.edit().putString("glass_variant", v).apply(); _glassVariant.value = v }
+
+    /** Police de l'app : "system" (défaut) | "outfit" | "rubik" | "lora". */
+    private val _fontId = MutableStateFlow(p.getString("font_id", "system") ?: "system")
+    val fontId: StateFlow<String> = _fontId
+    fun setFontId(v: String) { p.edit().putString("font_id", v).apply(); _fontId.value = v }
+
+    // ---------------------------------------------------------------- réseau
+    /** Mode DNS §9 : "system" (défaut) | "cloudflare" | "google". Appliqué au prochain démarrage. */
+    private val _dnsMode = MutableStateFlow(p.getString("dns_mode", "system") ?: "system")
+    val dnsMode: StateFlow<String> = _dnsMode
+    fun setDnsMode(v: String) {
+        val m = if (v in listOf("system", "cloudflare", "google")) v else "system"
+        p.edit().putString("dns_mode", m).apply()
+        _dnsMode.value = m
+        dev.endlesssea.core.net.EsNet.dnsMode = m
+    }
+
+    init {
+        // Synchronise le résolveur réseau global dès la création des préférences.
+        dev.endlesssea.core.net.EsNet.dnsMode = _dnsMode.value
+    }
 }

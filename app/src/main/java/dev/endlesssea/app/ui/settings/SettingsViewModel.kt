@@ -52,6 +52,10 @@ data class SettingsUiState(
     val themeMode: Int = AppPrefs.THEME_SYSTEM,
     val glassOverlay: Int = 12,
     val glassScrim: Int = 25,
+    val glassVariant: String = "auto",
+    val logoTint: String = "original",
+    val fontId: String = "system",
+    val dnsMode: String = "system",
     val cardStyle: String = "detail",
     val barTabs: Set<String> = AppPrefs.DEFAULT_TABS,
     val tabOrder: List<String> = AppPrefs.ALL_TAB_ROUTES,
@@ -102,6 +106,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.themeMode.collect { v -> set { copy(themeMode = v) } } }
         viewModelScope.launch { prefs.glassOverlay.collect { v -> set { copy(glassOverlay = v) } } }
         viewModelScope.launch { prefs.glassScrim.collect { v -> set { copy(glassScrim = v) } } }
+        viewModelScope.launch { prefs.glassVariant.collect { v -> set { copy(glassVariant = v) } } }
+        viewModelScope.launch { prefs.logoTint.collect { v -> set { copy(logoTint = v) } } }
+        viewModelScope.launch { prefs.fontId.collect { v -> set { copy(fontId = v) } } }
+        viewModelScope.launch { prefs.dnsMode.collect { v -> set { copy(dnsMode = v) } } }
         viewModelScope.launch { prefs.cardStyle.collect { v -> set { copy(cardStyle = v) } } }
         viewModelScope.launch { prefs.barTabs.collect { v -> set { copy(barTabs = v) } } }
         viewModelScope.launch { prefs.tabOrder.collect { v -> set { copy(tabOrder = v) } } }
@@ -147,6 +155,19 @@ class SettingsViewModel @Inject constructor(
     fun setAutoResume(v: Boolean) { prefs.setAutoResume(v); toastState(if (v) "Reprise automatique activée" else "Reprise automatique désactivée") }
     fun setThemeMode(mode: Int) { prefs.setThemeMode(mode) }
     fun setGlassOverlay(v: Int) { prefs.setGlassOverlay(v) }
+    fun setGlassVariant(v: String) { prefs.setGlassVariant(v) }
+    fun setLogoTint(v: String) { prefs.setLogoTint(v); toastState(if (v == "original") "Logo original" else "Logo teinté $v") }
+    fun setFontId(v: String) { prefs.setFontId(v); toastState("Police appliquée") }
+    fun setDnsMode(v: String) {
+        prefs.setDnsMode(v)
+        toastState(
+            when (v) {
+                "system" -> "DNS système (par défaut)"
+                "cloudflare" -> "DNS Cloudflare — appliqué au prochain démarrage"
+                else -> "DNS Google — appliqué au prochain démarrage"
+            },
+        )
+    }
     /** Choisit / retire l'image de fond (URI pris en charge en dur pour survire aux redémarrages). */
     fun setBgImage(uri: String?) { prefs.setBgImage(uri); toastState(if (uri != null) "Image de fond appliquée" else "Image de fond retirée") }
     fun setBgDim(v: Int) { prefs.setBgDim(v) }

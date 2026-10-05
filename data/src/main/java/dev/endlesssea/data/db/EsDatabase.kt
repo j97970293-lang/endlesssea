@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         RepoEntity::class,
         ExtensionEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class EsDatabase : RoomDatabase() {

@@ -29,6 +29,7 @@ dependencies {
     implementation(libs.squareup.okhttp)
     implementation(libs.squareup.okhttp.logging)
     implementation(libs.squareup.okhttp.urlconnection) // JavaNetCookieJar (CAPTCHA/cookies WebView)
+    implementation(libs.squareup.okhttp.dnsoverhttps) // §9 : DNS sur HTTPS avec repli système
 
     testImplementation(libs.test.junit)
     testImplementation(libs.test.truth)

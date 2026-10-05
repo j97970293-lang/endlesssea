@@ -34,6 +34,8 @@ class SegmentEngine(private val client: OkHttpClient) {
         val contentLength: Long,      // -1 = unknown/sizeless
         val acceptRanges: Boolean,
         val etag: String?,
+        /** Content-Type annoncé (jàge anti « page HTML renvoyée à la place de la vidéo »). */
+        val contentType: String? = null,
     )
 
     suspend fun probe(url: String, headers: Map<String, String> = emptyMap()): Probe =
@@ -59,7 +61,17 @@ class SegmentEngine(private val client: OkHttpClient) {
         val ranges = total != -1L && total > 0 && (range != null || header("Accept-Ranges") == "bytes")
         val name = header("Content-Disposition")
             ?.let { Regex("filename=\"?([^\";]+)").find(it)?.groupValues?.get(1) }
-        return Probe(url, name, total, ranges, header("ETag"))
+        val type = header("Content-Type")?.lowercase()
+        // Garde critique (spec §6 « fichiers de 36 Ko ») : une page HTML à la place de la
+        // vidéo (blocage lecteur, erreur 403 stylée, anti-bot) ne doit JAMAIS aller plus loin.
+        if (type != null && (type.startsWith("text/html") || type.startsWith("application/xhtml"))) {
+            throw SourceError(
+                "Téléchargement invalide : le serveur a renvoyé une page de site au lieu d'un " +
+                    "fichier vidéo (HTTP/Content-Type=$type). Le lien a sans doute expiré ou " +
+                    "est réservé à la lecture en ligne.",
+            )
+        }
+        return Probe(url, name, total, ranges, header("ETag"), contentType = type)
     }
 
     class SourceError(msg: String) : IOException(msg)

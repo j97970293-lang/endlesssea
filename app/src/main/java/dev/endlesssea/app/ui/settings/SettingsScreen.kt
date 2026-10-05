@@ -4,6 +4,8 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -273,6 +275,83 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Variante Glass (teinte du verre)", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Domine la couleur des surfaces « verre » (barres, cartes, pilules).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = state.glassVariant == "auto",
+                            onClick = { viewModel.setGlassVariant("auto") },
+                            label = { Text("Auto") },
+                        )
+                        AppPrefs.ACCENTS.keys.forEach { name ->
+                            FilterChip(
+                                selected = state.glassVariant == name,
+                                onClick = { viewModel.setGlassVariant(name) },
+                                label = { Text(name.replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Couleur du logo / feuille de démarrage", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = state.logoTint == "original",
+                            onClick = { viewModel.setLogoTint("original") },
+                            label = { Text("Original 🌊") },
+                        )
+                        AppPrefs.ACCENTS.keys.forEach { name ->
+                            FilterChip(
+                                selected = state.logoTint == name,
+                                onClick = { viewModel.setLogoTint(name) },
+                                label = { Text(name.replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Police de l'application", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Polices téléchargées à la volée (Google Fonts) — nécessite Internet au 1er affichage.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "system" to "Système", "outfit" to "Outfit (moderne)",
+                            "rubik" to "Rubik (rond)", "lora" to "Lora (élégante)",
+                        ).forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.fontId == key,
+                                onClick = { viewModel.setFontId(key) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("Barre de navigation flottante", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Choisissez les onglets affichés",
@@ -480,6 +559,39 @@ fun SettingsScreen(
             // ------------------------------------------------------- SAUVEGARDE
             }
             item {
+                SettingCategory("🌐", "Réseau & DNS", expanded = "network" in openCategories) { toggleCategory("network") }
+            }
+            if ("network" in openCategories) {
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Résolveur DNS", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Contourne certains blocages de sources côté FAI. En cas d'échec, EndlessSea " +
+                            "retombe automatiquement sur le DNS système — jamais de coupure.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("system" to "Système", "cloudflare" to "Cloudflare (1.1.1.1)", "google" to "Google (8.8.8.8)")
+                            .forEach { (key, label) ->
+                                FilterChip(
+                                    selected = state.dnsMode == key,
+                                    onClick = { viewModel.setDnsMode(key) },
+                                    label = { Text(label) },
+                                )
+                            }
+                    }
+                    Text(
+                        "Pris en compte au prochain démarrage de l'app.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            }
+            }
+            item {
                 SettingCategory("💾", "Sauvegarde", expanded = "backup" in openCategories) { toggleCategory("backup") }
             }
             if ("backup" in openCategories) {
@@ -511,6 +623,73 @@ fun SettingsScreen(
             }
 
             // --------------------------------------------------- MISES À JOUR
+            }
+            item {
+                SettingCategory("🩺", "Diagnostic — erreurs", expanded = "diag" in openCategories) { toggleCategory("diag") }
+            }
+            if ("diag" in openCategories) {
+            item {
+                val diagTick = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+                val entries = androidx.compose.runtime.remember(diagTick.value) {
+                    dev.endlesssea.core.diag.EsLog.entries()
+                }
+                val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { diagTick.value++ }) { Text("↻ Rafraîchir") }
+                        TextButton(
+                            onClick = {
+                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(dev.endlesssea.core.diag.EsLog.export()))
+                                viewModel.toastState("Journal copié")
+                            },
+                            enabled = entries.isNotEmpty(),
+                        ) { Text("Copier") }
+                        TextButton(
+                            onClick = {
+                                runCatching {
+                                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_TEXT, dev.endlesssea.core.diag.EsLog.export())
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(send, "Exporter le journal"))
+                                }
+                            },
+                            enabled = entries.isNotEmpty(),
+                        ) { Text("Exporter") }
+                        TextButton(
+                            onClick = { dev.endlesssea.core.diag.EsLog.clear(); diagTick.value++ },
+                            enabled = entries.isNotEmpty(),
+                        ) { Text("Effacer", color = MaterialTheme.colorScheme.error) }
+                    }
+                    if (entries.isEmpty()) {
+                        Text(
+                            "Aucune erreur enregistrée depuis le lancement ✨",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                        )
+                    } else {
+                        entries.take(30).forEach { entry ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    "[${entry.category}/${entry.component}]",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(entry.message, style = MaterialTheme.typography.bodyMedium)
+                                if (entry.details.isNotBlank()) {
+                                    Text(
+                                        entry.details,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            }
             }
             item {
                 SettingCategory("🔄", "Mises à jour de l'application", expanded = "updates" in openCategories) { toggleCategory("updates") }

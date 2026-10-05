@@ -34,6 +34,11 @@ interface LibraryDao {
     fun observeFavorites(): Flow<List<LibraryEntity>>
     @Query("SELECT EXISTS(SELECT 1 FROM library WHERE mediaId = :mediaId)")
     suspend fun contains(mediaId: String): Boolean
+    @Query("SELECT * FROM library WHERE mediaId = :mediaId")
+    suspend fun byMediaId(mediaId: String): LibraryEntity?
+    /** Watchlist §29 : met à jour le statut de suivi d'un titre en bibliothèque. */
+    @Query("UPDATE library SET status = :status WHERE mediaId = :mediaId")
+    suspend fun setStatus(mediaId: String, status: String)
 }
 
 @Dao

@@ -186,6 +186,25 @@ class DownloadManager(
             val finalName = task.fileName.removeSuffix(".part")
             val finalFile = part.parentFile?.resolve(finalName) ?: File(finalName)
             part.renameTo(finalFile)
+            // Garde « 36 Ko » : une vidéo de quelques Ko au final = page d'erreur déguisée.
+            val isVideoExt = finalName.substringAfterLast('.', "").lowercase() in
+                setOf("mp4", "mkv", "ts", "avi", "webm", "mov", "m4v")
+            if (isVideoExt && finalFile.length() in 1 until 256 * 1024) {
+                val ko = finalFile.length() / 1024
+                finalFile.delete()
+                dev.endlesssea.core.diag.EsLog.e(
+                    "Download", "36KB guard",
+                    "Fichier suspect refusé: $finalName ($ko Ko)",
+                )
+                dao.updateStatus(
+                    taskId, DownloadStatus.FAILED.name,
+                    "Téléchargement invalide : $ko Ko seulement — le serveur a probablement " +
+                        "renvoyé une page d'erreur au lieu de la vidéo. Réessaie plus tard " +
+                        "ou choisis un autre serveur/qualité.",
+                )
+                notices.trySend(DownloadNotice(taskId, finalName, "Fichier suspect refusé", ok = false))
+                return
+            }
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             notices.trySend(DownloadNotice(taskId, finalName, "Téléchargement terminé", ok = true))
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -195,6 +214,7 @@ class DownloadManager(
             dao.updateStatus(taskId, DownloadStatus.FAILED.name, "integrity:${e.message}")
             notices.trySend(DownloadNotice(taskId, task.fileName, "Fichier corrompu — vérification échouée", ok = false))
         } catch (e: Exception) {
+            dev.endlesssea.core.diag.EsLog.e("Download", "runTask", "Échec de ${task.fileName}", e.message ?: e.javaClass.simpleName)
             dao.updateStatus(taskId, DownloadStatus.FAILED.name, e.message)
             notices.trySend(DownloadNotice(taskId, task.fileName, "Téléchargement interrompu : ${e.message}", ok = false))
         } finally {

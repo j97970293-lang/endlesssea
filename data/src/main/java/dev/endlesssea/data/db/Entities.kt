@@ -55,6 +55,8 @@ data class LibraryEntity(
     val addedAt: Long = System.currentTimeMillis(),
     val customGenresJson: String? = null,
     val sortOverride: String? = null,
+    /** Watchlist §29 : NONE / WISHLIST / WATCHING / COMPLETED / DROPPED. */
+    val status: String = "NONE",
 )
 
 @Entity(tableName = "watch_history", indices = [Index("updatedAt")])

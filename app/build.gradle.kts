@@ -72,6 +72,7 @@ dependencies {
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
+    implementation(libs.androidx.compose.ui.text.google.fonts)
     implementation(libs.compose.material3)
     // icons-extended : icônes riches (Explore, Extension, PlayListPlay…).
     // Le volume de classes n'est un problème que pour D8 local en mémoire restreinte ;

@@ -59,8 +59,13 @@ class MainActivity : ComponentActivity() {
 
             // Réglages « verre »/cartes → composants globaux (sans ré-injection)
             val preferredAudioLang by prefs.preferredAudioLang.collectAsState()
-            androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle, preferredAudioLang) {
-                dev.endlesssea.app.ui.components.UiTuning.update(glassOverlay, glassScrim, cardStyle)
+            val glassVariant by prefs.glassVariant.collectAsState()
+            val fontId by prefs.fontId.collectAsState()
+            androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle, preferredAudioLang, glassVariant) {
+                dev.endlesssea.app.ui.components.UiTuning.update(
+                    glassOverlay, glassScrim, cardStyle,
+                    tintArgb = if (glassVariant == "auto") null else AppPrefs.ACCENTS[glassVariant],
+                )
                 dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
             val pendingUpdate = androidx.compose.runtime.remember {
@@ -77,7 +82,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            EndlessSeaTheme(themeMode = themeMode, accentArgb = AppPrefs.ACCENTS[accentName] ?: 0xFFB9C1FF) {
+            EndlessSeaTheme(
+                themeMode = themeMode,
+                accentArgb = AppPrefs.ACCENTS[accentName] ?: 0xFFB9C1FF,
+                fontId = fontId,
+            ) {
+                // ---- Splash animé (logo qui grandit en fondu, ~800 ms) puis application
+                val logoTint by prefs.logoTint.collectAsState()
+                var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+                if (showSplash) {
+                    dev.endlesssea.app.ui.components.SplashScreen(
+                        tintArgb = dev.endlesssea.app.ui.components.logoTintArgb(logoTint),
+                    ) { showSplash = false }
+                    return@EndlessSeaTheme
+                }
                 // Boîte « nouvelle version »
                 pendingUpdate.value?.let { update ->
                     androidx.compose.material3.AlertDialog(

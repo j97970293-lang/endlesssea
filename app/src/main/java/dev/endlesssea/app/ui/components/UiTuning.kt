@@ -14,6 +14,7 @@ object UiTuning {
     private val _glassOverlay = MutableStateFlow(12)
     private val _glassScrim = MutableStateFlow(25)
     private val _cardStyle = MutableStateFlow("detail")
+    private val _glassTint = MutableStateFlow<Long?>(null)
 
     /** Opacité de la couche « verre » (%) — 0 (invisible) .. 30 (laiteux). Défaut 12. */
     val glassOverlay: StateFlow<Int> = _glassOverlay
@@ -24,9 +25,13 @@ object UiTuning {
     /** Style des cartes : "detail" (affiche + titre + badge), "poster" (affiche seule), "minimal" (sans badge). */
     val cardStyle: StateFlow<String> = _cardStyle
 
-    fun update(overlay: Int, scrim: Int, style: String) {
+    /** Variante Glass §24 : ARGB de teinte dominante du verre (null = neutre auto). */
+    val glassTint: StateFlow<Long?> = _glassTint
+
+    fun update(overlay: Int, scrim: Int, style: String, tintArgb: Long? = null) {
         _glassOverlay.value = overlay.coerceIn(0, 30)
         _glassScrim.value = scrim.coerceIn(0, 100)
         _cardStyle.value = style
+        _glassTint.value = tintArgb
     }
 }

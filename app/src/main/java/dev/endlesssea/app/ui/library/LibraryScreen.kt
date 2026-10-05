@@ -72,6 +72,19 @@ fun LibraryScreen(
                 onClick = { viewModel.setOnDeviceOnly(true) },
                 label = { Text("💾 Sur l'appareil") },
             )
+            // Watchlist §29 : filtre par statut de suivi
+            listOf(
+                "WISHLIST" to "📋 À regarder",
+                "WATCHING" to "▶ En cours",
+                "COMPLETED" to "✅ Terminés",
+                "DROPPED" to "✖ Abandonnés",
+            ).forEach { (st, label) ->
+                androidx.compose.material3.FilterChip(
+                    selected = state.filterStatus == st,
+                    onClick = { viewModel.setFilterStatus(if (state.filterStatus == st) "ALL" else st) },
+                    label = { Text(label) },
+                )
+            }
         }
         if (state.items.isEmpty()) {
             Column(

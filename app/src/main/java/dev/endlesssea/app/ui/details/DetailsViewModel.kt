@@ -29,6 +29,17 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
+/** §29 Watchlist : statuts de suivi (chaînés aux chips de la fiche + filtre bibliothèque). */
+val WATCH_STATUSES = listOf("NONE", "WISHLIST", "WATCHING", "COMPLETED", "DROPPED")
+
+fun watchStatusLabel(status: String) = when (status) {
+    "WISHLIST" -> "À regarder"
+    "WATCHING" -> "En cours"
+    "COMPLETED" -> "Terminé"
+    "DROPPED" -> "Abandonné"
+    else -> "Sans statut"
+}
+
 data class DetailsUiState(
     val loading: Boolean = true,
     val details: MediaDetails? = null,
@@ -45,6 +56,8 @@ data class DetailsUiState(
     /** « Continuer » : dernier épisode commencé sur cette fiche (historique local). */
     val resumeEpisodeId: String? = null,
     val resumeLabel: String? = null,
+    /** Statut watchlist §29 : NONE / WISHLIST / WATCHING / COMPLETED / DROPPED. */
+    val libraryStatus: String = "NONE",
 )
 
 @HiltViewModel
@@ -137,7 +150,21 @@ class DetailsViewModel @Inject constructor(
     private fun refreshLibraryFlags() = viewModelScope.launch {
         val inLib = libraryDao.contains(mediaId)
         val fav = libraryDao.observeFavorites().first().any { it.mediaId == mediaId }
-        _uiState.value = _uiState.value.copy(inLibrary = inLib, favorite = fav)
+        val status = if (inLib) libraryDao.byMediaId(mediaId)?.status ?: "NONE" else "NONE"
+        _uiState.value = _uiState.value.copy(inLibrary = inLib, favorite = fav, libraryStatus = status)
+    }
+
+    /** §29 : change le statut watchlist de la fiche (impose l'appartenance bibliothèque). */
+    fun setLibraryStatus(status: String) = viewModelScope.launch {
+        if (status !in WATCH_STATUSES) return@launch
+        if (!_uiState.value.inLibrary) {
+            libraryDao.upsert(
+                LibraryEntity(mediaId = mediaId, category = _uiState.value.details?.type?.name ?: "ANIME"),
+            )
+            _uiState.value = _uiState.value.copy(inLibrary = true)
+        }
+        libraryDao.setStatus(mediaId, status)
+        _uiState.value = _uiState.value.copy(libraryStatus = status)
     }
 
     fun toggleLibrary(category: String) = viewModelScope.launch {

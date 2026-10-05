@@ -17,8 +17,8 @@ object HttpClients {
         "EndlessSea/0.1 (Android; +https://github.com/endlesssea) OkHttp/4"
 
     /** Base builder: polite defaults reused by app + per-extension clients. */
-    fun baseBuilder(): OkHttpClient.Builder =
-        OkHttpClient.Builder()
+    fun baseBuilder(): OkHttpClient.Builder {
+        val builder = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
@@ -30,6 +30,10 @@ object HttpClients {
                         .build()
                 )
             }
+        // §9 DNS-over-HTTPS (bypass des blocages DNS côté FAI) avec replis sûrs.
+        EsNet.dns?.let { builder.dns(it) }
+        return builder
+    }
 
     /** Client with an isolated, in-memory cookie jar (one per extension at runtime). */
     fun withCookieJar(persistent: CookieManager): OkHttpClient =

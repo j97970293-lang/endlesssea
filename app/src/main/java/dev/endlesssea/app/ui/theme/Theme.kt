@@ -68,6 +68,7 @@ fun EndlessSeaTheme(
     themeMode: Int = AppPrefs.THEME_SYSTEM,
     accentArgb: Long = 0xFFB9C1FF,   // accent primaire choisi dans les réglages
     dynamicColor: Boolean = false,   // verre + AMOLED demandent la palette fixe « mer »
+    fontId: String = "system",       // police choisie dans Réglages (téléchargeable)
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -87,5 +88,60 @@ fun EndlessSeaTheme(
         primary = Color(accentArgb),
         primaryContainer = Color(accentArgb).copy(alpha = 0.22f),
     )
-    MaterialTheme(colorScheme = tinted, content = content)
+    val family = fontFamilyFor(fontId)
+    val typography = if (family == null) androidx.compose.material3.Typography()
+    else androidx.compose.material3.Typography().withFamily(family)
+    MaterialTheme(colorScheme = tinted, typography = typography, content = content)
 }
+
+// ----------------------------------------------------------------- polices §37
+@androidx.compose.ui.text.ExperimentalTextApi
+private val esFontProvider = androidx.compose.ui.text.googlefonts.GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = dev.endlesssea.app.R.array.com_google_android_gms_fonts_certs,
+)
+
+/** Famille téléchargeable (fallback Roboto silencieux si indisponible : bestEffort). */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+private fun fontFamilyFor(fontId: String): androidx.compose.ui.text.font.FontFamily? = when (fontId) {
+    "outfit" -> androidx.compose.ui.text.font.FontFamily(
+        androidx.compose.ui.text.googlefonts.Font(
+            googleFont = androidx.compose.ui.text.googlefonts.GoogleFont("Outfit"),
+            fontProvider = esFontProvider, bestEffort = true,
+        ),
+    )
+    "rubik" -> androidx.compose.ui.text.font.FontFamily(
+        androidx.compose.ui.text.googlefonts.Font(
+            googleFont = androidx.compose.ui.text.googlefonts.GoogleFont("Rubik"),
+            fontProvider = esFontProvider, bestEffort = true,
+        ),
+    )
+    "lora" -> androidx.compose.ui.text.font.FontFamily(
+        androidx.compose.ui.text.googlefonts.Font(
+            googleFont = androidx.compose.ui.text.googlefonts.GoogleFont("Lora"),
+            fontProvider = esFontProvider, bestEffort = true,
+        ),
+    )
+    else -> null
+}
+
+private fun androidx.compose.material3.Typography.withFamily(
+    f: androidx.compose.ui.text.font.FontFamily,
+) = copy(
+    displayLarge = displayLarge.copy(fontFamily = f),
+    displayMedium = displayMedium.copy(fontFamily = f),
+    displaySmall = displaySmall.copy(fontFamily = f),
+    headlineLarge = headlineLarge.copy(fontFamily = f),
+    headlineMedium = headlineMedium.copy(fontFamily = f),
+    headlineSmall = headlineSmall.copy(fontFamily = f),
+    titleLarge = titleLarge.copy(fontFamily = f),
+    titleMedium = titleMedium.copy(fontFamily = f),
+    titleSmall = titleSmall.copy(fontFamily = f),
+    bodyLarge = bodyLarge.copy(fontFamily = f),
+    bodyMedium = bodyMedium.copy(fontFamily = f),
+    bodySmall = bodySmall.copy(fontFamily = f),
+    labelLarge = labelLarge.copy(fontFamily = f),
+    labelMedium = labelMedium.copy(fontFamily = f),
+    labelSmall = labelSmall.copy(fontFamily = f),
+)

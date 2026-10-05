@@ -18,6 +18,8 @@ data class LibraryUiState(
     val items: List<SearchItemUi> = emptyList(),
     /** Filtre « Sur l'appareil » : ne garder que les titres avec un fichier téléchargé. */
     val onDeviceOnly: Boolean = false,
+    /** Filtre watchlist §29 : ALL ou un statut de suivi. */
+    val filterStatus: String = "ALL",
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -32,14 +34,18 @@ class LibraryViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState
 
-    /** Dernière liste complète (avant filtre « sur l'appareil ») pour re-filtrer sans recharger. */
+    /** Dernière liste complète (avant filtrage) pour re-filtrer sans recharger. */
     private var rawItems: List<SearchItemUi> = emptyList()
+
+    /** mediaId → statut watchlist (pour le filtre §29). */
+    private var rawStatuses: Map<String, String> = emptyMap()
 
     init {
         viewModelScope.launch {
             category.flatMapLatest { cat ->
                 if (cat == "FAV") libraryDao.observeFavorites() else libraryDao.observeByCategory(cat)
             }.collect { entries ->
+                rawStatuses = entries.associate { it.mediaId to it.status }
                 rawItems = entries.mapNotNull { entry ->
                     mediaDao.byId(entry.mediaId)?.let { media ->
                         SearchItemUi(
@@ -57,10 +63,12 @@ class LibraryViewModel @Inject constructor(
     /** Re-applique le filtre courant sur les éléments bruts. */
     private suspend fun applyFilter() {
         val onDevice = _uiState.value.onDeviceOnly
-        val shown = if (onDevice) {
+        var shown = if (onDevice) {
             val ids = downloadsDao.completedMediaIds().toSet()
             rawItems.filter { it.id in ids }
         } else rawItems
+        val st = _uiState.value.filterStatus
+        if (st != "ALL") shown = shown.filter { (rawStatuses[it.id] ?: "NONE") == st }
         _uiState.value = _uiState.value.copy(category = category.value, items = shown)
     }
 
@@ -68,6 +76,11 @@ class LibraryViewModel @Inject constructor(
 
     fun setOnDeviceOnly(v: Boolean) {
         _uiState.value = _uiState.value.copy(onDeviceOnly = v)
+        viewModelScope.launch { applyFilter() }
+    }
+
+    fun setFilterStatus(status: String) {
+        _uiState.value = _uiState.value.copy(filterStatus = status)
         viewModelScope.launch { applyFilter() }
     }
 }

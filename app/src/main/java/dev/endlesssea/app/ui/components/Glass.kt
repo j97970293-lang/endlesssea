@@ -40,14 +40,17 @@ fun Modifier.glass(
     val scale = if (dark) 1f else 3f   // le blanc ressort plus sur thème clair
     val baseHi = (overlay * scale).coerceIn(0f, 1f)
     val baseLo = (overlay * scale * 0.45f).coerceIn(0f, 1f)
+    // Variante §24 : teinte dominante (Glass Blue/Green/…) si définie — sinon blanc neutre.
+    val tintArgb = UiTuning.glassTint.collectAsState().value
+    val glow = tintArgb?.let { Color(it) } ?: Color.White
     return this
         .clip(shape)
         .background(Color.Black.copy(alpha = scrim * if (dark) 0.55f else 0.20f))
         .background(
             Brush.verticalGradient(
                 listOf(
-                    Color.White.copy(alpha = baseHi),
-                    Color.White.copy(alpha = baseLo),
+                    glow.copy(alpha = if (tintArgb != null) (baseHi * 1.4f).coerceAtMost(0.9f) else baseHi),
+                    glow.copy(alpha = baseLo),
                 ),
             ),
         )

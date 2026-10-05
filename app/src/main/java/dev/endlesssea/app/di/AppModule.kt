@@ -28,12 +28,21 @@ import javax.inject.Singleton
 object AppModule {
 
     @Provides @Singleton
-    fun provideOkHttp(): OkHttpClient = HttpClients.baseBuilder().build()
+    fun provideOkHttp(prefs: AppPrefs): OkHttpClient =
+        HttpClients.baseBuilder().build() // EsNet.dnsMode déjà synchronisé par AppPrefs
+
+    /** v1 → v2 : colonne watchlist `status` (aucune donnée perdue, migration additive). */
+    private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE library ADD COLUMN status TEXT NOT NULL DEFAULT 'NONE'")
+        }
+    }
 
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .fallbackToDestructiveMigration() // v1 scaffold; real migrations ship with v2+
+            .addMigrations(MIGRATION_1_2)
+            .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 
     @Provides fun provideMediaDao(db: EsDatabase): MediaDao = db.mediaDao()
