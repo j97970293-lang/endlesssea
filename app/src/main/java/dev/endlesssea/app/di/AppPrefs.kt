@@ -223,7 +223,40 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val logoTint: StateFlow<String> = _logoTint
     fun setLogoTint(v: String) { p.edit().putString("logo_tint", v).apply(); _logoTint.value = v }
 
-    /** §glisser-serveurs : ordre de priorité des serveurs, persistant (JSON liste). */
+    /** §bibliothèque-locale : liste des arborescences vidéo SAF (JSON list, persistée). */
+    private val _localVideoDirs = MutableStateFlow<List<String>>(loadJsonStringList("local_video_dirs"))
+    val localVideoDirs: StateFlow<List<String>> = _localVideoDirs
+    fun setLocalVideoDirs(dirs: List<String>) {
+        val json = "[\"" + dirs.joinToString("\",\"") { it.replace("\"", " ") } + "\"]"
+        p.edit().putString("local_video_dirs", json).apply()
+        _localVideoDirs.value = dirs
+    }
+
+    /** §bibliothèque-locale : métadonnées éditées par fileUri (JSON objet). */
+    fun localFileMeta(uri: String): Pair<String?, String?> {
+        val json = p.getString("local_file_meta", "{}") ?: "{}"
+        val m = Regex(java.util.regex.Pattern.quote(""" + uri + """) +
+            "\s*:\s*\[\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\]").find(json)
+        return if (m != null) {
+            val t = m.groupValues[1].takeIf { it.isNotBlank() }
+            val c = m.groupValues[2].takeIf { it.isNotBlank() }
+            t to c
+        } else null to null
+    }
+    fun setLocalFileMeta(uri: String, title: String?, coverUri: String?) {
+        val json = p.getString("local_file_meta", "{}") ?: "{}"
+        val key = """ + uri.replace(""", " ") + """
+        val entry = "$key:["${title.orEmpty().replace(""", "'")}","${coverUri.orEmpty().replace(""", "'")}"]"
+        val base = json.trim().removePrefix("{").removeSuffix("}").trim()
+        val parts = base.split(Regex(",\s*(?=")")).filterNot { it.startsWith(key + ":") }.filter { it.isNotBlank() }
+        val newBody = (parts + entry).joinToString(",")
+        p.edit().putString("local_file_meta", "{" + newBody + "}").apply()
+        _visibleLocalMetaTick.value++
+    }
+    private val _visibleLocalMetaTick = MutableStateFlow(0)
+    val localMetaTick: StateFlow<Int> = _visibleLocalMetaTick
+
+        /** §glisser-serveurs : ordre de priorité des serveurs, persistant (JSON liste). */
     private val _serverOrder = MutableStateFlow<List<String>>(loadJsonStringList("server_order"))
     val serverOrder: StateFlow<List<String>> = _serverOrder
     fun setServerOrder(order: List<String>) {

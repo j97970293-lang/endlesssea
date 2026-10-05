@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import java.io.File
 import dev.endlesssea.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -138,9 +139,9 @@ object AppUpdateInstaller {
                     val body = res.body ?: error("flux de téléchargement vide")
                     val total = body.contentLength()
                     val magic = java.io.ByteArrayOutputStream()
+                    var doneTotal = 0L
                     target.outputStream().buffered().use { out ->
                         val buf = ByteArray(65_536)
-                        var done = 0L
                         var first = true
                         while (true) {
                             val n = body.byteStream().read(buf)
@@ -150,21 +151,21 @@ object AppUpdateInstaller {
                                 magic.write(buf, 0, minOf(n, 4))
                             }
                             out.write(buf, 0, n)
-                            done += n
+                            doneTotal += n
                             if (total > 0) {
                                 UpdateDownloadState.state.value =
-                                    UpdateDl.Downloading(done.toFloat() / total, done / 1024, total / 1024)
+                                    UpdateDl.Downloading(doneTotal.toFloat() / total, doneTotal / 1024, total / 1024)
                             }
                         }
                         out.flush()
                     }
-                    if (done < 100_000) {
+                    if (doneTotal < 100_000) {
                         target.delete()
-                        error("Fichier trop petit (${done / 1024} Ko) — page d'erreur du réseau ?")
+                        error("Fichier trop petit (${doneTotal / 1024} Ko) — page d'erreur du réseau ?")
                     }
-                    if (total > 0 && done != total) {
+                    if (total > 0 && doneTotal != total) {
                         target.delete()
-                        error("Téléchargement incomplet (${done / 1024}/${total / 1024} Ko)")
+                        error("Téléchargement incomplet (${doneTotal / 1024}/${total / 1024} Ko)")
                     }
                 }
                 // ---- Validation §5 : magic bytes APK (ZIP : « PK ») + package attendu

@@ -20,7 +20,28 @@ data class LibraryUiState(
     val onDeviceOnly: Boolean = false,
     /** Filtre watchlist §29 : ALL ou un statut de suivi. */
     val filterStatus: String = "ALL",
+    /** §bibliothèque-locale : mode « fichiers vidéo locaux » actif (chip en haut). */
+    val localMode: Boolean = false,
+    /** Vidéos locales scannées sur les dossiers SAF choisis (multi-dossiers). */
+    val localFiles: List<LocalVideoUi> = emptyList(),
+    val localScanning: Boolean = false,
+    /** Tic de recomposition quand une métadonnée locale change. */
+    val localMetaTick: Int = 0,
 )
+
+/** Ligne UI d'une vidéo locale scannée (avec métadonnées éditées le cas échéant). */
+data class LocalVideoUi(
+    val uri: String,
+    val name: String,
+    val sizeBytes: Long,
+    val durationMs: Long? = null,
+    val customTitle: String? = null,
+    val customCoverUri: String? = null,
+) {
+    val displayName: String get() = customTitle ?: name
+    val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
+    val humanDuration: String get() = dev.endlesssea.app.local.LocalVideos.humanDuration(durationMs)
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -28,6 +49,8 @@ class LibraryViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val mediaDao: MediaDao,
     private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
 
     private val category = MutableStateFlow("FAV")
@@ -82,5 +105,68 @@ class LibraryViewModel @Inject constructor(
     fun setFilterStatus(status: String) {
         _uiState.value = _uiState.value.copy(filterStatus = status)
         viewModelScope.launch { applyFilter() }
+    }
+
+    /** §bibliothèque-locale : dossiers SAF choisis (pour chips + scan). */
+    val dirs = prefs.localVideoDirs
+
+    // ------------------------------------------------- vidéos locales §bibliothèque-locale
+
+    init {
+        viewModelScope.launch {
+            prefs.localVideoDirs.collect { if (_uiState.value.localMode) scanLocal() }
+        }
+        viewModelScope.launch {
+            prefs.localMetaTick.collect { tic ->
+                _uiState.value = _uiState.value.copy(localMetaTick = tic)
+            }
+        }
+    }
+
+    /** Bascule affichage fichiers locaux ↔ bibliothèque de la fiche. */
+    fun setLocalMode(mode: Boolean) {
+        _uiState.value = _uiState.value.copy(localMode = mode)
+        if (mode) scanLocal()
+    }
+
+    /** Enregistre un nouvel arbre SAF et relance le scan. */
+    fun addLocalDir(treeUri: String) {
+        val cur = prefs.localVideoDirs.value
+        if (treeUri !in cur) prefs.setLocalVideoDirs(cur + treeUri)
+        scanLocal()
+    }
+
+    fun removeLocalDir(treeUri: String) {
+        prefs.setLocalVideoDirs(prefs.localVideoDirs.value - treeUri)
+        scanLocal()
+    }
+
+    /** Scan multi-dossiers SAF — jamais sur le thread UI (DocumentFile est lent). */
+    fun scanLocal() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val dirs = prefs.localVideoDirs.value
+        _uiState.value = _uiState.value.copy(localScanning = true)
+        val files = dirs.flatMap { dev.endlesssea.app.local.LocalVideos.scan(context, it) }
+            .distinctBy { it.uri }
+            .sortedBy { it.displayName.lowercase() }
+            .map { f ->
+                val (t, c) = prefs.localFileMeta(f.uri)
+                LocalVideoUi(
+                    uri = f.uri, name = f.displayName, sizeBytes = f.sizeBytes,
+                    durationMs = dev.endlesssea.app.local.LocalVideos.durationMs(context, f.uri),
+                    customTitle = t, customCoverUri = c,
+                )
+            }
+        _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false)
+    }
+
+    /** Persistance de métadonnées locales éditées (§métadonnées-locales). */
+    fun saveLocalMeta(uri: String, title: String?, coverUri: String?) {
+        prefs.setLocalFileMeta(uri, title, coverUri)
+        // met à jour localement sans nouveau scan
+        _uiState.value = _uiState.value.copy(
+            localFiles = _uiState.value.localFiles.map {
+                if (it.uri == uri) it.copy(customTitle = title, customCoverUri = coverUri) else it
+            },
+        )
     }
 }
