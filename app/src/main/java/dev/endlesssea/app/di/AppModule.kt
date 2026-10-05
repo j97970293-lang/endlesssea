@@ -45,10 +45,18 @@ object AppModule {
         }
     }
 
+    /** v3 → v4 : métadonnées éditées sur les sources (§métadonnées-éditées). */
+    private val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE media ADD COLUMN customTitle TEXT")
+            db.execSQL("ALTER TABLE media ADD COLUMN customCoverUri TEXT")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 

@@ -37,6 +37,9 @@ data class LocalVideoUi(
     val durationMs: Long? = null,
     val customTitle: String? = null,
     val customCoverUri: String? = null,
+    val introStartSec: Int? = null,
+    val introEndSec: Int? = null,
+    val outroStartSec: Int? = null,
 ) {
     val displayName: String get() = customTitle ?: name
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
@@ -72,8 +75,10 @@ class LibraryViewModel @Inject constructor(
                 rawItems = entries.mapNotNull { entry ->
                     mediaDao.byId(entry.mediaId)?.let { media ->
                         SearchItemUi(
-                            id = media.id, title = media.title,
-                            posterUrl = media.posterUrl, bannerUrl = media.bannerUrl,
+                            id = media.id,
+                            title = media.customTitle ?: media.title,
+                            posterUrl = media.customCoverUri ?: media.posterUrl,
+                            bannerUrl = media.bannerUrl,
                             subtitle = media.type,
                         )
                     }
@@ -149,24 +154,66 @@ class LibraryViewModel @Inject constructor(
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
-                val (t, c) = prefs.localFileMeta(f.uri)
+                val m = prefs.localFileMeta(f.uri)
                 LocalVideoUi(
                     uri = f.uri, name = f.displayName, sizeBytes = f.sizeBytes,
                     durationMs = dev.endlesssea.app.local.LocalVideos.durationMs(context, f.uri),
-                    customTitle = t, customCoverUri = c,
+                    customTitle = m.title, customCoverUri = m.coverUri,
+                    introStartSec = m.introStartSec, introEndSec = m.introEndSec,
+                    outroStartSec = m.outroStartSec,
                 )
             }
         _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false)
     }
 
-    /** Persistance de métadonnées locales éditées (§métadonnées-locales). */
-    fun saveLocalMeta(uri: String, title: String?, coverUri: String?) {
-        prefs.setLocalFileMeta(uri, title, coverUri)
+    /** Persistance de métadonnées locales éditées (§métadonnées-locales + §marqueurs). */
+    fun saveLocalMeta(
+        uri: String, title: String?, coverUri: String?,
+        introStartSec: Int? = null, introEndSec: Int? = null, outroStartSec: Int? = null,
+    ) {
+        prefs.setLocalFileMeta(
+            uri,
+            dev.endlesssea.app.di.AppPrefs.LocalFileMeta(
+                title = title, coverUri = coverUri,
+                introStartSec = introStartSec, introEndSec = introEndSec,
+                outroStartSec = outroStartSec,
+            ),
+        )
         // met à jour localement sans nouveau scan
         _uiState.value = _uiState.value.copy(
             localFiles = _uiState.value.localFiles.map {
-                if (it.uri == uri) it.copy(customTitle = title, customCoverUri = coverUri) else it
+                if (it.uri == uri) {
+                    it.copy(
+                        customTitle = title, customCoverUri = coverUri,
+                        introStartSec = introStartSec, introEndSec = introEndSec,
+                        outroStartSec = outroStartSec,
+                    )
+                } else {
+                    it
+                }
             },
         )
+    }
+
+    /** §métadonnées-éditées : titre/affiche perso sur une source (téléchargée ou non). */
+    fun saveCustomMediaMeta(mediaId: String, title: String?, coverUri: String?) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            mediaDao.setCustomMeta(
+                mediaId,
+                title?.takeIf { it.isNotBlank() },
+                coverUri?.takeIf { it.isNotBlank() },
+            )
+            rawItems = rawItems.map {
+                if (it.id == mediaId) {
+                    it.copy(
+                        title = title?.takeIf { t -> t.isNotBlank() } ?: it.title,
+                        posterUrl = coverUri?.takeIf { c -> c.isNotBlank() } ?: it.posterUrl,
+                    )
+                } else {
+                    it
+                }
+            }
+            applyFilter()
+        }
     }
 }

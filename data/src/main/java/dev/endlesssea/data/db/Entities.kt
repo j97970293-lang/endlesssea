@@ -27,6 +27,10 @@ data class MediaEntity(
     val episodeCount: Int? = null,
     val durationMin: Int? = null,
     val externalIdsJson: String = "{}",
+    /** §métadonnées-éditées : titre perso (prioritaire sur title si non nul). */
+    val customTitle: String? = null,
+    /** §métadonnées-éditées : affiche perso (URL ou content://). */
+    val customCoverUri: String? = null,
     val cachedAt: Long = System.currentTimeMillis(),
 )
 

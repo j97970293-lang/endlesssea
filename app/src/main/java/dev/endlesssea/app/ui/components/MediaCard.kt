@@ -1,7 +1,8 @@
 package dev.endlesssea.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,10 +31,14 @@ import dev.endlesssea.app.ui.search.SearchItemUi
 
 /** Affiche 2:3 à grand rayon + badge (année/type) — inspiration Anymex, styles réglables. */
 @Composable
-fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val style by UiTuning.cardStyle.collectAsState()
     Column(
-        modifier = Modifier.width(130.dp).clickable(onClick = onClick),
+        modifier = Modifier.width(130.dp).combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick,
+        ),
     ) {
         Box(
             Modifier.fillMaxWidth().height(185.dp)

@@ -179,6 +179,40 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 },
         )
 
+        // ---- §marqueurs intro/outro : bouton « Passer » dans les plages éditées (vidéos locales)
+        run {
+            val markers = remember { PlayerLaunchStore.lastMarkers }
+            if (markers.hasAny) {
+                val posSec = state.positionMs / 1000
+                val introStart = markers.introStartSec
+                val introEnd = markers.introEndSec
+                val inIntro = introStart != null && introEnd != null && posSec >= introStart && posSec < introEnd
+                val outroFrom = markers.outroStartSec
+                val inOutro = outroFrom != null && posSec >= outroFrom &&
+                    state.durationMs - state.positionMs > 5_000
+                if (inIntro || inOutro) {
+                    val targetMs = if (inIntro) (introEnd ?: 0) * 1000L else state.durationMs
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 64.dp, end = 14.dp)
+                            .clickable {
+                                viewModel.engine.player.seekTo(targetMs.coerceAtMost(state.durationMs))
+                            }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.92f),
+                    ) {
+                        Text(
+                            if (inIntro) "Passer l'intro ⏭" else "Passer le générique ⏭",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+        }
+
         // Retour visuel du saut (double appui)
         state.skipFlash?.let { flash ->
             Box(

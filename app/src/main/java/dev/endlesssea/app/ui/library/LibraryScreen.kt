@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.ui.components.MediaCard
+import dev.endlesssea.app.ui.search.SearchItemUi
 
 // Onglet → catégorie de stockage (identifiants MediaType de l'API extensions)
 val LIBRARY_TABS = listOf(
@@ -52,6 +53,10 @@ fun LibraryScreen(
 ) {
     var tab by remember { mutableIntStateOf(0) }
     val state by viewModel.uiState.collectAsState()
+    /** §métadonnées-éditées : fiche en cours d'édition (appui long dans la grille). */
+    var editMediaMeta by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<SearchItemUi?>(null)
+    }
 
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
@@ -133,9 +138,65 @@ fun LibraryScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(state.items, key = { it.id }) { item ->
-                    MediaCard(item = item, onClick = { onMediaClick(item.id) })
+                    MediaCard(
+                        item = item,
+                        onClick = { onMediaClick(item.id) },
+                        onLongClick = { editMediaMeta = item },
+                    )
                 }
             }
+        }
+
+        // ---- §métadonnées-éditées : appui long sur une carte de bibliothèque
+        editMediaMeta?.let { mediaItem ->
+            var editedTitle by androidx.compose.runtime.remember(mediaItem.id) {
+                androidx.compose.runtime.mutableStateOf(mediaItem.title)
+            }
+            var editedCover by androidx.compose.runtime.remember(mediaItem.id) {
+                androidx.compose.runtime.mutableStateOf(mediaItem.posterUrl ?: "")
+            }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { editMediaMeta = null },
+                confirmButton = {
+                    androidx.compose.material3.Button(onClick = {
+                        viewModel.saveCustomMediaMeta(
+                            mediaItem.id,
+                            editedTitle.takeIf { it.isNotBlank() }?.takeIf { it != mediaItem.title },
+                            editedCover.takeIf { it.isNotBlank() }?.takeIf { it != mediaItem.posterUrl },
+                        )
+                        editMediaMeta = null
+                    }) { Text("Enregistrer") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { editMediaMeta = null }) {
+                        Text("Annuler")
+                    }
+                },
+                title = { Text("Titre et affiche perso") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            mediaItem.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        androidx.compose.material3.OutlinedTextField(
+                            value = editedTitle, onValueChange = { editedTitle = it },
+                            label = { Text("Titre affiché") }, singleLine = true,
+                        )
+                        androidx.compose.material3.OutlinedTextField(
+                            value = editedCover, onValueChange = { editedCover = it },
+                            label = { Text("Affiche (URL ou content://)") }, singleLine = true,
+                        )
+                        Text(
+                            "S’applique aussi aux vidéos téléchargées depuis l'app. " +
+                                "Vide les champs et enregistre pour restaurer les informations de la source.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+            )
         }
     }
 }
@@ -278,6 +339,11 @@ private fun LocalFilesPanel(
                                         ),
                                     ),
                                     startIndex = 0,
+                                    markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
+                                        introStartSec = video.introStartSec,
+                                        introEndSec = video.introEndSec,
+                                        outroStartSec = video.outroStartSec,
+                                    ),
                                 )
                                 context.startActivity(
                                     android.content.Intent(context, dev.endlesssea.app.ui.player.PlayerActivity::class.java),
@@ -297,6 +363,15 @@ private fun LocalFilesPanel(
             var cover by androidx.compose.runtime.remember(video.uri) {
                 androidx.compose.runtime.mutableStateOf(video.customCoverUri ?: "")
             }
+            var introStart by androidx.compose.runtime.remember(video.uri) {
+                androidx.compose.runtime.mutableStateOf(video.introStartSec?.toString() ?: "")
+            }
+            var introEnd by androidx.compose.runtime.remember(video.uri) {
+                androidx.compose.runtime.mutableStateOf(video.introEndSec?.toString() ?: "")
+            }
+            var outroStart by androidx.compose.runtime.remember(video.uri) {
+                androidx.compose.runtime.mutableStateOf(video.outroStartSec?.toString() ?: "")
+            }
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { editMeta = null },
                 confirmButton = {
@@ -305,6 +380,9 @@ private fun LocalFilesPanel(
                             video.uri,
                             title.takeIf { it.isNotBlank() },
                             cover.takeIf { it.isNotBlank() },
+                            introStart.toIntOrNull(),
+                            introEnd.toIntOrNull(),
+                            outroStart.toIntOrNull(),
                         )
                         editMeta = null
                     }) { Text("Enregistrer") }
@@ -327,6 +405,32 @@ private fun LocalFilesPanel(
                         androidx.compose.material3.OutlinedTextField(
                             value = cover, onValueChange = { cover = it },
                             label = { Text("Affiche (URL ou content://)") }, singleLine = true,
+                        )
+                        // §marqueurs intro/outro (secondes)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = introStart,
+                                onValueChange = { v -> introStart = v.filter(Char::isDigit).take(5) },
+                                label = { Text("Intro déb. (s)") }, singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            androidx.compose.material3.OutlinedTextField(
+                                value = introEnd,
+                                onValueChange = { v -> introEnd = v.filter(Char::isDigit).take(5) },
+                                label = { Text("Intro fin (s)") }, singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        androidx.compose.material3.OutlinedTextField(
+                            value = outroStart,
+                            onValueChange = { v -> outroStart = v.filter(Char::isDigit).take(5) },
+                            label = { Text("Générique de fin — début (s)") }, singleLine = true,
+                        )
+                        Text(
+                            "Pendant la lecture, un bouton « Passer » apparaîtra dans ces plages. " +
+                                "Laisse les champs vides pour ne rien afficher.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
                             "Laisse vide pour revenir aux informations du fichier. " +

@@ -232,41 +232,56 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         _localVideoDirs.value = dirs
     }
 
-    /** §bibliothèque-locale : métadonnées éditées par fileUri (JSON objet). */
-    fun localFileMeta(uri: String): Pair<String?, String?> {
+    /**
+     * §bibliothèque-locale : métadonnées éditées par fileUri (JSON objet).
+     * Tableau de 5 champs : [titre, affiche, débutIntro(s), finIntro(s), débutOutro(s)].
+     * Les anciens objets à 2 champs restent lisibles (champs manquants = null).
+     */
+    data class LocalFileMeta(
+        val title: String? = null,
+        val coverUri: String? = null,
+        val introStartSec: Int? = null,
+        val introEndSec: Int? = null,
+        val outroStartSec: Int? = null,
+    )
+
+    fun localFileMeta(uri: String): LocalFileMeta {
         val q = "\""
         val json = p.getString("local_file_meta", "{}") ?: "{}"
-        val m = Regex(
-            java.util.regex.Pattern.quote(q + uri + q) +
-                """\s*:\s*\[\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\]""",
-        ).find(json)
-        return if (m != null) {
-            val t = m.groupValues[1].takeIf { it.isNotBlank() }
-            val c = m.groupValues[2].takeIf { it.isNotBlank() }
-            t to c
-        } else {
-            null to null
-        }
+        val entry = Regex(
+            java.util.regex.Pattern.quote(q + uri + q) + """\s*:\s*\[[^\]]*\]""",
+        ).find(json)?.value ?: return LocalFileMeta()
+        val fields = Regex("\"([^\"]*)\"").findAll(entry).map { it.groupValues[1] }.toList()
+        fun str(i: Int) = fields.getOrNull(i)?.takeIf { it.isNotBlank() }
+        fun sec(i: Int) = fields.getOrNull(i)?.toIntOrNull()
+        return LocalFileMeta(str(0), str(1), sec(2), sec(3), sec(4))
     }
-    fun setLocalFileMeta(uri: String, title: String?, coverUri: String?) {
+
+    fun setLocalFileMeta(uri: String, meta: LocalFileMeta) {
         val q = "\""
         val json = p.getString("local_file_meta", "{}") ?: "{}"
         val key = q + uri.replace(q, " ") + q
-        val safeTitle = title.orEmpty().replace(q, "'")
-        val safeCover = coverUri.orEmpty().replace(q, "'")
-        val entry = key + ":[" + q + safeTitle + q + "," + q + safeCover + q + "]"
+        fun f(v: Any?) = (v?.toString() ?: "").replace(q, "'").replace(",", " ")
+        val entry = key + ":[" +
+            listOf(f(meta.title), f(meta.coverUri), f(meta.introStartSec), f(meta.introEndSec), f(meta.outroStartSec))
+                .joinToString(",") { q + it + q } +
+            "]"
+        val keyPattern = Regex(java.util.regex.Pattern.quote(key) + """\s*:\s*\[[^\]]*\]""")
         val base = json.trim().removePrefix("{").removeSuffix("}").trim()
-        val parts = if (base.isBlank()) {
-            emptyList()
-        } else {
-            base.split(Regex(""",\s*(?=")"""))
-                .filterNot { it.startsWith(key + ":") }
-                .filter { it.isNotBlank() }
+        val body = when {
+            keyPattern.containsMatchIn(base) ->
+                keyPattern.replace(base, java.util.regex.Matcher.quoteReplacement(entry))
+            base.isBlank() -> entry
+            else -> base + "," + entry
         }
-        val newBody = (parts + entry).joinToString(",")
-        p.edit().putString("local_file_meta", "{" + newBody + "}").apply()
+        p.edit().putString("local_file_meta", "{" + body + "}").apply()
         _visibleLocalMetaTick.value++
     }
+
+    /** Nouvelle signature (tableaux) — compatibilité binaire non requise (usage interne). */
+    fun setLocalFileMeta(uri: String, title: String?, coverUri: String?) =
+        setLocalFileMeta(uri, LocalFileMeta(title = title, coverUri = coverUri))
+
     private val _visibleLocalMetaTick = MutableStateFlow(0)
     val localMetaTick: StateFlow<Int> = _visibleLocalMetaTick
 

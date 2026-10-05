@@ -15,6 +15,10 @@ interface MediaDao {
     fun searchLocal(key: String, limit: Int = 50): Flow<List<MediaEntity>>
     @Query("SELECT * FROM media ORDER BY cachedAt DESC LIMIT :limit")
     fun recent(limit: Int = 20): Flow<List<MediaEntity>>
+
+    /** §métadonnées-éditées : écrase le titre/affiche perso d'une source téléchargée. */
+    @Query("UPDATE media SET customTitle = :title, customCoverUri = :coverUri WHERE id = :id")
+    suspend fun setCustomMeta(id: String, title: String?, coverUri: String?)
 }
 
 @Dao
