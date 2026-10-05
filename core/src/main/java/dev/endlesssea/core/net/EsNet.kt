@@ -39,9 +39,10 @@ object EsNet {
             .resolvePrivateAddresses(false)
             .build()
         // Repli : si DoH échoue → DNS système. Jamais de connexion cassée.
-        return Dns { hostname ->
-            runCatching { doh.lookup(hostname) }
-                .getOrElse { Dns.SYSTEM.lookup(hostname) }
+        return object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> =
+                runCatching { doh.lookup(hostname) }
+                    .getOrElse { Dns.SYSTEM.lookup(hostname) }
         }
     }
 }
