@@ -102,6 +102,8 @@ fun DetailsScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var downloadSheetEpisode by remember { mutableStateOf<Episode?>(null) }
+    // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
+    var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
     var synopsisExpanded by remember { mutableStateOf(false) }
 
@@ -316,7 +318,7 @@ fun DetailsScreen(
                             }
                         if (state.episodes.size > 1) {
                             OutlinedButton(
-                                onClick = { viewModel.enqueueAll() },
+                                onClick = { serverOrderDialog = true },
                                 enabled = !state.batchRunning,
                                 modifier = Modifier.weight(1.4f),
                             ) {

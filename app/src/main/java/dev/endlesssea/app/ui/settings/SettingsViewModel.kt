@@ -290,7 +290,7 @@ class SettingsViewModel @Inject constructor(
 
     /** §5 : démarre le téléchargement in-app avec dialogue de progression. */
     fun startUpdate(context: android.content.Context) {
-        val info = state.value.availableUpdate ?: return
+        val info = _uiState.value.availableUpdate ?: return
         set { copy(availableUpdate = null, lastFailedUpdate = info) }
         viewModelScope.launch { updateChecker.downloadUpdate(context, info) }
     }
