@@ -502,7 +502,7 @@ fun DetailsScreen(
                         }
                     }
                 }
-            } else if (state.details != null) {
+                if (state.episodes.isEmpty() && state.details != null) {
                     item {
                         Text(
                             "Cette source ne liste aucun épisode — ouverture du lien direct.",
@@ -783,7 +783,6 @@ fun DetailsScreen(
         LaunchedEffect(episode.id) {
             if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
         }
-    }
     }
 }
 
