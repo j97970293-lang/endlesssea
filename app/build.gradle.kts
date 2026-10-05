@@ -89,6 +89,7 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.workmanager.ktx)
+    implementation(libs.androidx.documentfile)
 
     implementation(libs.dagger.hilt.android)
     ksp(libs.dagger.hilt.compiler)
