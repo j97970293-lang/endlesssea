@@ -40,6 +40,14 @@ fun watchStatusLabel(status: String) = when (status) {
     else -> "Sans statut"
 }
 
+/** Ligne « Sur l'appareil » §hors-ligne : fichier téléchargé disponible sur cette fiche. */
+data class DeviceFileUi(
+    val id: String,
+    val label: String,
+    val sizeBytes: Long,
+    val targetUri: String,
+)
+
 data class DetailsUiState(
     val loading: Boolean = true,
     val details: MediaDetails? = null,
@@ -58,6 +66,8 @@ data class DetailsUiState(
     val resumeLabel: String? = null,
     /** Statut watchlist §29 : NONE / WISHLIST / WATCHING / COMPLETED / DROPPED. */
     val libraryStatus: String = "NONE",
+    /** §hors-ligne : fichiers présents sur l'appareil pour cette fiche. */
+    val deviceFiles: List<DeviceFileUi> = emptyList(),
 )
 
 @HiltViewModel
@@ -69,6 +79,7 @@ class DetailsViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val downloads: DownloadEngine,
+    private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -90,15 +101,24 @@ class DetailsViewModel @Inject constructor(
 
     fun load() = viewModelScope.launch {
         _uiState.value = _uiState.value.copy(loading = true, error = null)
-        // §transition-fiche : contenu local AFFICHÉ TOUT DE SUITE (titre, affiche — même les
-        // épisodes si déjà vus) puis la source rafraîchit par-dessus. Transition « dedans »
-        // instantanée, plus de page blanche qui attend le réseau.
+        // §transition-fiche : contenu local AFFICHÉ TOUT DE SUITE (titre, affiche, épisodes
+        // déjà vus, fichiers sur l'appareil) puis la source rafraîchit par-dessus.
         mediaDao.byId(mediaId)?.let { cached ->
             if (_uiState.value.details == null) {
                 _uiState.value = _uiState.value.copy(details = cached.toDetails())
                 refreshLibraryFlags()
             }
         }
+        // §hors-ligne : épisodes déjà en cache Room (la fiche n'apparaît jamais vide hors-ligne)
+        if (_uiState.value.episodes.isEmpty()) {
+            val cachedEpisodes = episodeDao.ofMedia(mediaId).first()
+            if (cachedEpisodes.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    episodes = cachedEpisodes.map { it.toEpisode() },
+                )
+            }
+        }
+        refreshDeviceFiles()
         val remote = runCatching {
             val ext = registry.instance(extensionId)
             ext.load(mediaKey)
@@ -111,6 +131,7 @@ class DetailsViewModel @Inject constructor(
             )
             refreshLibraryFlags()
             refreshResume()
+            refreshDeviceFiles()
         }
         remote.onFailure { e ->
             // Repli sur le cache local (hors-ligne)
@@ -137,6 +158,47 @@ class DetailsViewModel @Inject constructor(
             season.episodes.map { it.toEntity(mediaId) }
         }
         if (episodes.isNotEmpty()) episodeDao.upsertAll(episodes)
+    }
+
+    /** §hors-ligne : fichiers téléchargés affichés sur la fiche (lisibles sans réseau). */
+    fun refreshDeviceFiles() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val list = downloadsDao.completedForMedia(mediaId).map { t ->
+            DeviceFileUi(
+                id = t.id,
+                label = listOfNotNull(
+                    t.fileName.removeSuffix(".part").take(60),
+                    if (t.totalBytes > 0) formatBytes(t.totalBytes) else null,
+                ).joinToString(" · "),
+                sizeBytes = t.totalBytes,
+                targetUri = t.targetUri,
+            )
+        }
+        _uiState.value = _uiState.value.copy(deviceFiles = list)
+    }
+
+    /** §deplacer-téléchargement : lecture d'un fichier local (SAF supporté). */
+    fun playDeviceFile(f: DeviceFileUi, onReady: () -> Unit) {
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
+            title = f.label.substringBefore(" · "),
+            mediaId = mediaId, episodeId = f.id,
+            links = listOf(
+                dev.endlesssea.extensions.api.model.VideoLink(
+                    url = f.targetUri,
+                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+                    server = "Sur l'appareil",
+                ),
+            ),
+            startIndex = 0,
+        )
+        onReady()
+    }
+
+    private fun formatBytes(b: Long): String = when {
+        b >= 1L shl 30 -> "%.1f Go".format(b.toDouble() / (1L shl 30))
+        b >= 1L shl 20 -> "%.1f Mo".format(b.toDouble() / (1L shl 20))
+        b >= 1L shl 10 -> "%.1f Ko".format(b.toDouble() / (1L shl 10))
+        else -> "$b o"
     }
 
     /** Met à jour l'état « Continuer » depuis l'historique local de cette fiche. */
@@ -400,6 +462,12 @@ class DetailsViewModel @Inject constructor(
     private fun Episode.toEntity(parentMediaId: String) = EpisodeEntity(
         id = id, mediaId = parentMediaId, season = season, number = number,
         title = title, thumbnailUrl = thumbnailUrl, durationMs = durationMs, data = data,
+    )
+
+    /** §hors-ligne : re-hydrate un épisode de la base (affichage sans la source). */
+    private fun EpisodeEntity.toEpisode() = Episode(
+        id = id, number = number, season = season, title = title,
+        thumbnailUrl = thumbnailUrl, durationMs = durationMs, data = data,
     )
 
     private fun MediaEntity.toDetails() = MediaDetails(

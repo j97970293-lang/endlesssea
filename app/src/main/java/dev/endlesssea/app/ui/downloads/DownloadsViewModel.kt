@@ -30,6 +30,8 @@ enum class DownloadSort(val label: String) {
 data class DownloadsUiState(
     /** Rangées déjà filtrées + triées pour l'affichage. */
     val rows: List<DownloadRowUi> = emptyList(),
+    /** Message d'action (export/déplacement, erreur ou confirmation). */
+    val notice: String? = null,
     val filter: DownloadFilter = DownloadFilter.TOUS,
     val sort: DownloadSort = DownloadSort.DATE,
     val ascending: Boolean = false,
@@ -44,6 +46,7 @@ data class DownloadsUiState(
 class DownloadsViewModel @Inject constructor(
     private val dao: DownloadsDao,
     private val engine: DownloadEngine,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
 
     /** Dernier instantané brut (avant filtre/tri) pour re-appliquer la vue sans perdre de lignes. */
@@ -78,6 +81,7 @@ class DownloadsViewModel @Inject constructor(
                             error = t.error,
                             createdAt = t.createdAt,
                             totalBytes = t.totalBytes,
+                            targetUri = t.targetUri,
                         )
                     }
                     applyView(rawRows)
@@ -120,6 +124,66 @@ class DownloadsViewModel @Inject constructor(
     fun toggleOrder() {
         _uiState.value = _uiState.value.copy(ascending = !_uiState.value.ascending)
         applyView(rawRows)
+    }
+
+    fun clearNotice() { _uiState.value = _uiState.value.copy(notice = null) }
+
+    /** §retrouver-téléchargements : lecture directe d'un fichier terminé (file:// ou SAF). */
+    fun play(id: String, onReady: () -> Unit) = viewModelScope.launch {
+        val task = dao.byId(id) ?: return@launch
+        if (task.status != DownloadStatus.COMPLETED.name) return@launch
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
+            title = task.fileName.removeSuffix(".part"),
+            mediaId = task.mediaId, episodeId = task.episodeId ?: id,
+            links = listOf(
+                dev.endlesssea.extensions.api.model.VideoLink(
+                    url = task.targetUri,
+                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+                    server = "Téléchargé",
+                ),
+            ),
+            startIndex = 0,
+        )
+        onReady()
+    }
+
+    /** §deplacer-téléchargement : copie vers un répertoire SAF (carte SD incluse) puis
+     * réoriente la tâche vers la nouvelle URI et supprime l'original local. */
+    fun exportToTree(id: String, treeUri: String) = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val task = dao.byId(id) ?: return@launch
+        if (task.status != DownloadStatus.COMPLETED.name) return@launch
+        val resolver = context.contentResolver
+        val u = android.net.Uri.parse(task.targetUri)
+        val srcFile = if (u.scheme == null || u.scheme == "file") {
+            java.io.File(u.path ?: task.targetUri.removePrefix("file://"))
+        } else {
+            null
+        }
+        val mime = when {
+            task.fileName.endsWith(".mkv", true) -> "video/x-matroska"
+            task.fileName.endsWith(".webm", true) -> "video/webm"
+            else -> "video/mp4"
+        }
+        val displayName = task.fileName.removeSuffix(".part")
+        val result = runCatching {
+            val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(
+                context, android.net.Uri.parse(treeUri),
+            ) ?: error("Dossier illisible")
+            val doc = tree.createFile(mime, displayName) ?: error("Création du fichier impossible")
+            resolver.openOutputStream(doc.uri, "rwt")?.use { out ->
+                if (srcFile != null) {
+                    srcFile.inputStream().use { it.copyTo(out) }
+                } else {
+                    resolver.openInputStream(u)?.use { it.copyTo(out) } ?: error("Source introuvable")
+                }
+            } ?: error("Ouverture de la destination impossible")
+            val folder = tree.name ?: "dossier choisi"
+            dao.setTarget(id, doc.uri.toString(), "$folder/$displayName")
+            runCatching { srcFile?.delete() }
+            "Déplacé vers « $folder » — visible dans vos dossiers."
+        }
+        _uiState.value = _uiState.value.copy(notice = result.getOrElse { "Déplacement impossible : ${it.message}" })
     }
 
     fun pause(id: String) = viewModelScope.launch { engine.pause(id) }

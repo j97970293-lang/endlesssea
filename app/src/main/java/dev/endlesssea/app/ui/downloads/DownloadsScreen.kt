@@ -42,6 +42,31 @@ fun DownloadsScreen(
     viewModel: DownloadsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    /** §deplacer-téléchargement : id de la tâche en cours de déplacement SAF. */
+    var exportTargetId by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val treeLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        uri?.let { u ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    u,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            exportTargetId?.let { viewModel.exportToTree(it, u.toString()) }
+            exportTargetId = null
+        }
+    }
+    // §retrouver-téléchargements : confirmations/erreurs (toast simple)
+    androidx.compose.runtime.LaunchedEffect(state.notice) {
+        state.notice?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+            viewModel.clearNotice()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         // ---- Filtres par statut
@@ -120,6 +145,17 @@ fun DownloadsScreen(
                     onCancel = { viewModel.cancel(task.id) },
                     onMoveUp = { viewModel.reorder(task.id, up = true) },
                     onMoveDown = { viewModel.reorder(task.id, up = false) },
+                    onPlay = {
+                        viewModel.play(task.id) {
+                            context.startActivity(
+                                android.content.Intent(
+                                    context,
+                                    dev.endlesssea.app.ui.player.PlayerActivity::class.java,
+                                ),
+                            )
+                        }
+                    },
+                    onMove = { exportTargetId = task.id; treeLauncher.launch(null) },
                 )
             }
         }
@@ -134,6 +170,8 @@ private fun DownloadCard(
     onCancel: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
+    onPlay: () -> Unit = {},
+    onMove: () -> Unit = {},
 ) {
     // Conteneur « verre » (liquid glass sur toutes les surfaces, pas seulement les boutons)
     Column(
@@ -175,6 +213,20 @@ private fun DownloadCard(
                         IconButton(onClick = onResume) {
                             Icon(Icons.Filled.Refresh, "Réessayer", tint = MaterialTheme.colorScheme.error)
                         }
+                    DownloadStatus.COMPLETED.name -> {
+                        IconButton(onClick = onPlay) {
+                            Icon(
+                                Icons.Filled.PlayArrow, "Lire le fichier",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        IconButton(onClick = onMove) {
+                            Icon(
+                                Icons.Filled.DriveFileMove, "Déplacer dans un dossier (carte SD…)",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     else -> {}
                 }
                 IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, "Annuler") }
@@ -219,4 +271,6 @@ data class DownloadRowUi(
     val error: String?,
     val createdAt: Long = 0,
     val totalBytes: Long = 0,
+    /** Cible actuelle (file:// ou SAF content://) — lecture & « Déplacer ». */
+    val targetUri: String = "",
 )

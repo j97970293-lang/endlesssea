@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -104,6 +105,10 @@ fun DetailsScreen(
     var downloadSheetEpisode by remember { mutableStateOf<Episode?>(null) }
     /** §fiche-serveurs : épisode dont le panneau « serveurs de lecture » est ouvert. */
     var playSheetEpisode by remember { mutableStateOf<Episode?>(null) }
+    /** §telecharge-tout-sélect : dialogue de sélection d'épisodes (après le tri serveurs). */
+    var batchSelectDialog by remember { mutableStateOf(false) }
+    /** Priorité de serveurs choisie dans l'étape 1 du « Tout télécharger ». */
+    var batchPriority by remember { mutableStateOf<List<String>?>(null) }
     // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
@@ -461,7 +466,43 @@ fun DetailsScreen(
                             onDownload = { downloadSheetEpisode = episode },
                         )
                     }
-                } else if (state.details != null) {
+                }
+
+                // ---- §hors-ligne : « Sur l'appareil » — fichiers téléchargés de cette fiche
+                if (state.deviceFiles.isNotEmpty()) {
+                    item {
+                        Text(
+                            "📥 Sur l'appareil",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                    }
+                    items(state.deviceFiles, key = { "dev_" + it.id }) { f ->
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            cornerRadius = 14.dp,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                horizontal = 12.dp, vertical = 10.dp,
+                            ),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("💾", style = MaterialTheme.typography.titleLarge)
+                                Spacer(Modifier.width(10.dp))
+                                dev.endlesssea.app.ui.components.ExpandableText(
+                                    text = f.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    dialogTitle = "Fichier sur l'appareil",
+                                    modifier = Modifier.weight(1f),
+                                )
+                                androidx.compose.material3.Button(onClick = {
+                                    viewModel.playDeviceFile(f, launchPlayer())
+                                }) { Text("Lire") }
+                            }
+                        }
+                    }
+                }
+            } else if (state.details != null) {
                     item {
                         Text(
                             "Cette source ne liste aucun épisode — ouverture du lien direct.",
@@ -506,9 +547,11 @@ fun DetailsScreen(
                 Button(onClick = {
                     val active = ordered.filter { it !in inactive }
                     viewModel.saveServerOrder(ordered)
-                    viewModel.enqueueAll(serverPriority = active)
+                    // §telecharge-tout-sélect : étape 2 — choix des épisodes
+                    batchPriority = active
+                    batchSelectDialog = true
                     serverOrderDialog = false
-                }) { Text("Télécharger") }
+                }) { Text("Choisir les épisodes →") }
             },
             dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
             title = { Text("Serveurs & priorité") },
@@ -628,6 +671,66 @@ fun DetailsScreen(
         }
     }
 
+    // ---- §telecharge-tout-sélect : choix des épisodes avant « Tout télécharger »
+    if (batchSelectDialog) {
+        val selected = remember { mutableStateMapOf<String, Boolean>().apply {
+            state.episodes.forEach { put(it.id, true) }
+        } }
+        AlertDialog(
+            onDismissRequest = { batchSelectDialog = false },
+            confirmButton = {
+                androidx.compose.material3.Button(onClick = {
+                    val picked = state.episodes.filter { selected[it.id] == true }
+                    batchSelectDialog = false
+                    if (picked.isNotEmpty()) {
+                        val sp = batchPriority
+                        if (sp != null) viewModel.enqueueAll(picked, serverPriority = sp)
+                        else viewModel.enqueueAll(picked)
+                    }
+                    batchPriority = null
+                }) { Text("Télécharger (${selected.count { it.value }})") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        state.episodes.forEach { selected[it.id] = true }
+                    }) { Text("Tous") }
+                    TextButton(onClick = {
+                        state.episodes.forEach { selected[it.id] = false }
+                    }) { Text("Aucun") }
+                    TextButton(onClick = { batchSelectDialog = false }) { Text("Annuler") }
+                }
+            },
+            title = { Text("Tout télécharger — épisodes") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                ) {
+                    state.episodes.forEach { ep ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                selected[ep.id] = selected[ep.id] != true
+                            },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.Checkbox(
+                                checked = selected[ep.id] == true,
+                                onCheckedChange = { selected[ep.id] = it == true },
+                            )
+                            dev.endlesssea.app.ui.components.ExpandableText(
+                                text = ep.title ?: "Épisode ${ep.number.toInt()}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                dialogTitle = "Épisode",
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+    }
+
     downloadSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
         ModalBottomSheet(onDismissRequest = { downloadSheetEpisode = null }) {
@@ -680,6 +783,7 @@ fun DetailsScreen(
         LaunchedEffect(episode.id) {
             if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
         }
+    }
     }
 }
 

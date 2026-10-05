@@ -75,6 +75,12 @@ interface DownloadsDao {
     @Query("SELECT EXISTS(SELECT 1 FROM download_tasks WHERE episodeId = :episodeId AND quality = :quality AND status = 'COMPLETED')")
     suspend fun alreadyDownloaded(episodeId: String, quality: String): Boolean
     @Query("UPDATE download_tasks SET priority = :p WHERE id = :id") suspend fun setPriority(id: String, p: Int)
+    /** §hors-ligne : fichiers téléchargés d'un média (fiche « Sur l'appareil »). */
+    @Query("SELECT * FROM download_tasks WHERE mediaId = :mediaId AND status = 'COMPLETED'")
+    suspend fun completedForMedia(mediaId: String): List<DownloadTaskEntity>
+    /** §deplacer-téléchargement : réoriente une tâche vers un nouveau targetUri (carte SD…). */
+    @Query("UPDATE download_tasks SET targetUri = :targetUri, displayPath = :displayPath, updatedAt = :at WHERE id = :id")
+    suspend fun setTarget(id: String, targetUri: String, displayPath: String, at: Long = System.currentTimeMillis())
     @Query("DELETE FROM download_tasks WHERE id = :id") suspend fun delete(id: String)
 
     @Upsert suspend fun upsertSegments(segments: List<DownloadSegmentEntity>)
