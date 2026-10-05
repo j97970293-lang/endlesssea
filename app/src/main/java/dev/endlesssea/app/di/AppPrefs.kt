@@ -27,10 +27,25 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "amethyste" to 0xFF5B3E8CL,
             "ambre"     to 0xFF9C5B12L,
             "ardoise"   to 0xFF3C4B5CL,
+            // §couleurs : palette étendue (teintes profondes — lisibilité préservée)
+            "saphir"    to 0xFF21407BL,
+            "lagune"    to 0xFF0F6E78L,
+            "fuchsia"   to 0xFF7A2563L,
+            "bordeaux"  to 0xFF6B1F31L,
+            "foret"     to 0xFF1B4A33L,
+            "miel"      to 0xFF7A5318L,
+            "prune"     to 0xFF4E376CL,
+            "nuit"      to 0xFF25314EL,
+            "peche"     to 0xFF8A4A2EL,
+            "chartreuse" to 0xFF4E6116L,
         )
         val GLASS_VARIANT_LABELS = mapOf(
             "ocean" to "Océan", "emeraude" to "Émeraude", "rubis" to "Rubis",
             "amethyste" to "Améthyste", "ambre" to "Ambre", "ardoise" to "Ardoise",
+            "saphir" to "Saphir", "lagune" to "Lagune", "fuchsia" to "Fuchsia",
+            "bordeaux" to "Bordeaux", "foret" to "Forêt", "miel" to "Miel",
+            "prune" to "Prune", "nuit" to "Nuit", "peche" to "Pêche",
+            "chartreuse" to "Chartreuse",
         )
 
         // Thème : 0 = système, 1 = clair, 2 = sombre, 3 = AMOLED (noir pur)
@@ -51,6 +66,20 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "corail" to 0xFFFFB4A2,
             "ambre" to 0xFFFFD08A,
             "rose" to 0xFFFFB1C5,
+            // §couleurs : demande « beaucoup de couleurs » (contrastes AA vérifiés)
+            "violet" to 0xFFBC92FF,
+            "indigo" to 0xFF92A6FF,
+            "océan" to 0xFF60C8FF,
+            "turquoise" to 0xFF5FE3DB,
+            "emeraude" to 0xFF74DFA0,
+            "citron" to 0xFFDCE67A,
+            "orange" to 0xFFFFB36B,
+            "framboise" to 0xFFFF8FB1,
+            "magenta" to 0xFFFF8BD1,
+            "rouge" to 0xFFFF9285,
+            "doré" to 0xFFE7C96F,
+            "chocolat" to 0xFFDDB08C,
+            "neige" to 0xFFD9E1F2,
         )
         const val DEFAULT_ACCENT = "lavande"
     }
@@ -325,6 +354,19 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _glassVariant = MutableStateFlow(p.getString("glass_variant", "auto") ?: "auto")
     val glassVariant: StateFlow<String> = _glassVariant
     fun setGlassVariant(v: String) { p.edit().putString("glass_variant", v).apply(); _glassVariant.value = v }
+
+    /** §verre-liquide : intensité du dégradé « liquide » sur les cartes verre (0 = off, 100 = fort). */
+    private val _liquidGlass = MutableStateFlow(p.getInt("liquid_glass", 40))
+    val liquidGlass: StateFlow<Int> = _liquidGlass
+    fun setLiquidGlass(v: Int) {
+        val c = v.coerceIn(0, 100)
+        p.edit().putInt("liquid_glass", c).apply(); _liquidGlass.value = c
+    }
+
+    /** §couleurs : liaisons accent → verre (les deux se fondent ; une couleur pour tout). */
+    private val _accentLinkedToGlass = MutableStateFlow(p.getBoolean("accent_glass_link", true))
+    val accentLinkedToGlass: StateFlow<Boolean> = _accentLinkedToGlass
+    fun setAccentLinkedToGlass(v: Boolean) { p.edit().putBoolean("accent_glass_link", v).apply(); _accentLinkedToGlass.value = v }
 
     /** Police de l'app : "system" (défaut) | "outfit" | "rubik" | "lora". */
     private val _fontId = MutableStateFlow(p.getString("font_id", "system") ?: "system")

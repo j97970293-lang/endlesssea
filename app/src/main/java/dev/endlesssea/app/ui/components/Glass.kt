@@ -41,6 +41,8 @@ fun Modifier.glass(
     val baseHi = (overlay * scale).coerceIn(0f, 1f)
     val baseLo = (overlay * scale * 0.45f).coerceIn(0f, 1f)
     val tintArgb = UiTuning.glassTint.collectAsState().value
+    // §verre-liquide : intensité du reflet « lentille » (0..1)
+    val liquid = UiTuning.liquid.collectAsState().value / 100f
     return if (tintArgb != null) {
         // §24 — « tout teinté » : couche couleur RICHE par-dessus un voile sombre
         // qui garantit le contraste du texte (blanc ≥ 4.5:1 en thème sombre).
@@ -66,6 +68,22 @@ fun Modifier.glass(
                     end = androidx.compose.ui.geometry.Offset(400f, 400f),
                 ),
             )
+            .background(
+                // §verre-liquide : lentille lumineuse (comme une goutte) — réglable
+                Brush.radialGradient(
+                    listOf(Color.White.copy(alpha = 0.34f * liquid), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(70f, 50f),
+                    radius = 620f,
+                ),
+            )
+            .background(
+                // contre-reflet doux en bas à droite (profondeur « liquide »)
+                Brush.radialGradient(
+                    listOf(Color.White.copy(alpha = 0.14f * liquid), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset.Infinite,
+                    radius = 700f,
+                ),
+            )
     } else {
         this
             .clip(shape)
@@ -73,6 +91,14 @@ fun Modifier.glass(
             .background(
                 Brush.verticalGradient(
                     listOf(Color.White.copy(alpha = baseHi), Color.White.copy(alpha = baseLo)),
+                ),
+            )
+            .background(
+                // §verre-liquide : lentille même sans teinte
+                Brush.radialGradient(
+                    listOf(Color.White.copy(alpha = 0.22f * liquid), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(70f, 50f),
+                    radius = 620f,
                 ),
             )
     }

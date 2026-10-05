@@ -304,10 +304,11 @@ private fun LocalFilesPanel(
                                     modifier = Modifier.padding(end = 10.dp))
                             }
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    video.displayName,
+                                dev.endlesssea.app.ui.components.ExpandableText(
+                                    text = video.displayName,
                                     style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 2,
+                                    dialogTitle = "Fichier local",
                                 )
                                 Text(
                                     listOfNotNull(video.humanSize.ifBlank { null }, video.humanDuration.ifBlank { null })

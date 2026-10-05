@@ -308,6 +308,35 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // §couleurs : fusion accent/verre (une seule couleur pour tout)
+                    val accentGlassLink = viewModel.accentGlassLink.collectAsState().value
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Fusion avec la couleur d'accent",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                "La teinte du thème colore aussi le verre (accueil, barres, partout).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = accentGlassLink,
+                            onCheckedChange = { viewModel.setAccentGlassLink(it) },
+                        )
+                    }
+                    if (!accentGlassLink) {
+                        Text(
+                            "Teinte « verre » indépendante (16 couleurs profondes) :",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(6.dp))
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
@@ -330,6 +359,32 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // §verre-liquide : intensité de l'effet « goutte de liquide »
+                    val liquid = viewModel.liquidGlass.collectAsState().value
+                    Text("Effet verre liquide", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Reflet « goutte » sur les cartes en verre, partout (accueil, fiches, paramètres).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.material3.Slider(
+                        value = liquid / 100f,
+                        onValueChange = { viewModel.setLiquidGlass((it * 100).toInt()) },
+                    )
+                    Text(
+                        when {
+                            liquid == 0 -> "Désactivé"
+                            liquid < 40 -> "Discret ($liquid %)"
+                            liquid < 75 -> "Marqué ($liquid %)"
+                            else -> "Très liquide ($liquid %)"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("Couleur du logo / feuille de démarrage", style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(6.dp))
                     Row(
@@ -339,7 +394,7 @@ fun SettingsScreen(
                         FilterChip(
                             selected = state.logoTint == "original",
                             onClick = { viewModel.setLogoTint("original") },
-                            label = { Text("Original 🌊") },
+                            label = { Text("Thème (auto) 🌊") },
                         )
                         AppPrefs.ACCENTS.keys.forEach { name ->
                             FilterChip(
@@ -493,10 +548,65 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = state.skipSeconds == sec,
                                 onClick = { viewModel.setSkipSeconds(sec) },
-                                label = { Text("${sec}s") },
+                                label = { Text("$sec s") },
                             )
                         }
                     }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §mégaskip : grand saut façon anime (+85 par défaut), réglable
+                    val mega = viewModel.megaSkipSeconds.collectAsState().value
+                    Text("Grand saut « mégaskip »", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Boutons dédiés du lecteur : ±$mega s (utile pour les génériques 90 s).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.material3.Slider(
+                        value = mega.toFloat(),
+                        onValueChange = { viewModel.setMegaSkipSeconds(it.toInt()) },
+                        valueRange = 30f..180f,
+                    )
+                }
+            }
+            item {
+                // §auto-skip
+                SettingSwitch(
+                    title = "Passer automatiquement les intros",
+                    subtitle = "Saute seul les plages intro/générique marquées (fichiers locaux édités)",
+                    checked = viewModel.autoSkipMarkers.collectAsState().value,
+                    onChange = { viewModel.setAutoSkipMarkers(it) },
+                )
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §orientation-lecteur : paysage par défaut, choix utilisateur
+                    Text("Orientation du lecteur", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Le lecteur démarre à l'horizontale par défaut — changeable pendant la lecture (bouton rotation).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val orient = viewModel.playerOrientation.collectAsState().value
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = orient != "portrait",
+                            onClick = { viewModel.setPlayerOrientation("landscape") },
+                            label = { Text("🖥 Paysage (défaut)") },
+                        )
+                        FilterChip(
+                            selected = orient == "portrait",
+                            onClick = { viewModel.setPlayerOrientation("portrait") },
+                            label = { Text("📱 Portrait") },
+                        )
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Text(
                         "Filtres vidéo (luminosité/teinte/saturation) : réglés dans le lecteur, bouton 🎛, avec préréglages sauvegardés.",
                         style = MaterialTheme.typography.bodySmall,

@@ -882,10 +882,11 @@ private fun EpisodeRowAnymex(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).clickable(onClick = onPlay)) {
-                Text(
-                    episode.title ?: "Épisode ${episode.number.toInt()}",
+                dev.endlesssea.app.ui.components.ExpandableText(
+                    text = episode.title ?: "Épisode ${episode.number.toInt()}",
                     style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    dialogTitle = "Titre de l'épisode",
                 )
                 val meta = buildList {
                     episode.season?.let { add("Saison $it") }

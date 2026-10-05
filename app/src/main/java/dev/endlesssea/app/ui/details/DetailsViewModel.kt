@@ -90,6 +90,15 @@ class DetailsViewModel @Inject constructor(
 
     fun load() = viewModelScope.launch {
         _uiState.value = _uiState.value.copy(loading = true, error = null)
+        // §transition-fiche : contenu local AFFICHÉ TOUT DE SUITE (titre, affiche — même les
+        // épisodes si déjà vus) puis la source rafraîchit par-dessus. Transition « dedans »
+        // instantanée, plus de page blanche qui attend le réseau.
+        mediaDao.byId(mediaId)?.let { cached ->
+            if (_uiState.value.details == null) {
+                _uiState.value = _uiState.value.copy(details = cached.toDetails())
+                refreshLibraryFlags()
+            }
+        }
         val remote = runCatching {
             val ext = registry.instance(extensionId)
             ext.load(mediaKey)

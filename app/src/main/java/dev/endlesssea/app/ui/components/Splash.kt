@@ -79,7 +79,11 @@ fun SplashScreen(tintArgb: Long?, onFinished: () -> Unit) {
                     .size(168.dp)
                     .scale(logoScale)
                     .alpha(logoAlpha),
-                colorFilter = tintArgb?.let { ColorFilter.tint(Color(it), BlendMode.Modulate) },
+                // §splash-thème : sans choix explicite, le logo prend la couleur d'accent du thème
+                colorFilter = ColorFilter.tint(
+                    tintArgb?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
+                    BlendMode.Modulate,
+                ),
             )
             Text(
                 "EndlessSea",

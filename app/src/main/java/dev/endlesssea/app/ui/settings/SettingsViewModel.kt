@@ -157,7 +157,20 @@ class SettingsViewModel @Inject constructor(
     fun setAutoResume(v: Boolean) { prefs.setAutoResume(v); toastState(if (v) "Reprise automatique activée" else "Reprise automatique désactivée") }
     fun setThemeMode(mode: Int) { prefs.setThemeMode(mode) }
     fun setGlassOverlay(v: Int) { prefs.setGlassOverlay(v) }
+        /** §verre-liquide : intensité du reflet « lentille » des cartes verre (0..100). */
+    val liquidGlass: StateFlow<Int> = prefs.liquidGlass
+    /** §couleurs : liaison accent → verre (fusion demandée). */
+    val accentGlassLink: StateFlow<Boolean> = prefs.accentLinkedToGlass
     fun setGlassVariant(v: String) { prefs.setGlassVariant(v) }
+    fun setLiquidGlass(v: Int) { prefs.setLiquidGlass(v) }
+    /** §mégaskip / §auto-skip / §orientation-lecteur */
+    val megaSkipSeconds: StateFlow<Int> = prefs.megaSkipSeconds
+    val autoSkipMarkers: StateFlow<Boolean> = prefs.autoSkipMarkers
+    val playerOrientation: StateFlow<String> = prefs.playerOrientation
+    fun setMegaSkipSeconds(v: Int) { prefs.setMegaSkipSeconds(v) }
+    fun setAutoSkipMarkers(v: Boolean) { prefs.setAutoSkipMarkers(v) }
+    fun setPlayerOrientation(v: String) { prefs.setPlayerOrientation(v) }
+    fun setAccentGlassLink(v: Boolean) { prefs.setAccentLinkedToGlass(v) }
     fun setLogoTint(v: String) { prefs.setLogoTint(v); toastState(if (v == "original") "Logo original" else "Logo teinté $v") }
     fun setFontId(v: String) { prefs.setFontId(v); toastState("Police appliquée") }
     fun setDnsMode(v: String) {

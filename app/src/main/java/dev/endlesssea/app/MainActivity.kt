@@ -67,10 +67,22 @@ class MainActivity : ComponentActivity() {
             val preferredAudioLang by prefs.preferredAudioLang.collectAsState()
             val glassVariant by prefs.glassVariant.collectAsState()
             val fontId by prefs.fontId.collectAsState()
-            androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle, preferredAudioLang, glassVariant) {
+            val liquidGlass by prefs.liquidGlass.collectAsState()
+            val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
+            androidx.compose.runtime.LaunchedEffect(
+                glassOverlay, glassScrim, cardStyle, preferredAudioLang,
+                glassVariant, liquidGlass, accentGlassLink, accentName,
+            ) {
+                // §couleurs : « fusion accent/verre » — si liées, l'accent teinte aussi le verre ;
+                // sinon la variante Glass saturée choisie s'applique (beaucoup de couleurs).
+                val tint: Long? = when {
+                    accentGlassLink -> AppPrefs.ACCENTS[accentName]
+                    glassVariant == "auto" -> null
+                    else -> AppPrefs.GLASS_VARIANTS[glassVariant]
+                }
                 dev.endlesssea.app.ui.components.UiTuning.update(
                     glassOverlay, glassScrim, cardStyle,
-                    tintArgb = if (glassVariant == "auto") null else AppPrefs.GLASS_VARIANTS[glassVariant],
+                    tintArgb = tint, liquid = liquidGlass,
                 )
                 dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
