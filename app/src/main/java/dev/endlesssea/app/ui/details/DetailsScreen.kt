@@ -102,6 +102,8 @@ fun DetailsScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var downloadSheetEpisode by remember { mutableStateOf<Episode?>(null) }
+    /** §fiche-serveurs : épisode dont le panneau « serveurs de lecture » est ouvert. */
+    var playSheetEpisode by remember { mutableStateOf<Episode?>(null) }
     // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
@@ -455,7 +457,7 @@ fun DetailsScreen(
                         EpisodeRowAnymex(
                             episode = episode,
                             loading = state.linksLoadingEpisode == episode.id,
-                            onPlay = { viewModel.playEpisode(episode, onReady = launchPlayer()) },
+                            onPlay = { playSheetEpisode = episode },
                             onDownload = { downloadSheetEpisode = episode },
                         )
                     }
@@ -554,6 +556,76 @@ fun DetailsScreen(
                 }
             },
         )
+    }
+
+    // ---- §fiche-serveurs : au clic sur un épisode, choix du serveur avant lecture
+    playSheetEpisode?.let { episode ->
+        val links = state.linksByEpisode[episode.id] ?: emptyList()
+        ModalBottomSheet(onDismissRequest = { playSheetEpisode = null }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(
+                    "Lire — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                if (links.isEmpty()) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    // Ordre des serveurs : priorité glissée dans les réglages, inconnus à la fin (alpha)
+                    val priority = viewModel.serverPriority()
+                    fun serverRank(name: String): Int {
+                        val i = priority.indexOfFirst { it.equals(name, true) }
+                        return if (i >= 0) i else Int.MAX_VALUE
+                    }
+                    val grouped = links.groupBy { it.server.ifBlank { "Source" } }.toList()
+                        .sortedWith(compareBy<Pair<String, List<dev.endlesssea.extensions.api.model.VideoLink>>> { serverRank(it.first) }
+                            .thenBy { it.first.lowercase() })
+                    Text(
+                        "${grouped.size} serveur(s) — ${links.size} lien(s)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    grouped.forEach { (server, srvLinks) ->
+                        val best = srvLinks.maxByOrNull { it.quality.pixels } ?: srvLinks.first()
+                        GlassCard(
+                            cornerRadius = 14.dp,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().clickable {
+                                    val startIndex = links.indexOf(best).coerceAtLeast(0)
+                                    playSheetEpisode = null
+                                    viewModel.playEpisode(episode, startIndex = startIndex, onReady = launchPlayer())
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(server, style = MaterialTheme.typography.bodyLarge)
+                                    Text(
+                                        listOfNotNull(
+                                            best.quality.label,
+                                            best.audioLang.label.takeIf { it.isNotBlank() },
+                                            "${srvLinks.size} qualité(s)",
+                                        ).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text("▶", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
+            }
+        }
+        LaunchedEffect(episode.id) {
+            if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
+        }
     }
 
     downloadSheetEpisode?.let { episode ->

@@ -221,6 +221,9 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
+    /** §fiche-serveurs : priorité des serveurs configurée par l'utilisateur (réglages). */
+    fun serverPriority(): List<String> = prefs.serverOrder.value
+
     /** Met la langue préférée (réglage global) en premier, sans casser l'ordre qualité. */
     private fun orderByLangPref(links: List<VideoLink>): List<VideoLink> {
         val pref = prefs.preferredAudioLang.value
