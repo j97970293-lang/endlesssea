@@ -91,9 +91,47 @@ fun HomeScreen(
         }
 
         // ---- Rangées en ligne des extensions (la vraie vie de l'accueil)
-        state.remoteRows.forEach { row ->
+        // §accueil-multi : filtrer l'accueil sur UNE extension ou tout voir.
+        if (state.sources.size > 1) {
+            item(key = "srcFilter") {
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                ) {
+                    item {
+                        androidx.compose.material3.FilterChip(
+                            selected = state.sourceFilter == "ALL",
+                            onClick = { viewModel.setSourceFilter("ALL") },
+                            label = { Text("Tout") },
+                        )
+                    }
+                    items(state.sources, key = { it.first }) { (pkg, name, iconUrl) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = state.sourceFilter == pkg,
+                            onClick = { viewModel.setSourceFilter(if (state.sourceFilter == pkg) "ALL" else pkg) },
+                            label = { Text(name) },
+                            leadingIcon = {
+                                dev.endlesssea.app.SafeAsyncImage(
+                                    url = iconUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.width(20.dp).height(20.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        state.remoteRows
+            .filter { state.sourceFilter == "ALL" || it.sourcePkg == state.sourceFilter }
+            .forEach { row ->
             item(key = "remote-${row.title}") {
-                MediaRow(title = row.title, items = row.items, onMediaClick = onMediaClick)
+                MediaRow(
+                    title = row.title, items = row.items, onMediaClick = onMediaClick,
+                    iconUrl = row.iconUrl,
+                )
             }
         }
         if (state.remoteRows.isEmpty() && state.extensionCount > 0 && !state.loading) {
@@ -252,6 +290,8 @@ fun MediaRow(
     title: String,
     items: List<SearchItemUi>,
     onMediaClick: (String) -> Unit,
+    /** Icône de la source (accueil multi-extensions §accueil-multi). */
+    iconUrl: String? = null,
     /** « Tout voir » : affiché uniquement si une action est fournie. */
     onSeeAll: (() -> Unit)? = null,
 ) {
@@ -261,7 +301,17 @@ fun MediaRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                if (iconUrl != null) {
+                    dev.endlesssea.app.SafeAsyncImage(
+                        url = iconUrl,
+                        contentDescription = null,
+                        modifier = Modifier.width(22.dp).height(22.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
             if (onSeeAll != null) {
                 TextButton(onClick = onSeeAll) { Text("Tout voir") }
             }

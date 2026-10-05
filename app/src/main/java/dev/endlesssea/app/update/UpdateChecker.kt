@@ -73,6 +73,10 @@ class UpdateChecker @Inject constructor(
         }.getOrNull()
     }
 
+    /** §5 : lance le téléchargement in-app (progression visible via [UpdateDownloadState]). */
+    suspend fun downloadUpdate(context: Context, info: AppUpdateInfo) =
+        AppUpdateInstaller.download(context.applicationContext, info, http)
+
     /** `true` si [remoteTag] est strictement plus récent que la version installée. */
     fun isNewer(remoteTag: String): Boolean {
         val installed = BuildConfig.VERSION_NAME
@@ -93,62 +97,152 @@ class UpdateChecker @Inject constructor(
     }
 }
 
+// ---------------------------------------------------------------- état partagé
+
+/** États du téléchargement de MAJ in-app (§5 : tout reste DANS l'app, visible). */
+sealed class UpdateDl {
+    data object Idle : UpdateDl()
+    data class Downloading(val progress: Float, val doneKb: Long, val totalKb: Long) : UpdateDl()
+    data class Ready(val file: java.io.File, val info: AppUpdateInfo) : UpdateDl()
+    data class Failed(val message: String, val technical: String) : UpdateDl()
+}
+
+object UpdateDownloadState {
+    val state = kotlinx.coroutines.flow.MutableStateFlow<UpdateDl>(UpdateDl.Idle)
+    fun reset() { state.value = UpdateDl.Idle }
+}
+
 /**
- * Télécharge l'APK via le gestionnaire système → notification « toucher pour installer ».
- *
- * §5 spec : jamais de crash. Dossier PRIVÉ de l'app (aucune permission de stockage requise,
- * même sur Android 8) + repli « ouvrir la page Releases » au moindre échec.
+ * §5 : téléchargement + validation + installation **entièrement dans l'application**.
+ * Plus d'intent navigateur ni de bascule hors app au clic « Mettre à jour ».
  */
 object AppUpdateInstaller {
 
-    fun download(context: Context, info: AppUpdateInfo) {
-        val url = info.apkUrl ?: run {
-            openInBrowser(context); return
+    /** Lance (ou relance) le téléchargement de l'APK. Jamais appelé sur le thread UI. */
+    suspend fun download(context: Context, info: AppUpdateInfo, http: OkHttpClient) =
+        withContext(Dispatchers.IO) {
+            val url = info.apkUrl ?: run {
+                UpdateDownloadState.state.value = UpdateDl.Failed(
+                    "Aucun fichier d'installation dans la release ${info.tag}.",
+                    "apkUrl null",
+                ); return@withContext
+            }
+            val dir = File(context.getExternalFilesDir(null), "updates").apply { mkdirs() }
+            val target = File(dir, "endless-sea-${info.tag}.apk")
+            runCatching {
+                UpdateDownloadState.state.value = UpdateDl.Downloading(0f, 0, 0)
+                http.newCall(Request.Builder().url(url).build()).execute().use { res ->
+                    if (!res.isSuccessful) {
+                        error("HTTP ${res.code} — réessaie dans quelques minutes")
+                    }
+                    val body = res.body ?: error("flux de téléchargement vide")
+                    val total = body.contentLength()
+                    val magic = java.io.ByteArrayOutputStream()
+                    target.outputStream().buffered().use { out ->
+                        val buf = ByteArray(65_536)
+                        var done = 0L
+                        var first = true
+                        while (true) {
+                            val n = body.byteStream().read(buf)
+                            if (n < 0) break
+                            if (first) {
+                                first = false
+                                magic.write(buf, 0, minOf(n, 4))
+                            }
+                            out.write(buf, 0, n)
+                            done += n
+                            if (total > 0) {
+                                UpdateDownloadState.state.value =
+                                    UpdateDl.Downloading(done.toFloat() / total, done / 1024, total / 1024)
+                            }
+                        }
+                        out.flush()
+                    }
+                    if (done < 100_000) {
+                        target.delete()
+                        error("Fichier trop petit (${done / 1024} Ko) — page d'erreur du réseau ?")
+                    }
+                    if (total > 0 && done != total) {
+                        target.delete()
+                        error("Téléchargement incomplet (${done / 1024}/${total / 1024} Ko)")
+                    }
+                }
+                // ---- Validation §5 : magic bytes APK (ZIP : « PK ») + package attendu
+                val header = target.inputStream().use { it.readBytecode4() }
+                if (header == null || header[0] != 0x50.toByte() || header[1] != 0x4B.toByte()) {
+                    target.delete()
+                    error("Le fichier reçu n'est pas un paquet Android valide.")
+                }
+                val pm = context.packageManager
+                val pkgInfo = pm.getPackageArchiveInfo(target.absolutePath, 0)
+                if (pkgInfo == null || pkgInfo.packageName != context.packageName) {
+                    target.delete()
+                    error("Le paquet téléchargé ne correspond pas à Endless Sea.")
+                }
+                dev.endlesssea.core.diag.EsLog.e(
+                    "Update", "Installer", "Mise à jour ${info.tag} téléchargée et validée",
+                )
+                UpdateDownloadState.state.value = UpdateDl.Ready(target, info)
+            }.onFailure { e ->
+                target.delete()
+                dev.endlesssea.core.diag.EsLog.e(
+                    "Update", "Installer", "MAJ impossible : ${e.message}",
+                    details = e.javaClass.simpleName, recoverable = true,
+                )
+                UpdateDownloadState.state.value = UpdateDl.Failed(
+                    "Le téléchargement de la mise à jour a échoué. ${e.message.orEmpty().ifBlank { "" }}",
+                    e.javaClass.simpleName + ": " + (e.message ?: ""),
+                )
+            }
         }
+
+    /** Boîte d'installation du système, alimentée par FileProvider (aucune permission stockage). */
+    fun install(context: Context, file: File) {
         runCatching {
             if (context.packageManager.canRequestPackageInstalls().not()) {
-                // Guider l'utilisateur vers l'autorisation « Sources inconnues » (Android 8+).
-                runCatching {
-                    context.startActivity(
-                        android.content.Intent(
-                            android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                            Uri.parse("package:${context.packageName}"),
-                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
+                android.widget.Toast.makeText(
+                    context,
+                    "Autorise l'installation pour Endless Sea, puis reviens.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+                context.startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${context.packageName}"),
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                return
             }
-            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-                ?: error("gestionnaire de téléchargement système indisponible")
-            val request = DownloadManager.Request(Uri.parse(url))
-                .setTitle("Endless Sea ${info.tag}")
-                .setDescription("Téléchargement de la mise à jour — touchez la notification pour installer.")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setMimeType("application/vnd.android.package-archive")
-                .setAllowedOverMetered(true)
-                .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "endless-sea-${info.tag}.apk")
-            dm.enqueue(request)
-            dev.endlesssea.core.diag.EsLog.e("Update", "Installer", "Téléchargement ${info.tag} démarré")
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", file,
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            UpdateDownloadState.reset()
         }.onFailure { e ->
             dev.endlesssea.core.diag.EsLog.e(
-                "Update", "Installer", "Téléchargement impossible : ${e.message}",
+                "Update", "Installer", "Installation impossible : ${e.message}",
                 details = e.javaClass.simpleName, recoverable = true,
             )
-            android.widget.Toast.makeText(
-                context, "Mise à jour : ouverture de la page de téléchargement…",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
-            openInBrowser(context)
+            UpdateDownloadState.state.value = UpdateDl.Failed(
+                "Impossible de lancer l'installation. ${e.message ?: ""}",
+                e.javaClass.simpleName,
+            )
         }
     }
 
-    private fun openInBrowser(context: Context) {
-        runCatching {
-            context.startActivity(
-                android.content.Intent(
-                    android.content.Intent.ACTION_VIEW,
-                    Uri.parse(UpdateChecker.RELEASES_PAGE),
-                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+    private fun java.io.InputStream.readBytecode4(): ByteArray? {
+        val b = ByteArray(4)
+        var got = 0
+        while (got < 4) {
+            val n = read(b, got, 4 - got)
+            if (n < 0) return if (got == 0) null else b
+            got += n
         }
+        return b
     }
 }

@@ -72,7 +72,7 @@ class ExtensionsViewModel @Inject constructor(
                 // §4 — icône résolue via les index déjà synchronisés (aucune migration Room)
                 val icons = cachedIndexes.values.flatMap { it.extensions }.associate { it.id to it.iconUrl }
                 _uiState.value = _uiState.value.copy(
-                    extensions = exts.map { it.toUi().copy(iconUrl = icons[it.pkg]) },
+                    extensions = exts.map { e -> e.toUi().let { u -> u.copy(iconUrl = u.iconUrl ?: icons[e.pkg]) } },
                     repoEntries = buildEntries(exts),
                 )
             }
@@ -82,6 +82,7 @@ class ExtensionsViewModel @Inject constructor(
     private fun ExtensionEntity.toUi() = ExtensionUi(
         pkg = pkg, name = name, version = version, versionName = versionName,
         enabled = status == "ENABLED",
+        iconUrl = iconUrl,
         permissions = permissionsJson.removeSurrounding("[", "]").split(",")
             .map { p -> p.trim().removeSurrounding("\"") }.filter { it.isNotBlank() },
         lastError = lastError,
@@ -130,6 +131,7 @@ class ExtensionsViewModel @Inject constructor(
         ExtensionEntity(
             pkg = it.pkg, name = it.name, version = it.version, versionName = it.versionName,
             apiVersion = 1, status = if (it.enabled) "ENABLED" else "DISABLED",
+            iconUrl = it.iconUrl,
         )
     }
 
@@ -212,6 +214,7 @@ class ExtensionsViewModel @Inject constructor(
                 apiVersion = manifest.apiVersion,
                 author = manifest.author.name,
                 descriptionJson = "{\"fr\":\"${escape(description)}\"}",
+                iconUrl = manifest.iconUrl,
                 languagesJson = jsonList(manifest.languages),
                 typesJson = jsonList(manifest.types),
                 capabilitiesJson = "{\"search\":${manifest.capabilities.search},\"servers\":${manifest.capabilities.servers}}",

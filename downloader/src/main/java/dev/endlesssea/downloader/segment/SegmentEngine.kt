@@ -50,6 +50,18 @@ class SegmentEngine(private val client: OkHttpClient) {
             client.newCall(request(url, "GET", headers + ("Range" to "bytes=0-0"))).execute()
                 .use { res ->
                     if (res.code !in 200..299) throw SourceError("HTTP ${res.code}")
+                    // §6 : magic bytes — une page HTML/JSON renvoyée en 200 se détecte
+                    // au PREMIER octet, avant tout téléchargement.
+                    val first = res.body?.bytes()
+                    if (first != null && first.isNotEmpty()) {
+                        val b0 = first[0].toInt() and 0xFF
+                        if (b0 == 0x3C /* '<' */ || b0 == 0x7B /* '{' */) {
+                            throw SourceError(
+                                "Le serveur a renvoyé du texte (page ou JSON) au lieu d'une vidéo. " +
+                                    "Le lien a probablement expiré — régénère le lien et réessaie.",
+                            )
+                        }
+                    }
                     toProbe(res.request.url.toString(), res::header)
                 }
         }
@@ -64,11 +76,19 @@ class SegmentEngine(private val client: OkHttpClient) {
         val type = header("Content-Type")?.lowercase()
         // Garde critique (spec §6 « fichiers de 36 Ko ») : une page HTML à la place de la
         // vidéo (blocage lecteur, erreur 403 stylée, anti-bot) ne doit JAMAIS aller plus loin.
-        if (type != null && (type.startsWith("text/html") || type.startsWith("application/xhtml"))) {
+        if (type != null && (type.startsWith("text/html") || type.startsWith("application/xhtml") ||
+                type.startsWith("application/json") || type.startsWith("text/plain"))) {
             throw SourceError(
                 "Téléchargement invalide : le serveur a renvoyé une page de site au lieu d'un " +
                     "fichier vidéo (HTTP/Content-Type=$type). Le lien a sans doute expiré ou " +
                     "est réservé à la lecture en ligne.",
+            )
+        }
+        // §6 : taille déclarée dérisoire = pas une vidéo. On coupe avant la file d'attente.
+        if (total in 1..99_999) {
+            throw SourceError(
+                "Le serveur annonce un fichier de ${total / 1024} Ko — aucune vidéo ne fait " +
+                    "cette taille. Lien expiré ou bloqué par un anti-bot.",
             )
         }
         return Probe(url, name, total, ranges, header("ETag"), contentType = type)

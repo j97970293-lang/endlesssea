@@ -40,23 +40,45 @@ fun Modifier.glass(
     val scale = if (dark) 1f else 3f   // le blanc ressort plus sur thème clair
     val baseHi = (overlay * scale).coerceIn(0f, 1f)
     val baseLo = (overlay * scale * 0.45f).coerceIn(0f, 1f)
-    // Variante §24 : teinte dominante (Glass Blue/Green/…) si définie — sinon blanc neutre.
     val tintArgb = UiTuning.glassTint.collectAsState().value
-    val glow = tintArgb?.let { Color(it) } ?: Color.White
-    return this
-        .clip(shape)
-        .background(Color.Black.copy(alpha = scrim * if (dark) 0.55f else 0.20f))
-        .background(
-            Brush.verticalGradient(
-                listOf(
-                    glow.copy(alpha = if (tintArgb != null) (baseHi * 1.4f).coerceAtMost(0.9f) else baseHi),
-                    glow.copy(alpha = baseLo),
+    return if (tintArgb != null) {
+        // §24 — « tout teinté » : couche couleur RICHE par-dessus un voile sombre
+        // qui garantit le contraste du texte (blanc ≥ 4.5:1 en thème sombre).
+        val tint = Color(tintArgb)
+        val darkVeil = (scrim * if (dark) 0.65f else 0.18f).coerceAtLeast(if (dark) 0.42f else 0.14f)
+        this
+            .clip(shape)
+            .background(Color.Black.copy(alpha = darkVeil))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        tint.copy(alpha = if (dark) 0.62f else 0.44f),
+                        tint.copy(alpha = if (dark) 0.30f else 0.22f),
+                        tint.copy(alpha = if (dark) 0.38f else 0.26f),
+                    ),
                 ),
-            ),
-        )
+            )
+            .background(
+                // Reflet « liquide » : une lumière blanche fine en haut à gauche
+                Brush.linearGradient(
+                    listOf(Color.White.copy(alpha = 0.14f), Color.Transparent),
+                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(400f, 400f),
+                ),
+            )
+    } else {
+        this
+            .clip(shape)
+            .background(Color.Black.copy(alpha = scrim * if (dark) 0.55f else 0.20f))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = baseHi), Color.White.copy(alpha = baseLo)),
+                ),
+            )
+    }
 }
 
-/** Carte en verre : Surface translucide + bord lumineux, prête à l'emploi. */
+/** Carte en verre : Surface translucide + bord lumineux (teinté si variante §24). */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -65,11 +87,13 @@ fun GlassCard(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(cornerRadius)
+    val tintArgb = UiTuning.glassTint.collectAsState().value
+    val edge = tintArgb?.let { Color(it).copy(alpha = 0.55f) } ?: Color.White.copy(alpha = 0.22f)
     Surface(
         modifier = modifier.glass(cornerRadius),
         shape = shape,
         color = Color.Transparent,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+        border = BorderStroke(1.dp, edge),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {

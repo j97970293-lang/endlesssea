@@ -15,6 +15,24 @@ import javax.inject.Singleton
 class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     companion object {
+        /**
+         * Variantes « tout teinté » pour le verre (§24) : couleurs PROFONDES et
+         * désaturées — un verre tout bleu/vert/rouge DOIT rester lisible.
+         * (Versus ACCENTS qui sont des pastels de bordure.)
+         */
+        val GLASS_VARIANTS = linkedMapOf(
+            "ocean"     to 0xFF0E5D7EL,
+            "emeraude"  to 0xFF0F6B4AL,
+            "rubis"     to 0xFF8C2B3EL,
+            "amethyste" to 0xFF5B3E8CL,
+            "ambre"     to 0xFF9C5B12L,
+            "ardoise"   to 0xFF3C4B5CL,
+        )
+        val GLASS_VARIANT_LABELS = mapOf(
+            "ocean" to "Océan", "emeraude" to "Émeraude", "rubis" to "Rubis",
+            "amethyste" to "Améthyste", "ambre" to "Ambre", "ardoise" to "Ardoise",
+        )
+
         // Thème : 0 = système, 1 = clair, 2 = sombre, 3 = AMOLED (noir pur)
         const val THEME_SYSTEM = 0
         const val THEME_LIGHT = 1
@@ -204,6 +222,18 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _logoTint = MutableStateFlow(p.getString("logo_tint", "original") ?: "original")
     val logoTint: StateFlow<String> = _logoTint
     fun setLogoTint(v: String) { p.edit().putString("logo_tint", v).apply(); _logoTint.value = v }
+
+    /** §glisser-serveurs : ordre de priorité des serveurs, persistant (JSON liste). */
+    private val _serverOrder = MutableStateFlow<List<String>>(loadJsonStringList("server_order"))
+    val serverOrder: StateFlow<List<String>> = _serverOrder
+    fun setServerOrder(order: List<String>) {
+        p.edit().putString("server_order", "[\"" + order.joinToString("\",\"") { it.replace(""", "'") } + "\"]").apply()
+        _serverOrder.value = order
+    }
+    private fun loadJsonStringList(key: String): List<String> =
+        p.getString(key, null)?.let { json ->
+            Regex("\"([^\"]*)\"").findAll(json).map { it.groupValues[1] }.toList()
+        } ?: emptyList()
 
     /** Variante Glass §24 : teinte dominante du verre ("auto" ou nom de ACCENTS). */
     private val _glassVariant = MutableStateFlow(p.getString("glass_variant", "auto") ?: "auto")

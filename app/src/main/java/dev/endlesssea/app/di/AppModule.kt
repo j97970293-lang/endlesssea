@@ -38,10 +38,17 @@ object AppModule {
         }
     }
 
+    /** v2 → v3 : icône d'extension persistée (§4). */
+    private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE extensions ADD COLUMN iconUrl TEXT")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 

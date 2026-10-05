@@ -97,7 +97,7 @@ class SearchViewModel @Inject constructor(
         query: String,
         filters: FilterSet = filtersFlow.value,
     ): Pair<List<SearchItemUi>, Map<String, String>> = coroutineScope {
-        val results = mutableListOf<dev.endlesssea.extensions.api.model.SearchItem>()
+        val results = mutableListOf<Triple<dev.endlesssea.extensions.api.model.SearchItem, String, String>>()
         val errors = mutableMapOf<String, String>()
 
         registry.enabledExtensions().map { (name, ext) ->
@@ -106,7 +106,12 @@ class SearchViewModel @Inject constructor(
                     .onSuccess { page ->
                         // id composite « <pkg id>:<url> » — l'écran Détails rappelle cette extension
                         val remapPrefix = ext.info.id
-                        val remapped = page.items.map { it.copy(id = "$remapPrefix:${it.url}") }
+                        // §recherche-groupée : on NAME la source et on déduplique PAR extension
+                        // (un même titre peut exister sur plusieurs sources — c'est voulu).
+                        val remapped = page.items
+                            .map { it.copy(id = "$remapPrefix:${it.url}") }
+                            .distinctBy { "${FileNames.normalizedKey(it.title)}#${it.year}#${it.type}" }
+                            .map { Triple(it, remapPrefix, ext.info.name) }
                         synchronized(results) { results += remapped }
                     }
                     .onFailure { e ->
@@ -115,18 +120,18 @@ class SearchViewModel @Inject constructor(
                     }
             }
         }.forEach { it.await() }
-        // items sorted implicitly by arrival per-extension; dedup happens in deduped()
-        results.deduped() to errors
+        // items triés par arrivée ; la dédup est DÉJÀ faite par extension.
+        results.toUi() to errors
     }
 
-    private fun List<dev.endlesssea.extensions.api.model.SearchItem>.deduped(): List<SearchItemUi> =
-        distinctBy { "${FileNames.normalizedKey(it.title)}#${it.year}#${it.type}" }
-            .map {
-                SearchItemUi(
-                    it.id, it.title, it.posterUrl, subtitle = it.type.name,
-                    rating = it.rating, audioLangs = it.audioLangs.map { l -> l.name },
-                )
-            }
+    private fun List<Triple<dev.endlesssea.extensions.api.model.SearchItem, String, String>>.toUi(): List<SearchItemUi> =
+        map { (it, pkg, srcName) ->
+            SearchItemUi(
+                it.id, it.title, it.posterUrl, subtitle = it.type.name,
+                rating = it.rating, audioLangs = it.audioLangs.map { l -> l.name },
+                sourcePkg = pkg, sourceName = srcName,
+            )
+        }
 
     private fun SourceException.toUserMessage(): String = when (this) {
         is SourceException.SourceUnavailable -> "Source indisponible"

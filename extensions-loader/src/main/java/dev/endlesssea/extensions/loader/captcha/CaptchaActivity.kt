@@ -74,7 +74,17 @@ class CaptchaActivity : Activity() {
                 web.loadUrl(pageUrl)
             }
         }
-        val errPanel = LinearLayout(this).apply {
+        // Bouton flottant « J'ai terminé » : si la vérification est passée mais la
+        // détection automatique n'a pas suivi, l'utilisateur conclut lui-même.
+        val doneBtn = Button(this).apply {
+            text = "✔ Terminé — retour à l'app"
+            textSize = 14f
+            setOnClickListener {
+                CookieManager.getInstance().flush()
+                setResult(CaptchaContract.RESULT_SOLVED)
+                finish()
+            }
+        }
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(48, 48, 48, 48)
@@ -88,6 +98,7 @@ class CaptchaActivity : Activity() {
             addView(progress)
             addView(web, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(errPanel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(doneBtn)
         }
 
         web.settings.apply {
@@ -133,6 +144,11 @@ class CaptchaActivity : Activity() {
             ) {
                 // Ne masquer la page que si le document principal a échoué.
                 if (request?.isForMainFrame == true) {
+                    dev.endlesssea.core.diag.EsLog.e(
+                        "WebView", "Captcha",
+                        "Chargement échoué : ${error?.description ?: "?"}",
+                        details = "url=${request.url}",
+                    )
                     showError(
                         "La page n'a pas pu être chargée.\n\n${error?.description ?: "Erreur réseau inconnue"}\n\n" +
                             "Vérifie ta connexion puis réessaie — ou annule et choisis une autre source."
@@ -143,6 +159,10 @@ class CaptchaActivity : Activity() {
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler?, error: SslError?) {
                 // §3 : une erreur SSL n'est JAMAIS acceptée silencieusement.
                 handler ?: return
+                dev.endlesssea.core.diag.EsLog.e(
+                    "WebView", "Captcha", "Erreur SSL : ${error?.primaryError ?: "?"}",
+                    details = "url=${error?.url}",
+                )
                 AlertDialog.Builder(this@CaptchaActivity)
                     .setTitle("Certificat non fiable")
                     .setMessage(

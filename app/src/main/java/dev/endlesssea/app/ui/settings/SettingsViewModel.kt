@@ -67,6 +67,8 @@ data class SettingsUiState(
     val genres: List<GenreUi> = emptyList(),
     val updateAutoCheck: Boolean = true,
     val availableUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
+    /** Dernière MAJ tentée — permet le « Réessayer » du dialogue d'échec. */
+    val lastFailedUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
     val updateChecking: Boolean = false,
     /** Extensions activées (pkg → nom) proposées pour les réglages par extension. */
     val extWithSettings: List<Pair<String, String>> = emptyList(),
@@ -285,6 +287,17 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun dismissUpdate() { set { copy(availableUpdate = null) } }
+
+    /** §5 : démarre le téléchargement in-app avec dialogue de progression. */
+    fun startUpdate(context: android.content.Context) {
+        val info = state.value.availableUpdate ?: return
+        set { copy(availableUpdate = null, lastFailedUpdate = info) }
+        viewModelScope.launch { updateChecker.downloadUpdate(context, info) }
+    }
+
+    fun retryUpdateDownload(context: android.content.Context, update: dev.endlesssea.app.update.AppUpdateInfo) {
+        viewModelScope.launch { updateChecker.downloadUpdate(context, update) }
+    }
 
     // ------------------------------------------------------------ sauvegarde
 

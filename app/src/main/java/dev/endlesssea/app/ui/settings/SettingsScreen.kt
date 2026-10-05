@@ -57,6 +57,7 @@ import dev.endlesssea.app.di.AppPrefs
 import dev.endlesssea.app.navigation.allTabScreens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.ArrowBack
 import kotlinx.coroutines.withContext
 
 /**
@@ -77,10 +78,12 @@ fun SettingsScreen(
     var showNumbersDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showGenreManager by remember { mutableStateOf(false) }
-    /** Catégories repliables (la 1re ouverte par défaut) — sinon l'écran est illisible tant il est long. */
-    var openCategories by remember { mutableStateOf(setOf("interface")) }
+    /** §réglages-pleine-page : page d'accueil = liste des catégories ;
+     *  un tap ouvre la catégorie EN PLEINE PAGE (plus de pile dépliée, plus de barres). */
+    var openCategoryFull: String? by remember { mutableStateOf(null) }
+    val openCategories = if (openCategoryFull == null) emptySet() else setOf(openCategoryFull!!)
     fun toggleCategory(key: String) {
-        openCategories = if (key in openCategories) openCategories - key else openCategories + key
+        openCategoryFull = if (openCategoryFull == key) null else key
     }
 
     // Image de fond personnalisée (persistée longue durée)
@@ -136,11 +139,35 @@ fun SettingsScreen(
         }
     }
 
+    // Retour système sur la page de catégorie → revient à la liste (§réglages-pleine-page).
+    androidx.activity.compose.BackHandler(enabled = openCategoryFull != null) {
+        openCategoryFull = null
+    }
+
     androidx.compose.foundation.layout.Box {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 4.dp, horizontal = 0.dp),
         ) {
+            // Entête « ← Paramètres » quand on est DANS une catégorie.
+            if (openCategoryFull != null) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { openCategoryFull = null }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.ArrowBack, "Retour", tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Paramètres",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
             // ------------------------------------------------------ APPARENCE
             item {
                 SettingCategory("🎨", "Interface & thème", expanded = "interface" in openCategories) { toggleCategory("interface") }
@@ -291,11 +318,11 @@ fun SettingsScreen(
                             onClick = { viewModel.setGlassVariant("auto") },
                             label = { Text("Auto") },
                         )
-                        AppPrefs.ACCENTS.keys.forEach { name ->
+                        AppPrefs.GLASS_VARIANTS.keys.forEach { name ->
                             FilterChip(
                                 selected = state.glassVariant == name,
                                 onClick = { viewModel.setGlassVariant(name) },
-                                label = { Text(name.replaceFirstChar { it.uppercase() }) },
+                                label = { Text(AppPrefs.GLASS_VARIANT_LABELS[name] ?: name) },
                             )
                         }
                     }
@@ -731,7 +758,14 @@ fun SettingsScreen(
         )
     }
 
-    // -------------------------------------------------- Dialogue connexions
+    // ------------------------------------------------- Progression MAJ (in-app)
+    dev.endlesssea.app.update.UpdateProgressDialog(
+        onRetry = state.lastFailedUpdate?.let { info ->
+            { viewModel.retryUpdateDownload(context, info) }
+        },
+    )
+
+        // -------------------------------------------------- Dialogue connexions
     if (showNumbersDialog) {
         val segments = listOf(1, 2, 4, 8, 16)
         val tasks = listOf(1, 2, 3, 4)
@@ -849,10 +883,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { viewModel.dismissUpdate() },
             confirmButton = {
-                Button(onClick = {
-                    dev.endlesssea.app.update.AppUpdateInstaller.download(context, update)
-                    viewModel.dismissUpdate()
-                }) { Text("Télécharger") }
+                Button(onClick = { viewModel.startUpdate(context) }) { Text("Télécharger ici") }
             },
             dismissButton = { TextButton(onClick = { viewModel.dismissUpdate() }) { Text("Plus tard") } },
             title = { Text("Mise à jour ${update.tag}") },

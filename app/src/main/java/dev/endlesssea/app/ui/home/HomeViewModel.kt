@@ -16,7 +16,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class HomeRowUi(val title: String, val items: List<SearchItemUi>)
+data class HomeRowUi(
+    val title: String,
+    val items: List<SearchItemUi>,
+    /** §accueil-multi : extension d'origine de la rangée (filtrage + icône). */
+    val sourcePkg: String = "",
+    val sourceName: String = "",
+    val iconUrl: String? = null,
+)
 
 data class HomeUiState(
     val loading: Boolean = true,
@@ -27,6 +34,9 @@ data class HomeUiState(
     val remoteRows: List<HomeRowUi> = emptyList(),
     val bannerAutoScroll: Boolean = true,
     val extensionCount: Int = 0,
+    /** §accueil-multi : sources chargées (pkg, nom, icône) + filtre actif (« ALL »). */
+    val sources: List<Triple<String, String, String?>> = emptyList(),
+    val sourceFilter: String = "ALL",
 )
 
 /**
@@ -48,6 +58,7 @@ class HomeViewModel @Inject constructor(
     init {
         observeLocal()
         loadRemote()
+        publishSources()
     }
 
     // ---------- Sources locales (fonctionnent hors-ligne dès le premier usage)
@@ -114,7 +125,14 @@ class HomeViewModel @Inject constructor(
                                 }
                                 val label = if (declared.isEmpty()) ext.info.name
                                 else "${ext.info.name} — ${cat.title}"
-                                synchronized(rows) { rows += HomeRowUi(label, items) }
+                                synchronized(rows) {
+                                    rows += HomeRowUi(
+                                        label, items,
+                                        sourcePkg = ext.info.id,
+                                        sourceName = ext.info.name,
+                                        iconUrl = ext.info.iconUrl,
+                                    )
+                                }
                             }
                     }
                 }
@@ -134,6 +152,19 @@ class HomeViewModel @Inject constructor(
         id = id, title = title, posterUrl = posterUrl, bannerUrl = bannerUrl ?: posterUrl,
         subtitle = synopsis?.take(140),
     )
+
+    /** §accueil-multi : publie la liste des sources (après chargement distant). */
+    fun publishSources() = viewModelScope.launch {
+        val exts = registry.enabledExtensions()
+        _uiState.value = _uiState.value.copy(
+            sources = exts.map { (pkg, ext) -> Triple(pkg, ext.info.name, ext.info.iconUrl) },
+        )
+    }
+
+    /** §accueil-multi : ne garder qu'une source sur l'accueil (« ALL » = toutes). */
+    fun setSourceFilter(pkg: String) {
+        _uiState.value = _uiState.value.copy(sourceFilter = pkg.ifBlank { "ALL" })
+    }
 
     fun onAddToLibrary(mediaId: String) = viewModelScope.launch {
         libraryDao.upsert(dev.endlesssea.data.db.LibraryEntity(mediaId = mediaId, category = "ANIME"))

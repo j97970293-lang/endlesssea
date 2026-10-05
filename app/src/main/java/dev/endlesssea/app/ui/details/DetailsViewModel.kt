@@ -76,6 +76,10 @@ class DetailsViewModel @Inject constructor(
     val mediaId: String = checkNotNull(savedStateHandle["id"])
 
     private val _uiState = MutableStateFlow(DetailsUiState())
+
+    /** §glisser-serveurs : ordre de priorité persistant des serveurs. */
+    val serverOrder = prefs.serverOrder
+    fun saveServerOrder(order: List<String>) = prefs.setServerOrder(order)
     val uiState: StateFlow<DetailsUiState> = _uiState
 
     /** Paquet d'extension associé (préfixe avant le premier « : »). */
@@ -279,7 +283,10 @@ class DetailsViewModel @Inject constructor(
      * la meilleure qualité en fichier direct (les flux HLS/embed ne sont pas
      * téléchargeables — ils restent en lecture seule).
      */
-    fun enqueueAll(episodes: List<Episode> = this._uiState.value.episodes) = viewModelScope.launch {
+    fun enqueueAll(
+        episodes: List<Episode> = this._uiState.value.episodes,
+        serverPriority: List<String> = prefs.serverOrder.value,
+    ) = viewModelScope.launch {
         if (_uiState.value.batchRunning || episodes.isEmpty()) return@launch
         _uiState.value = _uiState.value.copy(batchRunning = true, message = "Résolution des liens…")
         val extInstance = registry.instance(extensionId)
@@ -298,8 +305,14 @@ class DetailsViewModel @Inject constructor(
                     linksByEpisode = _uiState.value.linksByEpisode + (episode.id to links),
                 )
             }
-            // Meilleur lien téléchargeable : fichier direct prioritaire, sinon flux HLS
-            val downloadable = links.filter {
+            // Serveurs par ordre de priorité (glisser-déposer utilisateur) : on essaie
+            // le serveur n°1 d'abord ; s'il n'existe pas pour cet épisode → le suivant.
+            fun linksFor(server: String?): List<dev.endlesssea.extensions.api.model.VideoLink> =
+                if (server == null) links else links.filter { it.server.equals(server, true) }
+            val pool = serverPriority.asSequence()
+                .map { linksFor(it) }.firstOrNull { it.isNotEmpty() } ?: links
+            // Meilleur lien téléchargeable du pool choisi : direct > HLS, puis qualité
+            val downloadable = pool.filter {
                 it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE ||
                     it.streamType == dev.endlesssea.extensions.api.model.StreamType.HLS
             }

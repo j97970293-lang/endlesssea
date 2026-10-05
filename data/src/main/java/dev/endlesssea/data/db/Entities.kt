@@ -146,6 +146,8 @@ data class ExtensionEntity(
     val typesJson: String = "[]",
     val capabilitiesJson: String = "{}",
     val repoUrl: String? = null,
+    /** §4 : icône persistée à l'installation (robuste aussi pour les .esx hors dépôt). */
+    val iconUrl: String? = null,
     val status: String = "ENABLED",        // ExtensionStatus
     val trust: String = "UNKNOWN",         // TrustLevel
     val permissionsJson: String = "[]",

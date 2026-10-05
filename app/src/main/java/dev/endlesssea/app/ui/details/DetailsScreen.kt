@@ -152,7 +152,7 @@ fun DetailsScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .offset(y = (-44).dp),
+                        .offset(y = (-68).dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
@@ -166,7 +166,7 @@ fun DetailsScreen(
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f).padding(top = 8.dp)) {
                         Text(
-                            state.details?.title ?: mediaId.substringAfter(':'),
+                            state.details?.title ?: "Chargement de la fiche…",
                             style = MaterialTheme.typography.titleLarge,
                             maxLines = 3, overflow = TextOverflow.Ellipsis,
                         )
@@ -482,6 +482,76 @@ fun DetailsScreen(
     }
 
     // ---- Feuille « Télécharger » — groupée par langue audio, flux exclus
+    // ---------------- Dialogue serveurs + priorité (glisser-déposer) §glisser-serveurs
+    if (serverOrderDialog) {
+        val storedOrder by viewModel.serverOrder.collectAsState()
+        val detected = remember(state.linksByEpisode) {
+            state.linksByEpisode.values.flatten()
+                .mapNotNull { it.server?.takeIf { s -> s.isNotBlank() } }.distinct()
+        }
+        var ordered by remember(storedOrder, detected) {
+            mutableStateOf(storedOrder.filter { it in detected } + detected.filter { it !in storedOrder })
+        }
+        if (ordered.isEmpty()) ordered = detected.ifEmpty { storedOrder }
+        var inactive by remember { mutableStateOf(setOf<String>()) }
+        AlertDialog(
+            onDismissRequest = { serverOrderDialog = false },
+            confirmButton = {
+                Button(onClick = {
+                    val active = ordered.filter { it !in inactive }
+                    viewModel.saveServerOrder(ordered)
+                    viewModel.enqueueAll(serverPriority = active)
+                    serverOrderDialog = false
+                }) { Text("Télécharger") }
+            },
+            dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
+            title = { Text("Serveurs & priorité") },
+            text = {
+                Column {
+                    Text(
+                        "Maintiens la poignée ≡ et glisse pour classer : le serveur le plus haut " +
+                            "est essayé en premier pour chaque épisode. Désactive ceux à ignorer.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    if (ordered.isEmpty()) {
+                        Text(
+                            "Aucun serveur détecté pour l'instant — les liens seront résolus " +
+                                "automatiquement avec l'ordre mémorisé.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        dev.endlesssea.app.ui.components.ReorderableColumn(
+                            items = ordered,
+                            key = { it },
+                            onMove = { from, to ->
+                                ordered = ordered.toMutableList().apply { add(to, removeAt(from)) }
+                            },
+                        ) { server, index, dragging, handle ->
+                            dev.endlesssea.app.ui.components.ServerPriorityRow(
+                                rank = index + 1,
+                                server = server,
+                                active = server !in inactive,
+                                dragging = dragging,
+                                onToggle = { on ->
+                                    inactive = if (on) inactive - server else inactive + server
+                                },
+                                handleModifier = handle,
+                            )
+                        }
+                    }
+                    Text(
+                        "L'ordre est mémorisé et réutilisé pour tous les téléchargements.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            },
+        )
+    }
+
     downloadSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
         ModalBottomSheet(onDismissRequest = { downloadSheetEpisode = null }) {

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -247,9 +248,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
                 ) {
                     // Barre de progression + temps
                     val dur = state.durationMs.coerceAtLeast(1)
@@ -302,10 +305,15 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         }
                         IconButton(
                             onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
                         ) {
                             Icon(
                                 if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 "Lecture/Pause", tint = Color.White,
+                                modifier = Modifier.size(34.dp),
                             )
                         }
                         IconButton(onClick = { viewModel.jumpBy(state.skipSeconds) }) {

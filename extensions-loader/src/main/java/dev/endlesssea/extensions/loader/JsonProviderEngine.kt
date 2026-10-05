@@ -114,6 +114,7 @@ class JsonProviderEngine(
             permissions = rules.manifest.permissions.mapNotNull {
                 runCatching { dev.endlesssea.extensions.api.permission.ExtensionPermission.valueOf(it) }.getOrNull()
             }.toSet(),
+            iconUrl = rules.manifest.iconUrl,
         )
 
         override suspend fun getMainPage(request: MainPageRequest): PagedResult<SearchItem> =

@@ -186,10 +186,16 @@ class DownloadManager(
             val finalName = task.fileName.removeSuffix(".part")
             val finalFile = part.parentFile?.resolve(finalName) ?: File(finalName)
             part.renameTo(finalFile)
-            // Garde « 36 Ko » : une vidéo de quelques Ko au final = page d'erreur déguisée.
+            // Garde « 36 Ko » (spec §6, renforcée) : taille ET contenu. Une page
+            // d'erreur déguisée en vidéo se repère aussi à ses PREMIERS octets.
             val isVideoExt = finalName.substringAfterLast('.', "").lowercase() in
                 setOf("mp4", "mkv", "ts", "avi", "webm", "mov", "m4v")
-            if (isVideoExt && finalFile.length() in 1 until 256 * 1024) {
+            val firstByte = runCatching {
+                finalFile.inputStream().use { if (it.read() >= 0) it else -1 }
+            }.getOrDefault(-1)
+            val looksText = firstByte == 0x3C /* '<' */ || firstByte == 0x7B /* '{' */
+            if (finalFile.length() > 0 && (looksText ||
+                    (isVideoExt && finalFile.length() < 256 * 1024))) {
                 val ko = finalFile.length() / 1024
                 finalFile.delete()
                 dev.endlesssea.core.diag.EsLog.e(

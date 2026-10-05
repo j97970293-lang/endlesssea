@@ -3,6 +3,7 @@ package dev.endlesssea.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
             androidx.compose.runtime.LaunchedEffect(glassOverlay, glassScrim, cardStyle, preferredAudioLang, glassVariant) {
                 dev.endlesssea.app.ui.components.UiTuning.update(
                     glassOverlay, glassScrim, cardStyle,
-                    tintArgb = if (glassVariant == "auto") null else AppPrefs.ACCENTS[glassVariant],
+                    tintArgb = if (glassVariant == "auto") null else AppPrefs.GLASS_VARIANTS[glassVariant],
                 )
                 dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
@@ -102,10 +103,13 @@ class MainActivity : ComponentActivity() {
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { pendingUpdate.value = null },
                         confirmButton = {
+                            // §5 : tout se passe dans l'app (dialogue de progression)
                             androidx.compose.material3.Button(onClick = {
-                                AppUpdateInstaller.download(context, update)
+                                lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    updateChecker.downloadUpdate(context, update)
+                                }
                                 pendingUpdate.value = null
-                            }) { Text("Télécharger et installer") }
+                            }) { Text("Télécharger ici") }
                         },
                         dismissButton = {
                             androidx.compose.material3.TextButton(onClick = { pendingUpdate.value = null }) {
@@ -118,6 +122,16 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
+
+                dev.endlesssea.app.update.UpdateProgressDialog(
+                    onRetry = pendingUpdate.value?.let { update ->
+                        {
+                            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                updateChecker.downloadUpdate(context, update)
+                            }
+                        }
+                    },
+                )
 
                 val nav = rememberNavController()
                 val backStack by nav.currentBackStackEntryAsState()
@@ -154,6 +168,8 @@ class MainActivity : ComponentActivity() {
                     containerColor = if (bgImage != null) Color.Transparent
                     else if (amoled) Color.Black else MaterialTheme.colorScheme.background,
                     topBar = {
+                        // §réglages-pleine-page : sur Paramètres, AUCUNE barre — page dédiée.
+                        if (route != Screen.Settings.route) {
                         CenterAlignedTopAppBar(
                             title = { Text(title) },
                             actions = {
@@ -170,8 +186,13 @@ class MainActivity : ComponentActivity() {
                                 actionIconContentColor = MaterialTheme.colorScheme.onSurface,
                             ),
                         )
+                        }
                     },
-                    bottomBar = { EsBottomBar(nav, currentRoute = route, tabs = barTabs, order = tabOrder, marginDp = barMargin) },
+                    bottomBar = {
+                        if (route != Screen.Settings.route) {
+                            EsBottomBar(nav, currentRoute = route, tabs = barTabs, order = tabOrder, marginDp = barMargin)
+                        }
+                    },
                 ) { padding ->
                     EsNavGraphContainer(
                         modifier = Modifier.fillMaxSize().padding(padding),
