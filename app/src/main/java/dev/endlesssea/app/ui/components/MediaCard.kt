@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.SubcomposeAsyncImageContent
 import dev.endlesssea.app.EsImagePlaceholder
 import dev.endlesssea.app.EsImages
 import dev.endlesssea.app.ui.search.SearchItemUi
@@ -55,7 +56,7 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit) {
                     is coil.compose.AsyncImagePainter.State.Loading,
                     is coil.compose.AsyncImagePainter.State.Empty ->
                         EsImagePlaceholder(tint = Color(0xFF2A5F8F), modifier = Modifier.fillMaxWidth().height(185.dp))
-                    else -> coil.compose.SubcomposeAsyncImageContent()
+                    else -> SubcomposeAsyncImageContent()
                 }
             }
             // ---- Badges toujours visibles (⭐ note + VF/VOSTFR fournis par la source)

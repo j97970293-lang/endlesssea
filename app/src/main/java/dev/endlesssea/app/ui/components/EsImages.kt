@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 
 /**
@@ -44,17 +45,17 @@ object EsImages {
         val appContext = context.applicationContext
         return ImageLoader.Builder(appContext)
             .diskCache {
-                DiskCache.Builder(appContext)
+                DiskCache.Builder()
                     .maxSizeBytes(512L * 1024 * 1024) // 512 Mo — les posters s'accumulent
                     .build()
             }
             .memoryCache {
                 MemoryCache.Builder(appContext)
-                    .maxSizeBytes(32L * 1024 * 1024)
+                    .maxSizeBytes(32 * 1024 * 1024)
                     .build()
             }
             .okHttpClient {
-                dev.endlesssea.core.net.HttpClients.safe("images") // UA + DoH + timeouts
+                dev.endlesssea.core.net.HttpClients.baseBuilder().build() // UA + DoH + timeouts
             }
             .respectCacheHeaders(false) // certains serveurs d'extensions ferment le cache
             .crossfade(true)
@@ -80,21 +81,28 @@ object EsImages {
     ) {
         if (url.isNullOrBlank()) { onResult(false, null); return }
         val safe = safeImageUrl(url) ?: run { onResult(false, null); return }
-        Thread {
+        val r: Runnable = Runnable {
             runCatching {
-                val client = dev.endlesssea.core.net.HttpClients.safe("image-check")
-                val rb = okhttp3.Request.Builder().url(safe).header("User-Agent", dev.endlesssea.core.net.HttpClients.USER_AGENT)
-                if (headOnly) rb.head() else rb.get().header("Range", "bytes=0-65535")
-                client.newCall(rb.build()).execute().use { res ->
+                val client: okhttp3.OkHttpClient =
+                    dev.endlesssea.core.net.HttpClients.baseBuilder().build()
+                val rb = okhttp3.Request.Builder()
+                    .url(safe)
+                    .header("User-Agent", dev.endlesssea.core.net.HttpClients.USER_AGENT)
+                if (headOnly) rb.head() else {
+                    rb.get()
+                    rb.header("Range", "bytes=0-65535")
+                }
+                client.newCall(rb.build()).execute().use { res: okhttp3.Response ->
                     if (res.isSuccessful) {
-                        val bytes = if (headOnly) null else res.body?.bytes()
+                        val bytes: ByteArray? = if (headOnly) null else res.body?.bytes()
                         onResult(true, bytes)
                     } else {
                         onResult(false, null)
                     }
                 }
             }.onFailure { onResult(false, null) }
-        }.start()
+        }
+        Thread(r).start()
     }
 
     /**
@@ -169,7 +177,7 @@ fun SafeAsyncImage(
                 is coil.compose.AsyncImagePainter.State.Loading,
                 is coil.compose.AsyncImagePainter.State.Empty ->
                     EsImagePlaceholder(tint = Color(0xFF2A5F8F), modifier = placeholderModifier)
-                else -> coil.compose.SubcomposeAsyncImageContent()
+                else -> SubcomposeAsyncImageContent()
             }
         }
     }
