@@ -7,7 +7,9 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -97,7 +99,7 @@ private fun audioSection(lang: AudioLang) = when (lang) {
  * épisodes avec vignette + badge EP + téléchargement par épisode, feuille
  * « Télécharger » groupée par langue audio (VOSTFR / VF / MULTI / VO).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DetailsScreen(
     mediaId: String,
@@ -670,16 +672,32 @@ fun DetailsScreen(
                                 horizontal = 12.dp, vertical = 10.dp,
                             ),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("", style = MaterialTheme.typography.titleLarge)
+                            Row(
+                                Modifier.combinedClickable(
+                                    onClick = { viewModel.playDeviceFile(f, launchPlayer()) },
+                                    // §appui-long : supprimer le téléchargement
+                                    onLongClick = { deleteCandidate = f },
+                                ),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Filled.Download, null)
                                 Spacer(Modifier.width(10.dp))
-                                dev.endlesssea.app.ui.components.ExpandableText(
-                                    text = f.label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    dialogTitle = "Fichier sur l'appareil",
-                                    modifier = Modifier.weight(1f),
-                                )
+                                Column(Modifier.weight(1f)) {
+                                    dev.endlesssea.app.ui.components.ExpandableText(
+                                        text = f.label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        dialogTitle = "Fichier sur l'appareil",
+                                    )
+                                    // §emplacement : où le fichier a été rangé
+                                    Text(
+                                        f.location.ifBlank { "Stockage de l'appareil" },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
                                 androidx.compose.material3.Button(onClick = {
                                     viewModel.playDeviceFile(f, launchPlayer())
                                 }) { Text("Lire") }
@@ -787,6 +805,27 @@ fun DetailsScreen(
     }
 
     // ---- §fiche-serveurs : au clic sur un épisode, choix du serveur avant lecture
+    // §appui-long : confirmation de suppression d'un téléchargement
+    var deleteCandidate by remember {
+        androidx.compose.runtime.mutableStateOf<dev.endlesssea.app.ui.details.DeviceFileUi?>(null)
+    }
+    deleteCandidate?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteDeviceFile(f)
+                    deleteCandidate = null
+                }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate = null }) { Text("Annuler") }
+            },
+            title = { Text("Supprimer ce téléchargement ?") },
+            text = { Text(f.label) },
+        )
+    }
+
     // §reprise-fiche : proposition automatique de reprendre où on s'était arrêté
     val resumePromptOn by viewModel.resumePrompt.collectAsState()
     var resumeAsked by remember { androidx.compose.runtime.mutableStateOf(false) }

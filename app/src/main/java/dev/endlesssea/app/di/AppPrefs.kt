@@ -667,6 +667,13 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         _extLanguages.value = next
     }
 
+    /** §lisibilite : ombre portée sur les textes (meilleure lecture). */
+    private val _textOutline = MutableStateFlow(p.getBoolean("text_outline", true))
+    val textOutline: StateFlow<Boolean> = _textOutline
+    fun setTextOutline(v: Boolean) {
+        p.edit().putBoolean("text_outline", v).apply(); _textOutline.value = v
+    }
+
     /** §luminosite : éclaircissement des surfaces sombres (0..40 %). */
     private val _uiBrightness = MutableStateFlow(p.getInt("ui_brightness", 0))
     val uiBrightness: StateFlow<Int> = _uiBrightness

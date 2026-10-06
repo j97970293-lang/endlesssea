@@ -58,26 +58,35 @@ class DownloadsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             // Room fournit la file ordonnée ; le moteur pousse la progression live
-            combine(dao.observeAllOrdered(), engine.progress) { tasks, live -> tasks to live }
-                .collect { (tasks, live) ->
+            combine(dao.observeAllOrdered(), engine.progressByTask) { tasks, live -> tasks to live }
+                .collect { (tasks, liveMap) ->
                     rawRows = tasks.map { t ->
-                        val isLive = live.taskId == t.id
+                        val live = liveMap[t.id]
+                        val isLive = live != null && t.status == DownloadStatus.DOWNLOADING.name
                         DownloadRowUi(
                             id = t.id,
                             title = t.fileName.removeSuffix(".part"),
                             detail = "${t.server} · ${t.quality}" +
-                                if (t.totalBytes > 0) " · ${formatBytes(t.totalBytes)}" else "",
+                                if (t.totalBytes > 0) " · ${formatBytes(t.totalBytes)}" else "" +
+                                    (t.displayPath.substringBeforeLast('/')
+                                        .takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                             status = t.status,
                             fraction = when {
-                                isLive && live.totalBytes > 0 ->
-                                    (live.downloadedBytes.toFloat() / live.totalBytes).coerceIn(0f, 1f)
                                 t.status == DownloadStatus.COMPLETED.name -> 1f
+                                isLive && live!!.totalBytes > 0 ->
+                                    (live.downloadedBytes.toFloat() / live.totalBytes).coerceIn(0f, 1f)
                                 else -> 0f
                             },
-                            progressLabel = if (isLive && live.totalBytes > 0) {
-                                "${formatBytes(live.downloadedBytes)} / ${formatBytes(live.totalBytes)}" +
-                                    if (live.speedBytesPerSec > 0) " · ${formatBytes(live.speedBytesPerSec)}/s" else ""
-                            } else "",
+                            progressLabel = when {
+                                isLive && live!!.totalBytes > 0 ->
+                                    "${formatBytes(live.downloadedBytes)} / ${formatBytes(live.totalBytes)}" +
+                                        if (live.speedBytesPerSec > 0) " · ${formatBytes(live.speedBytesPerSec)}/s" else ""
+                                isLive && live!!.downloadedBytes > 0 ->
+                                    "${formatBytes(live.downloadedBytes)} téléchargés"
+                                t.status == DownloadStatus.COMPLETED.name && t.totalBytes > 0 ->
+                                    formatBytes(t.totalBytes)
+                                else -> ""
+                            },
                             error = t.error,
                             createdAt = t.createdAt,
                             totalBytes = t.totalBytes,

@@ -87,6 +87,10 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // §plein-ecran : la barre d'état (heure) et la barre de navigation
+        // gênaient la vidéo — immersion totale, elles ne reviennent qu'au
+        // balayage et se recachent toutes seules.
+        hideSystemBars()
         // §orientation-lecteur : horizontal par défaut, modifiable (bouton rotation + réglage)
         requestedOrientation = if (prefs.playerOrientation.value == "portrait") {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
@@ -111,6 +115,26 @@ class PlayerActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         viewModel.engine.pause()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
+    }
+
+    private fun hideSystemBars() {
+        val controller = androidx.core.view.WindowCompat
+            .getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat
+            .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams
+                    .LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
     }
 }
 
@@ -937,7 +961,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     listOf(
-                        "none" to "Aucune", "anime" to "Anime", "anime_fort" to "Anime fort",
+                        "none" to "Aucune", "720p" to "720p", "1080p" to "1080p",
+                        "anime" to "Anime HD", "anime_fort" to "Anime HD+",
                         "net" to "Netteté", "eclat" to "Éclat", "doux" to "Anti-grain",
                         "cinema" to "Cinéma", "nuit" to "Nuit",
                     ).forEach { (key, label) ->
@@ -1285,8 +1310,10 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         listOf(
-                            "none" to "Aucune", "anime" to "Anime (netteté GPU)",
-                            "anime_fort" to "Anime fort", "net" to "Netteté douce",
+                            "none" to "Aucune", "720p" to "Upscale 720p",
+                            "1080p" to "Upscale 1080p",
+                            "anime" to "Anime HD (720p + netteté)",
+                            "anime_fort" to "Anime HD+ (1080p)", "net" to "Netteté douce",
                             "eclat" to "Éclat", "doux" to "Anti-grain",
                             "cinema" to "Cinéma", "nuit" to "Nuit",
                         ).forEach { (key, label) ->

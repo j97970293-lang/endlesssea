@@ -74,21 +74,32 @@ object DownloadStorage {
         fileName: String,
         source: File,
     ): String? {
+        // §carte-sd : on tente le dossier choisi (SAF) ; si la carte refuse
+        // l'écriture — cas fréquent des SD externes — on NE renvoie PAS d'échec :
+        // on recopie le fichier dans le stockage public, comme le fait Aniyomi.
         val tree = root(context, rootUri)
         if (tree != null) {
-            val dir = mkdirs(tree, relativeDirs) ?: return null
-            dir.findFile(fileName)?.delete()
-            val doc = dir.createFile(mimeFor(fileName), fileName) ?: return null
-            val ok = runCatching {
-                context.contentResolver.openOutputStream(doc.uri)?.use { out ->
+            val viaTree = runCatching {
+                val dir = mkdirs(tree, relativeDirs) ?: return@runCatching null
+                dir.findFile(fileName)?.delete()
+                val doc = dir.createFile(mimeFor(fileName), fileName) ?: return@runCatching null
+                val written = context.contentResolver.openOutputStream(doc.uri)?.use { out ->
                     source.inputStream().use { it.copyTo(out) }
-                } != null
-            }.getOrDefault(false)
-            if (!ok) return null
-            source.delete()
-            return doc.uri.toString()
+                }
+                if (written == null) {
+                    runCatching { doc.delete() }
+                    null
+                } else {
+                    doc.uri.toString()
+                }
+            }.getOrNull()
+            if (viaTree != null) {
+                source.delete()
+                return viaTree
+            }
+            // sinon : on continue sur le stockage public (repli)
         }
-        // Pas de dossier choisi : stockage public classique.
+        // Pas de dossier choisi (ou carte SD en lecture seule) : stockage public.
         return runCatching {
             if (Build.VERSION.SDK_INT <= 28 || Environment.isExternalStorageLegacy()) {
                 val dir = publicDir(relativeDirs)

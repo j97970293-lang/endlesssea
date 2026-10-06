@@ -27,6 +27,10 @@ data class LibraryUiState(
     /** Vidéos locales scannées sur les dossiers SAF choisis (multi-dossiers). */
     val localFiles: List<LocalVideoUi> = emptyList(),
     val localScanning: Boolean = false,
+    /** §retour-visuel : texte de progression du scan. */
+    val localScanLabel: String = "",
+    /** §retour-visuel : texte de progression du scan. */
+    val localScanLabel: String = "",
     /** Tic de recomposition quand une métadonnée locale change. */
     val localMetaTick: Int = 0,
 )
@@ -170,20 +174,31 @@ class LibraryViewModel @Inject constructor(
         // §stockage-public : le dossier de stockage (téléchargements + localanime,
         // arborescence Aniyomi) est TOUJOURS scanné, en plus des dossiers ajoutés.
         val dirs = (prefs.localVideoDirs.value + listOfNotNull(prefs.storageRoot.value)).distinct()
-        _uiState.value = _uiState.value.copy(localScanning = true)
+        _uiState.value = _uiState.value.copy(
+            localScanning = true, localScanLabel = "Analyse en cours…",
+        )
         val known = _uiState.value.localFiles.associate { it.uri to it.durationMs }
         val files = dirs
             .flatMap {
                 dev.endlesssea.app.local.LocalVideos.scanAsync(
                     context, it, includeHidden = prefs.showHiddenFiles.value,
-                )
+                ) { folders, found, current ->
+                    // §retour-visuel : le scan n'est plus muet
+                    _uiState.value = _uiState.value.copy(
+                        localScanLabel = "$folders dossiers · $found vidéos" +
+                            if (current.isNotBlank()) " · $current" else "",
+                    )
+                }
             }
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
                 val m = prefs.localFileMeta(f.uri)
                 LocalVideoUi(
-                    uri = f.uri, name = f.displayName, parentUri = f.parentUri,
+                    uri = f.uri,
+                    name = dev.endlesssea.app.local.LocalNames.fileName(f.displayName)
+                        .ifBlank { dev.endlesssea.app.local.LocalNames.fileName(f.uri) },
+                    parentUri = f.parentUri,
                     sizeBytes = f.sizeBytes,
                     durationMs = known[f.uri],
                     customTitle = m.title, customCoverUri = m.coverUri,
@@ -191,7 +206,7 @@ class LibraryViewModel @Inject constructor(
                     outroStartSec = m.outroStartSec,
                 )
             }
-        _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false)
+        _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false, localScanLabel = "")
 
         durationJob?.cancel()
         durationJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {

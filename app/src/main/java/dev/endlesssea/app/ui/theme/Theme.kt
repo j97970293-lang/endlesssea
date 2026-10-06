@@ -70,6 +70,7 @@ fun EndlessSeaTheme(
     themeMode: Int = AppPrefs.THEME_SYSTEM,
     accentArgb: Long = 0xFFB9C1FF,   // accent primaire choisi dans les réglages
     uiBrightness: Int = 0,           // §luminosite : éclaircit les surfaces sombres
+    textOutline: Boolean = true,     // §lisibilite : ombre portée sur les textes
     dynamicColor: Boolean = false,   // verre + AMOLED demandent la palette fixe « mer »
     fontId: String = "system",       // police choisie dans Réglages (téléchargeable)
     content: @Composable () -> Unit,
@@ -115,8 +116,17 @@ fun EndlessSeaTheme(
         surfaceVariant = Color.White.copy(alpha = lift * 1.2f).compositeOver(accented.surfaceVariant),
     )
     val family = fontFamilyFor(fontId)
-    val typography = if (family == null) androidx.compose.material3.Typography()
+    val base = if (family == null) androidx.compose.material3.Typography()
     else androidx.compose.material3.Typography().withFamily(family)
+    // §lisibilite : fine ombre portée sur tous les textes — indispensable
+    // au-dessus des affiches et des fonds clairs (« des choses qu'on ne voit pas »).
+    val typography = if (!textOutline) base else base.withShadow(
+        androidx.compose.ui.graphics.Shadow(
+            color = Color.Black.copy(alpha = 0.55f),
+            offset = androidx.compose.ui.geometry.Offset(0f, 1f),
+            blurRadius = 3f,
+        ),
+    )
     MaterialTheme(colorScheme = tinted, typography = typography, content = content)
 }
 
@@ -170,4 +180,25 @@ private fun androidx.compose.material3.Typography.withFamily(
     labelLarge = labelLarge.copy(fontFamily = f),
     labelMedium = labelMedium.copy(fontFamily = f),
     labelSmall = labelSmall.copy(fontFamily = f),
+)
+
+/** §lisibilite : applique une ombre portée à tous les styles de texte. */
+private fun androidx.compose.material3.Typography.withShadow(
+    shadow: androidx.compose.ui.graphics.Shadow,
+): androidx.compose.material3.Typography = copy(
+    displayLarge = displayLarge.copy(shadow = shadow),
+    displayMedium = displayMedium.copy(shadow = shadow),
+    displaySmall = displaySmall.copy(shadow = shadow),
+    headlineLarge = headlineLarge.copy(shadow = shadow),
+    headlineMedium = headlineMedium.copy(shadow = shadow),
+    headlineSmall = headlineSmall.copy(shadow = shadow),
+    titleLarge = titleLarge.copy(shadow = shadow),
+    titleMedium = titleMedium.copy(shadow = shadow),
+    titleSmall = titleSmall.copy(shadow = shadow),
+    bodyLarge = bodyLarge.copy(shadow = shadow),
+    bodyMedium = bodyMedium.copy(shadow = shadow),
+    bodySmall = bodySmall.copy(shadow = shadow),
+    labelLarge = labelLarge.copy(shadow = shadow),
+    labelMedium = labelMedium.copy(shadow = shadow),
+    labelSmall = labelSmall.copy(shadow = shadow),
 )

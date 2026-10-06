@@ -216,6 +216,13 @@ class SettingsViewModel @Inject constructor(
     val progressRounded: StateFlow<Boolean> = prefs.progressRounded
     val playerTheme: StateFlow<String> = prefs.playerTheme
     val videoEnhance: StateFlow<String> = prefs.videoEnhance
+    // §fusion-filtres : les filtres vidéo vivent avec les autres réglages du lecteur
+    val videoContrast: StateFlow<Float> = prefs.videoContrast
+    val videoGamma: StateFlow<Float> = prefs.videoGamma
+    val videoSharp: StateFlow<Float> = prefs.videoSharp
+    val videoTemp: StateFlow<Float> = prefs.videoTemp
+    fun setVideoAdvanced(contrast: Float, gamma: Float, sharp: Float, temp: Float) =
+        prefs.setVideoAdvanced(contrast, gamma, sharp, temp)
     val borderStrength: StateFlow<Int> = prefs.borderStrength
     fun setProgressPosition(v: String) = prefs.setProgressPosition(v)
     fun setToolsPosition(v: String) = prefs.setToolsPosition(v)
@@ -228,6 +235,8 @@ class SettingsViewModel @Inject constructor(
 
     // §fond-flou / §historique-local / §fichiers-caches / §reprise-fiche
     val uiBrightness: StateFlow<Int> = prefs.uiBrightness
+    val textOutline: StateFlow<Boolean> = prefs.textOutline
+    fun setTextOutline(v: Boolean) = prefs.setTextOutline(v)
     fun setUiBrightness(v: Int) = prefs.setUiBrightness(v)
     val storageRoot: StateFlow<String?> = prefs.storageRoot
     fun setStorageRoot(uri: String?) = prefs.setStorageRoot(uri)

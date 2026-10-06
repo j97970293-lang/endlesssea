@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
             val borderStrength by prefs.borderStrength.collectAsState()
             val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
             val uiBrightness by prefs.uiBrightness.collectAsState()
+            val textOutline by prefs.textOutline.collectAsState()
             androidx.compose.runtime.LaunchedEffect(
                 glassOverlay, glassScrim, cardStyle, preferredAudioLang,
                 glassVariant, liquidGlass, accentGlassLink, accentName, bloom,
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity() {
                 themeMode = themeMode,
                 accentArgb = AppPrefs.ACCENTS[accentName] ?: 0xFFB9C1FF,
                 uiBrightness = uiBrightness,
+                textOutline = textOutline,
                 fontId = fontId,
             ) {
                 // ---- Splash animé (logo qui grandit en fondu, ~800 ms) puis application
@@ -257,50 +259,59 @@ class MainActivity : ComponentActivity() {
                     containerColor = if (bgImage != null || showLiquid) Color.Transparent
                     else if (amoled) Color.Black else MaterialTheme.colorScheme.background,
                     topBar = {
-                        // §réglages-pleine-page : sur Paramètres, AUCUNE barre — page dédiée.
-                        // §fiche-immersive : la fiche détail gère elle-même son arrière-plan
-                        // et ses boutons — aucune barre de l'app (capture utilisateur : barre barrée).
+                        // §barre-haut : PLUS DE BARRE DU TOUT. Les deux boutons
+                        // (menu logo + recherche) flottent au-dessus du contenu,
+                        // sans conteneur ni voile translucide.
+                    },
+                    bottomBar = {
                         val immersive = route?.startsWith("details/") == true
                         if (route != Screen.Settings.route && !immersive) {
-                        // §entete-logo : barre du haut minimale et STABLE — le logo,
-                        // rond et discret, est aussi le menu (Paramètres / Extensions),
-                        // avec une petite animation d'entrée.
-                        var logoMenu by androidx.compose.runtime.remember {
-                            androidx.compose.runtime.mutableStateOf(false)
+                            Box(Modifier.navigationBarsPadding()) {
+                                EsBottomBar(
+                                    nav, currentRoute = route,
+                                    // §anymex-ui : disposition « moderne » = pas d'onglet
+                                    // Recherche dédié (la recherche vit dans Explorer).
+                                    tabs = if (navBarLayout == "modern") barTabs - "search" else barTabs,
+                                    order = tabOrder, marginDp = barMargin,
+                                    translucent = translucentNav,
+                                    // §barre-dynamique : pilule avec libellé par défaut (réf. Anymex)
+                                    style = prefs.navBarStyle.collectAsState().value,
+                                )
+                            }
                         }
-                        var logoIn by androidx.compose.runtime.remember {
-                            androidx.compose.runtime.mutableStateOf(false)
-                        }
-                        androidx.compose.runtime.LaunchedEffect(Unit) { logoIn = true }
-                        val logoScale by androidx.compose.animation.core.animateFloatAsState(
-                            targetValue = if (logoIn) 1f else 0.6f,
-                            animationSpec = androidx.compose.animation.core.spring(
-                                dampingRatio = 0.55f,
-                                stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
-                            ),
-                            label = "logoIn",
+                    },
+                ) { padding ->
+                    val immersive = route?.startsWith("details/") == true
+                    val showFloating = route != Screen.Settings.route && !immersive
+
+                    Box(Modifier.fillMaxSize()) {
+                        EsNavGraphContainer(
+                            modifier = Modifier.fillMaxSize().padding(padding),
+                            nav = nav,
                         )
-                        androidx.compose.material3.TopAppBar(
-                            modifier = Modifier.statusBarsPadding(),
-                            title = {
-                                if (route == Screen.Home.route) {
-                                    val provider by dev.endlesssea.app.ui.home.HomeUiBus
-                                        .currentProvider.collectAsState()
-                                    androidx.compose.material3.TextButton(
-                                        onClick = { dev.endlesssea.app.ui.home.HomeUiBus.openProviderSheet() },
-                                    ) {
-                                        Text(
-                                            provider,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = 200.dp),
-                                        )
-                                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
-                                    }
-                                }
-                            },
-                            navigationIcon = {
+                        if (showFloating) {
+                            // ---- Boutons flottants (aucune barre derrière)
+                            var logoMenu by androidx.compose.runtime.remember {
+                                androidx.compose.runtime.mutableStateOf(false)
+                            }
+                            var logoIn by androidx.compose.runtime.remember {
+                                androidx.compose.runtime.mutableStateOf(false)
+                            }
+                            androidx.compose.runtime.LaunchedEffect(Unit) { logoIn = true }
+                            val logoScale by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (logoIn) 1f else 0.6f,
+                                animationSpec = androidx.compose.animation.core.spring(
+                                    dampingRatio = 0.55f,
+                                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+                                ),
+                                label = "logoIn",
+                            )
+                            Row(
+                                Modifier.align(Alignment.TopStart)
+                                    .statusBarsPadding()
+                                    .padding(start = 8.dp, top = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 Box {
                                     IconButton(onClick = { logoMenu = true }) {
                                         androidx.compose.foundation.Image(
@@ -336,51 +347,37 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                            },
-                            actions = {
-                                // §recherche-barre : une seule loupe, et seulement là
-                                // où il n'y a pas déjà un champ de recherche (Explorer).
                                 if (route == Screen.Home.route) {
-                                    val src by dev.endlesssea.app.ui.home.HomeUiBus
-                                        .currentProviderId.collectAsState()
-                                    IconButton(onClick = { nav.navigate("search/" + android.net.Uri.encode(src)) }) {
-                                        Icon(Icons.Filled.Search, contentDescription = "Rechercher")
+                                    val provider by dev.endlesssea.app.ui.home.HomeUiBus
+                                        .currentProvider.collectAsState()
+                                    androidx.compose.material3.TextButton(
+                                        onClick = { dev.endlesssea.app.ui.home.HomeUiBus.openProviderSheet() },
+                                    ) {
+                                        Text(
+                                            provider,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 190.dp),
+                                        )
+                                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
                                     }
                                 }
-                            },
-                            // §barre-haut : aucune barre translucide — fond 100 %
-                            // transparent, les icônes flottent sur le contenu.
-                            colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                                containerColor = Color.Transparent,
-                                scrolledContainerColor = Color.Transparent,
-                                titleContentColor = MaterialTheme.colorScheme.onSurface,
-                                actionIconContentColor = MaterialTheme.colorScheme.onSurface,
-                            ),
-                        )
-                        }
-                    },
-                    bottomBar = {
-                        val immersive = route?.startsWith("details/") == true
-                        if (route != Screen.Settings.route && !immersive) {
-                            Box(Modifier.navigationBarsPadding()) {
-                                EsBottomBar(
-                                    nav, currentRoute = route,
-                                    // §anymex-ui : disposition « moderne » = pas d'onglet
-                                    // Recherche dédié (la recherche vit dans Explorer).
-                                    tabs = if (navBarLayout == "modern") barTabs - "search" else barTabs,
-                                    order = tabOrder, marginDp = barMargin,
-                                    translucent = translucentNav,
-                                    // §barre-dynamique : pilule avec libellé par défaut (réf. Anymex)
-                                    style = prefs.navBarStyle.collectAsState().value,
-                                )
+                            }
+                            if (route == Screen.Home.route) {
+                                val src by dev.endlesssea.app.ui.home.HomeUiBus
+                                    .currentProviderId.collectAsState()
+                                IconButton(
+                                    onClick = { nav.navigate("search/" + android.net.Uri.encode(src)) },
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                        .statusBarsPadding()
+                                        .padding(end = 6.dp, top = 2.dp),
+                                ) {
+                                    Icon(Icons.Filled.Search, contentDescription = "Rechercher")
+                                }
                             }
                         }
-                    },
-                ) { padding ->
-                    EsNavGraphContainer(
-                        modifier = Modifier.fillMaxSize().padding(padding),
-                        nav = nav,
-                    )
+                    }
                 }
                 }
             }

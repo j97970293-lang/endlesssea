@@ -3,6 +3,7 @@ package dev.endlesssea.app.ui.downloads
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +51,28 @@ fun DownloadsScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     /** §deplacer-téléchargement : id de la tâche en cours de déplacement SAF. */
     var exportTargetId by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    // §appui-long : confirmation avant suppression
+    var deleteCandidate by remember {
+        androidx.compose.runtime.mutableStateOf<DownloadRowUi?>(null)
+    }
+    deleteCandidate?.let { row ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.cancel(row.id)
+                    deleteCandidate = null
+                }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { deleteCandidate = null }) {
+                    Text("Annuler")
+                }
+            },
+            title = { Text("Supprimer ce téléchargement ?") },
+            text = { Text(row.title) },
+        )
+    }
     val treeLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
@@ -161,12 +184,15 @@ fun DownloadsScreen(
                         }
                     },
                     onMove = { exportTargetId = task.id; treeLauncher.launch(null) },
+                    // §appui-long : supprimer un téléchargement
+                    onLongPress = { deleteCandidate = task },
                 )
             }
         }
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DownloadCard(
     row: DownloadRowUi,
@@ -177,11 +203,16 @@ private fun DownloadCard(
     onMoveDown: () -> Unit,
     onPlay: () -> Unit = {},
     onMove: () -> Unit = {},
+    onLongPress: () -> Unit = {},
 ) {
     // Conteneur « verre » (liquid glass sur toutes les surfaces, pas seulement les boutons)
     Column(
         Modifier
             .fillMaxWidth()
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = onLongPress,
+            )
             .glass(18.dp),
     ) {
         Column(Modifier.padding(12.dp)) {

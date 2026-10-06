@@ -394,10 +394,21 @@ private fun LocalFilesPanel(
         )
 
         if (state.localScanning) {
-            Row(
+            // §retour-visuel : on montre ce que le scan est en train de faire
+            Column(
                 Modifier.fillMaxWidth().padding(24.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) { androidx.compose.material3.CircularProgressIndicator() }
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            ) {
+                androidx.compose.material3.CircularProgressIndicator()
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    state.localScanLabel.ifBlank { "Analyse du stockage…" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
         } else if (state.localFiles.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),

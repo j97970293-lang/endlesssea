@@ -53,12 +53,20 @@ class HomeViewModel @Inject constructor(
     private val historyDao: WatchHistoryDao,
     private val registry: ExtensionRegistry,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
+    private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
     init {
+        // §telecharge-visible : alimente le registre global des titres hors ligne
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                dev.endlesssea.app.ui.components.DownloadedRegistry
+                    .set(downloadsDao.completedMediaIds())
+            }
+        }
         observeLocal()
         loadRemote()
         publishSources()
@@ -84,12 +92,15 @@ class HomeViewModel @Inject constructor(
                         media != null -> media.toUi().copy(subtitle = "Reprise à $pct %")
                         // §historique-local : un fichier local (pas de fiche en base)
                         // apparaît quand même, sauf si l'utilisateur l'exclut.
-                        h.episodeId.startsWith("content://") && prefs.localInHistory.value -> {
-                            val meta = prefs.localFileMeta(h.episodeId)
+                        // Tolérant : content:// (SAF), file://, /storage/... — tout
+                        // ce qui n'est pas une fiche d'extension.
+                        prefs.localInHistory.value && isLocalRef(h.episodeId) -> {
+                            val meta = runCatching { prefs.localFileMeta(h.episodeId) }.getOrNull()
                             SearchItemUi(
                                 id = "local:" + h.episodeId,
-                                title = meta.title ?: prettyLocalName(h.episodeId),
-                                posterUrl = meta.coverUri,
+                                title = meta?.title ?: prettyLocalName(h.episodeId),
+                                // la vignette, c'est la vidéo elle-même
+                                posterUrl = meta?.coverUri ?: h.episodeId,
                                 subtitle = "Fichier local — reprise à $pct %",
                             )
                         }
@@ -111,11 +122,11 @@ class HomeViewModel @Inject constructor(
      * §nom-fichier : une URI SAF finit par « primary%3AMovies%2Ffilm.mp4 » —
      * on en extrait le vrai nom de fichier, sans chemin ni extension.
      */
-    private fun prettyLocalName(uri: String): String {
-        val decoded = android.net.Uri.decode(uri)
-        val last = decoded.substringAfterLast('/').substringAfterLast(':')
-        return last.substringBeforeLast('.').replace('_', ' ').trim().ifBlank { last }
-    }
+    private fun isLocalRef(id: String): Boolean =
+        id.startsWith("content://") || id.startsWith("file://") || id.startsWith("/")
+
+    private fun prettyLocalName(uri: String): String =
+        dev.endlesssea.app.local.LocalNames.pretty(uri)
 
     // ---------- Contenu réel des extensions (ce qui donne vie à l'accueil)
     fun loadRemote() = viewModelScope.launch {

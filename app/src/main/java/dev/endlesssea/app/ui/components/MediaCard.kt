@@ -126,6 +126,24 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
                 }
             }
 
+            // ---- §telecharge-visible : pastille « téléchargé » (coin bas droit)
+            if (DownloadedRegistry.ids.collectAsState().value.contains(item.id)) {
+                Box(
+                    Modifier
+                        .align(androidx.compose.ui.Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xCC1B5E20))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        "⤓ Hors ligne",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                    )
+                }
+            }
+
             // ---- Langues annoncées par la source (toujours en haut à gauche)
             val langBadge = when {
                 item.audioLangs.any { it.equals("vf", ignoreCase = true) } -> "VF"

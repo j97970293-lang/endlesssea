@@ -44,7 +44,12 @@ object LocalVideos {
     private val VIDEO_EXT = setOf(
         "mp4", "mkv", "ts", "avi", "webm", "mov", "m4v", "mpg", "mpeg", "3gp",
     )
-    private const val MAX_DEPTH = 6
+    /**
+     * §scan-aniyomi : Aniyomi ne parcourt que `racine/<Série>/<fichiers>` —
+     * deux niveaux. Un balayage récursif profond sur une carte SD prend des
+     * minutes pour rien. On garde une marge (3) pour `downloads/<Source>/<Série>/`.
+     */
+    private const val MAX_DEPTH = 3
     private const val MAX_FILES_PER_ROOT = 2000
 
     /**
@@ -64,6 +69,8 @@ object LocalVideos {
         context: Context,
         treeUriString: String,
         includeHidden: Boolean = false,
+        /** Retour visuel : (dossiers explorés, vidéos trouvées, dossier courant). */
+        onProgress: ((Int, Int, String) -> Unit)? = null,
     ): List<LocalVideoFile> = coroutineScope {
         val tree = Uri.parse(treeUriString)
         val rootId = runCatching {
@@ -71,6 +78,7 @@ object LocalVideos {
         }.getOrNull() ?: return@coroutineScope emptyList()
         val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
         val gate = Semaphore(8)
+        val scanned = java.util.concurrent.atomic.AtomicInteger(0)
 
         suspend fun walk(docId: String, depth: Int): Unit {
             if (depth > MAX_DEPTH || out.size >= MAX_FILES_PER_ROOT) return
@@ -145,6 +153,10 @@ object LocalVideos {
                     }
                 }
             }
+            onProgress?.invoke(
+                scanned.incrementAndGet(), out.size,
+                Uri.decode(dirUri.substringAfterLast('/')).substringAfterLast('/'),
+            )
             // sous-dossiers en parallèle (8 curseurs max simultanés)
             coroutineScope {
                 val jobs = subDirs.map { sub ->

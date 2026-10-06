@@ -196,7 +196,7 @@ fun EsNavGraph(nav: NavHostController) {
                         val uri = id.removePrefix("local:")
                         dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(emptyList(), 0)
                         dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
-                            title = android.net.Uri.decode(uri.substringAfterLast("/")),
+                            title = dev.endlesssea.app.local.LocalNames.pretty(uri),
                             mediaId = null, episodeId = uri,
                             links = listOf(
                                 dev.endlesssea.extensions.api.model.VideoLink(

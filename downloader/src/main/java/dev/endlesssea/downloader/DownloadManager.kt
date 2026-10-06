@@ -41,6 +41,9 @@ interface DownloadEngine {
     suspend fun reorder(taskId: String, up: Boolean)
 
     val progress: Flow<DownloadProgress>
+
+    /** §progression : progression de CHAQUE tâche active (clé = id de tâche). */
+    val progressByTask: Flow<Map<String, DownloadProgress>>
     val notifications: Flow<DownloadNotice>
 }
 
@@ -68,6 +71,14 @@ class DownloadManager(
     private val progressFlow = MutableStateFlow(DownloadProgress("", DownloadStatus.QUEUED, 0, 0, 0, 0))
     private val notices = Channel<DownloadNotice>(Channel.BUFFERED)
     override val progress = progressFlow
+    private val progressMap = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
+    override val progressByTask = progressMap
+
+    /** Publie une progression : flux global + table par tâche (plusieurs téléchargements). */
+    private fun publishProgress(p: DownloadProgress) {
+        progressFlow.value = p
+        progressMap.value = progressMap.value + (p.taskId to p)
+    }
     override val notifications: Flow<DownloadNotice> = notices.receiveAsFlow()
 
     // ------------------------------------------------------------ commands
@@ -180,10 +191,12 @@ class DownloadManager(
                 if (elapsed > 0) {
                     val speed = speedWindowBytes * 1000 / elapsed
                     val remaining = (expected - table.sumOf { it.downloadedBytes }).coerceAtLeast(0)
-                    progressFlow.value = DownloadProgress(
-                        taskId, DownloadStatus.DOWNLOADING, expected,
-                        expected - remaining, speed,
-                        etaSeconds = if (speed > 0) remaining / speed else -1,
+                    publishProgress(
+                        DownloadProgress(
+                            taskId, DownloadStatus.DOWNLOADING, expected,
+                            expected - remaining, speed,
+                            etaSeconds = if (speed > 0) remaining / speed else -1,
+                        ),
                     )
                 }
             }
@@ -251,15 +264,23 @@ class DownloadManager(
             dao.updateStatus(taskId, DownloadStatus.DOWNLOADING.name)
             var doneCount = doneIdx.size
             val totalCount = plan.segments.size
-            progressFlow.value = DownloadProgress(
-                taskId, DownloadStatus.DOWNLOADING, totalCount.toLong(), doneCount.toLong(), 0, -1,
+            publishProgress(
+                DownloadProgress(
+                    taskId, DownloadStatus.DOWNLOADING,
+                    // §progression-hls : on affiche des OCTETS (estimés à partir
+                    // du fichier déjà écrit), pas un nombre de segments.
+                    estimateTotal(part, doneCount, totalCount), part.length(), 0, -1,
+                ),
             )
             val bytes = hlsEngine.download(plan, task.headersMap(), part, fromIdx) { idx ->
                 dao.checkpoint(taskId, idx, 0, true)
                 doneCount++
-                progressFlow.value = DownloadProgress(
-                    taskId, DownloadStatus.DOWNLOADING,
-                    totalCount.toLong(), doneCount.toLong(), 0, etaSeconds = -1,
+                publishProgress(
+                    DownloadProgress(
+                        taskId, DownloadStatus.DOWNLOADING,
+                        estimateTotal(part, doneCount, totalCount), part.length(),
+                        0, etaSeconds = -1,
+                    ),
                 )
             }
             dao.updateStatus(taskId, DownloadStatus.VERIFYING.name)
@@ -301,6 +322,13 @@ class DownloadManager(
                 updatedAt = System.currentTimeMillis(),
             ),
         )
+    }
+
+    /** Taille totale estimée d'un flux HLS d'après ce qui est déjà écrit. */
+    private fun estimateTotal(part: File, done: Int, total: Int): Long {
+        val written = part.length()
+        if (done <= 0 || total <= 0 || written <= 0) return 0
+        return written * total / done
     }
 
     // ------------------------------------------------------------ helpers    // ------------------------------------------------------------ helpers

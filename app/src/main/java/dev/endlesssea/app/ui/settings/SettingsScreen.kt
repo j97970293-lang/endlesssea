@@ -240,6 +240,22 @@ fun SettingsScreen(
                         valueRange = 0f..40f,
                     )
                     Spacer(Modifier.height(8.dp))
+                    // §lisibilite : contour/ombre sur les textes
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Contour des textes", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Ombre portée pour lire les titres sur les affiches",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = viewModel.textOutline.collectAsState().value,
+                            onCheckedChange = { viewModel.setTextOutline(it) },
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
                     Text("Thème", style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(8.dp))
                     Row(
@@ -903,8 +919,10 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         listOf(
-                            "none" to "Aucune", "anime" to "Anime (netteté GPU)",
-                            "anime_fort" to "Anime fort", "net" to "Netteté douce",
+                            "none" to "Aucune", "720p" to "Upscale 720p",
+                            "1080p" to "Upscale 1080p",
+                            "anime" to "Anime HD (720p + netteté)",
+                            "anime_fort" to "Anime HD+ (1080p)", "net" to "Netteté douce",
                             "eclat" to "Éclat", "doux" to "Anti-grain",
                             "cinema" to "Cinéma", "nuit" to "Nuit",
                         ).forEach { (key, label) ->
@@ -947,14 +965,47 @@ fun SettingsScreen(
                     }
                 }
             }
+            // §fusion-filtres : les filtres vidéo sont ICI, avec les autres
+            // réglages du lecteur (plus de page séparée).
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Filtres vidéo", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Filtres vidéo (luminosité/teinte/saturation) : réglés dans le lecteur, bouton , avec préréglages sauvegardés.",
+                        "Appliqués à toutes les lectures (ajustables aussi en cours de vidéo).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
                     )
+                    val contrast = viewModel.videoContrast.collectAsState().value
+                    val gamma = viewModel.videoGamma.collectAsState().value
+                    val sharp = viewModel.videoSharp.collectAsState().value
+                    val temp = viewModel.videoTemp.collectAsState().value
+                    Text("Contraste : %.2f".format(contrast), style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = contrast,
+                        onValueChange = { viewModel.setVideoAdvanced(it, gamma, sharp, temp) },
+                        valueRange = 0.5f..1.8f,
+                    )
+                    Text("Gamma : %.2f".format(gamma), style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = gamma,
+                        onValueChange = { viewModel.setVideoAdvanced(contrast, it, sharp, temp) },
+                        valueRange = 0.5f..1.8f,
+                    )
+                    Text("Netteté : %.2f".format(sharp), style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = sharp,
+                        onValueChange = { viewModel.setVideoAdvanced(contrast, gamma, it, temp) },
+                        valueRange = 0f..1f,
+                    )
+                    Text("Température : %.2f".format(temp), style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = temp,
+                        onValueChange = { viewModel.setVideoAdvanced(contrast, gamma, sharp, it) },
+                        valueRange = -1f..1f,
+                    )
+                    TextButton(onClick = { viewModel.setVideoAdvanced(1f, 1f, 0f, 0f) }) {
+                        Text("Réinitialiser les filtres")
+                    }
                 }
             }
             item {

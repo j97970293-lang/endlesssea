@@ -183,16 +183,42 @@ class PlayerViewModel @Inject constructor(
         when (st.enhance) {
             // §anime-4k : netteté GPU (unsharp mask 5 échantillons) — l'esprit
             // d'Anime4K sans ses multiples passes qui font ramer un téléphone.
+            // §upscale : on AGRANDIT vraiment l'image (480p → 720p/1080p) avant
+            // d'appliquer la netteté — c'est l'ordre qui compte : agrandir puis
+            // renforcer les contours donne le rendu « anime HD », l'inverse
+            // ne fait que grossir les pixels.
+            "720p" -> {
+                runCatching {
+                    effects += androidx.media3.effect.Presentation.createForHeight(720)
+                }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.35f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(6f).build()
+            }
+            "1080p" -> {
+                runCatching {
+                    effects += androidx.media3.effect.Presentation.createForHeight(1080)
+                }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.45f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(8f).build()
+            }
             "anime" -> {
+                runCatching {
+                    effects += androidx.media3.effect.Presentation.createForHeight(720)
+                }
                 runCatching { effects += dev.endlesssea.player.SharpenEffect(0.30f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(8f).build()
             }
             "anime_fort" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.55f) }
-                runCatching { effects += androidx.media3.effect.Contrast(0.08f) }
+                runCatching {
+                    effects += androidx.media3.effect.Presentation.createForHeight(1080)
+                }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.45f) }
+                runCatching { effects += androidx.media3.effect.Contrast(0.06f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(12f).build()
+                    .adjustSaturation(10f).build()
             }
             "net" -> {
                 runCatching { effects += dev.endlesssea.player.SharpenEffect(0.18f) }

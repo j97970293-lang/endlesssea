@@ -46,6 +46,10 @@ data class DeviceFileUi(
     val label: String,
     val sizeBytes: Long,
     val targetUri: String,
+    /** §hors-ligne : épisode correspondant, pour marquer la liste d'épisodes. */
+    val episodeId: String? = null,
+    /** Chemin lisible (« downloads/Source/Série ») affiché sous le titre. */
+    val location: String = "",
 )
 
 data class DetailsUiState(
@@ -183,9 +187,16 @@ class DetailsViewModel @Inject constructor(
                 ).joinToString(" · "),
                 sizeBytes = t.totalBytes,
                 targetUri = t.targetUri,
+                episodeId = t.episodeId,
+                location = t.displayPath.substringBeforeLast('/', ""),
             )
         }
         _uiState.value = _uiState.value.copy(deviceFiles = list)
+        if (list.isNotEmpty()) {
+            dev.endlesssea.app.ui.components.DownloadedRegistry.add(mediaId)
+        } else {
+            dev.endlesssea.app.ui.components.DownloadedRegistry.remove(mediaId)
+        }
     }
 
     /** §deplacer-téléchargement : lecture d'un fichier local (SAF supporté). */
@@ -394,6 +405,25 @@ class DetailsViewModel @Inject constructor(
     }
 
     /** Lecture : met les liens dans le canal mémoire, puis [onReady] lance PlayerActivity. */
+    /** §hors-ligne-prioritaire : fichier téléchargé correspondant à un épisode. */
+    fun downloadedFor(episodeId: String): DeviceFileUi? =
+        _uiState.value.deviceFiles.firstOrNull { it.episodeId == episodeId }
+
+    /** Supprime un téléchargement (appui long). */
+    fun deleteDeviceFile(f: DeviceFileUi) = viewModelScope.launch {
+        runCatching {
+            val uri = android.net.Uri.parse(f.targetUri)
+            if (uri.scheme == "content") {
+                androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.delete()
+            } else {
+                java.io.File(uri.path ?: "").delete()
+            }
+        }
+        runCatching { downloads.cancel(f.id, deleteFiles = true) }
+        refreshDeviceFiles()
+        _uiState.value = _uiState.value.copy(message = "Téléchargement supprimé")
+    }
+
     fun playEpisode(episode: Episode, startIndex: Int = 0, onReady: () -> Unit = {}) = viewModelScope.launch {
         // §épisode-suivant : la file = tous les épisodes de la fiche, dans l'ordre ;
         // les liens des voisins sont résolus à la demande par ce résolveur.
@@ -423,6 +453,14 @@ class DetailsViewModel @Inject constructor(
                     orderByLangPref(out)
                 }
             }
+        }
+
+        // §hors-ligne-prioritaire : si l'épisode est déjà téléchargé, on lit le
+        // FICHIER LOCAL même quand les données mobiles sont actives.
+        val local = downloadedFor(episode.id)
+        if (local != null) {
+            playDeviceFile(local, onReady)
+            return@launch
         }
 
         val existing = _uiState.value.linksByEpisode[episode.id]
@@ -455,11 +493,13 @@ class DetailsViewModel @Inject constructor(
         val sourceName = runCatching { registry.instance(extensionId).info.name }
             .getOrDefault(extensionId)
         val seriesName = _uiState.value.details?.title ?: mediaId
+        // §structure-plate : un dossier par SÉRIE, les épisodes dedans
+        // (pas de sous-dossier par épisode — demande utilisateur).
         val relDirs = listOf(
             dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR,
-            sourceName, seriesName, title,
+            sourceName, seriesName,
         )
-        writeOfflineMetadata(relDirs.dropLast(1), sourceName, seriesName)
+        writeOfflineMetadata(relDirs, sourceName, seriesName)
         val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
         val task = DownloadTaskEntity(
             id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
@@ -547,9 +587,9 @@ class DetailsViewModel @Inject constructor(
         val seriesName2 = _uiState.value.details?.title ?: mediaId
         val relDirs = listOf(
             dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR,
-            sourceName2, seriesName2, title,
+            sourceName2, seriesName2,
         )
-        writeOfflineMetadata(relDirs.dropLast(1), sourceName2, seriesName2)
+        writeOfflineMetadata(relDirs, sourceName2, seriesName2)
         val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
         val task = DownloadTaskEntity(
             id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
