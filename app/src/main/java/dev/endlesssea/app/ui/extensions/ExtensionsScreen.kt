@@ -181,12 +181,24 @@ fun ExtensionsScreen(
             }
 
             // --------------------------------------- Extensions disponibles (dépôts)
+            item {
+                Text(
+                    "Disponibles (non installées)",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
             if (state.repoEntries.isNotEmpty()) {
                 item { Text("Disponibles en ligne", style = MaterialTheme.typography.titleMedium) }
             val shownEntries = state.repoEntries.filter { e ->
-                selectedLangs.isEmpty() ||
-                    e.entry.languages.isEmpty() ||
-                    e.entry.languages.any { l -> l.lowercase() in selectedLangs }
+                // §sections-extensions : ici, uniquement ce qui N'EST PAS installé
+                // (ou qui a une mise à jour en attente).
+                val installed = state.extensions.any { x -> x.pkg == e.entry.id }
+                val updatable = e.installedVersion in 1 until e.entry.version
+                (!installed || updatable) && (
+                    selectedLangs.isEmpty() ||
+                        e.entry.languages.isEmpty() ||
+                        e.entry.languages.any { l -> l.lowercase() in selectedLangs }
+                    )
             }
             items(shownEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
                 val upToDate = e.installedVersion >= e.entry.version

@@ -106,6 +106,7 @@ class MainActivity : ComponentActivity() {
             val legacyHeader by prefs.legacyHeader.collectAsState()
             val borderStrength by prefs.borderStrength.collectAsState()
             val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
+            val uiBrightness by prefs.uiBrightness.collectAsState()
             androidx.compose.runtime.LaunchedEffect(
                 glassOverlay, glassScrim, cardStyle, preferredAudioLang,
                 glassVariant, liquidGlass, accentGlassLink, accentName, bloom,
@@ -152,6 +153,7 @@ class MainActivity : ComponentActivity() {
             EndlessSeaTheme(
                 themeMode = themeMode,
                 accentArgb = AppPrefs.ACCENTS[accentName] ?: 0xFFB9C1FF,
+                uiBrightness = uiBrightness,
                 fontId = fontId,
             ) {
                 // ---- Splash animé (logo qui grandit en fondu, ~800 ms) puis application
@@ -346,8 +348,11 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             },
+                            // §barre-haut : aucune barre translucide — fond 100 %
+                            // transparent, les icônes flottent sur le contenu.
                             colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
                                 containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent,
                                 titleContentColor = MaterialTheme.colorScheme.onSurface,
                                 actionIconContentColor = MaterialTheme.colorScheme.onSurface,
                             ),

@@ -816,6 +816,9 @@ fun DetailsScreen(
 
     playSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
+        // §serveurs-visibles : la recherche démarre à l'ouverture de la feuille,
+        // et la liste se remplit au fil de l'eau (serveur par serveur).
+        LaunchedEffect(episode.id) { viewModel.loadLinks(episode) }
         ModalBottomSheet(onDismissRequest = { playSheetEpisode = null }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
@@ -943,7 +946,26 @@ fun DetailsScreen(
                 Column(
                     Modifier.verticalScroll(rememberScrollState()),
                 ) {
-                    state.episodes.forEach { ep ->
+                    // §saisons : les épisodes sont groupés par saison, avec une
+                    // case « toute la saison » et les serveurs déjà trouvés.
+                    val bySeason = state.episodes.groupBy { it.season ?: 1 }.toSortedMap()
+                    bySeason.forEach { (season, eps) ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Saison $season (${eps.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = {
+                                val allOn = eps.all { selected[it.id] == true }
+                                eps.forEach { selected[it.id] = !allOn }
+                            }) { Text("Tout") }
+                        }
+                        eps.forEach { ep ->
+                        val epLinks = state.linksByEpisode[ep.id].orEmpty()
                         Row(
                             Modifier.fillMaxWidth().clickable {
                                 selected[ep.id] = selected[ep.id] != true
@@ -954,13 +976,34 @@ fun DetailsScreen(
                                 checked = selected[ep.id] == true,
                                 onCheckedChange = { selected[ep.id] = it == true },
                             )
-                            dev.endlesssea.app.ui.components.ExpandableText(
-                                text = ep.title ?: "Épisode ${ep.number.toInt()}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                dialogTitle = "Épisode",
-                                modifier = Modifier.weight(1f),
-                            )
+                            Column(Modifier.weight(1f)) {
+                                dev.endlesssea.app.ui.components.ExpandableText(
+                                    text = ep.title ?: "Épisode ${ep.number.toInt()}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    dialogTitle = "Épisode",
+                                )
+                                // §serveurs-disponibles : ce qui est déjà résolu
+                                Text(
+                                    when {
+                                        state.linksLoadingEpisode == ep.id -> "Recherche des serveurs…"
+                                        epLinks.isEmpty() -> "Serveurs non vérifiés — touchez la loupe"
+                                        else -> epLinks.take(4).joinToString(" · ") { l -> l.server } +
+                                            if (epLinks.size > 4) " +${epLinks.size - 4}" else ""
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                            androidx.compose.material3.IconButton(onClick = { viewModel.loadLinks(ep) }) {
+                                androidx.compose.material3.Icon(
+                                    androidx.compose.material.icons.Icons.Filled.Search,
+                                    contentDescription = "Chercher les serveurs",
+                                )
+                            }
+                        }
                         }
                     }
                 }
@@ -970,6 +1013,9 @@ fun DetailsScreen(
 
     downloadSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
+        // §serveurs-visibles : la recherche démarre à l'ouverture de la feuille,
+        // et la liste se remplit au fil de l'eau (serveur par serveur).
+        LaunchedEffect(episode.id) { viewModel.loadLinks(episode) }
         ModalBottomSheet(onDismissRequest = { downloadSheetEpisode = null }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(

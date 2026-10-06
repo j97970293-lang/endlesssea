@@ -589,20 +589,18 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                 )
-                if (state.links.size > 1) {
+                // §pistes : serveur, sous-titres et audio toujours accessibles
+                // (avant, les boutons disparaissaient s'il n'y avait qu'une piste).
+                if (state.links.isNotEmpty()) {
                     IconButton(onClick = { showQualityDialog = true }) {
                         Icon(Icons.Filled.HighQuality, "Qualité / serveur", tint = Color.White)
                     }
                 }
-                if (subtitleTracks.isNotEmpty()) {
-                    IconButton(onClick = { showCcDialog = true }) {
-                        Icon(Icons.Filled.ClosedCaption, "Sous-titres", tint = Color.White)
-                    }
+                IconButton(onClick = { showCcDialog = true }) {
+                    Icon(Icons.Filled.ClosedCaption, "Sous-titres", tint = Color.White)
                 }
-                if (audioTracks.size > 1) {
-                    IconButton(onClick = { showAudioDialog = true }) {
-                        Icon(Icons.Filled.Audiotrack, "Piste audio", tint = Color.White)
-                    }
+                IconButton(onClick = { showAudioDialog = true }) {
+                    Icon(Icons.Filled.Audiotrack, "Piste audio", tint = Color.White)
                 }
                 if (state.locked) {
                     IconButton(onClick = { viewModel.toggleLock() }) {

@@ -8,6 +8,8 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import dev.endlesssea.app.di.AppPrefs
 
@@ -67,6 +69,7 @@ private val SeaLight = lightColorScheme(
 fun EndlessSeaTheme(
     themeMode: Int = AppPrefs.THEME_SYSTEM,
     accentArgb: Long = 0xFFB9C1FF,   // accent primaire choisi dans les réglages
+    uiBrightness: Int = 0,           // §luminosite : éclaircit les surfaces sombres
     dynamicColor: Boolean = false,   // verre + AMOLED demandent la palette fixe « mer »
     fontId: String = "system",       // police choisie dans Réglages (téléchargeable)
     content: @Composable () -> Unit,
@@ -84,9 +87,32 @@ fun EndlessSeaTheme(
         dark -> SeaDark
         else -> SeaLight
     }
-    val tinted = if (accentArgb == 0L) colors else colors.copy(
-        primary = Color(accentArgb),
-        primaryContainer = Color(accentArgb).copy(alpha = 0.22f),
+    // §accent-partout : l'accent choisi ne touchait que `primary` — d'où
+    // l'impression « ma couleur n'apparaît pas ». Il colore maintenant toute
+    // la palette (secondaire, tertiaire, conteneurs, teinte des surfaces).
+    val accent = Color(accentArgb)
+    val onAccent = if (accent.luminance() > 0.5f) Color(0xFF101014) else Color.White
+    val accented = if (accentArgb == 0L) colors else colors.copy(
+        primary = accent,
+        onPrimary = onAccent,
+        primaryContainer = accent.copy(alpha = 0.26f).compositeOver(colors.surface),
+        onPrimaryContainer = if (dark) Color.White else Color(0xFF101014),
+        secondary = accent.copy(alpha = 0.85f).compositeOver(colors.surface),
+        onSecondary = onAccent,
+        secondaryContainer = accent.copy(alpha = 0.18f).compositeOver(colors.surface),
+        tertiary = accent,
+        tertiaryContainer = accent.copy(alpha = 0.14f).compositeOver(colors.surface),
+        surfaceTint = accent,
+        inversePrimary = accent,
+        outline = accent.copy(alpha = 0.40f).compositeOver(colors.outline),
+    )
+    // §luminosite : l'interface paraissait trop sombre — un réglage éclaircit
+    // réellement les surfaces (0 = inchangé).
+    val lift = (uiBrightness.coerceIn(0, 40)) / 100f
+    val tinted = if (lift <= 0f || !dark) accented else accented.copy(
+        background = Color.White.copy(alpha = lift * 0.55f).compositeOver(accented.background),
+        surface = Color.White.copy(alpha = lift).compositeOver(accented.surface),
+        surfaceVariant = Color.White.copy(alpha = lift * 1.2f).compositeOver(accented.surfaceVariant),
     )
     val family = fontFamilyFor(fontId)
     val typography = if (family == null) androidx.compose.material3.Typography()

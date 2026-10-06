@@ -218,6 +218,36 @@ class DetailsViewModel @Inject constructor(
     /** §reprise-fiche : proposer la reprise en ouvrant la fiche. */
     val resumePrompt: StateFlow<Boolean> = prefs.resumePrompt
 
+    /** §metadonnees-hors-ligne : details.json + cover.jpg façon Aniyomi. */
+    private fun writeOfflineMetadata(
+        seriesDirs: List<String>,
+        sourceName: String,
+        seriesName: String,
+    ) = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val d = _uiState.value.details
+        val json = buildString {
+            append("{\n")
+            append("  \"title\": ").append(jsonStr(d?.title ?: seriesName)).append(",\n")
+            append("  \"author\": ").append(jsonStr(sourceName)).append(",\n")
+            append("  \"description\": ").append(jsonStr(d?.synopsis ?: "")).append(",\n")
+            append("  \"genre\": [")
+            append(d?.genres.orEmpty().joinToString(", ") { g -> jsonStr(g) })
+            append("],\n")
+            append("  \"status\": \"0\",\n")
+            append("  \"poster\": ").append(jsonStr(d?.posterUrl ?: "")).append("\n")
+            append("}\n")
+        }
+        dev.endlesssea.app.local.DownloadStorage.writeText(
+            context, prefs.storageRoot.value, seriesDirs, "details.json", json,
+        )
+        dev.endlesssea.app.local.DownloadStorage.writeCover(
+            context, prefs.storageRoot.value, seriesDirs, d?.posterUrl,
+        )
+    }
+
+    private fun jsonStr(v: String): String =
+        "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ") + "\""
+
     private fun formatBytes(b: Long): String = when {
         b >= 1L shl 30 -> "%.1f Go".format(b.toDouble() / (1L shl 30))
         b >= 1L shl 20 -> "%.1f Mo".format(b.toDouble() / (1L shl 20))
@@ -420,6 +450,16 @@ class DetailsViewModel @Inject constructor(
         val fileName = FileNames.sanitize(
             "$title [$quality]${if (link.subtitles.isNotEmpty()) " [subs]" else ""}",
         ) + extensionFor(link)
+        // §stockage-public (arborescence Aniyomi) :
+        //   downloads/<Source>/<Série>/<Épisode>/<fichier>
+        val sourceName = runCatching { registry.instance(extensionId).info.name }
+            .getOrDefault(extensionId)
+        val seriesName = _uiState.value.details?.title ?: mediaId
+        val relDirs = listOf(
+            dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR,
+            sourceName, seriesName, title,
+        )
+        writeOfflineMetadata(relDirs.dropLast(1), sourceName, seriesName)
         val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
         val task = DownloadTaskEntity(
             id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
@@ -433,7 +473,7 @@ class DetailsViewModel @Inject constructor(
             streamType = link.streamType.name,
             targetUri = File(dir, fileName).toURI().toString(),
             fileName = fileName,
-            displayPath = "EndlessSea/$fileName",
+            displayPath = (relDirs + fileName).joinToString("/"),
             status = "QUEUED",
         )
         downloads.enqueue(task)
@@ -502,6 +542,14 @@ class DetailsViewModel @Inject constructor(
         val fileName = FileNames.sanitize(
             "$title [$quality]${if (link.subtitles.isNotEmpty()) " [subs]" else ""}",
         ) + extensionFor(link)
+        val sourceName2 = runCatching { registry.instance(extensionId).info.name }
+            .getOrDefault(extensionId)
+        val seriesName2 = _uiState.value.details?.title ?: mediaId
+        val relDirs = listOf(
+            dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR,
+            sourceName2, seriesName2, title,
+        )
+        writeOfflineMetadata(relDirs.dropLast(1), sourceName2, seriesName2)
         val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
         val task = DownloadTaskEntity(
             id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
@@ -515,7 +563,7 @@ class DetailsViewModel @Inject constructor(
             streamType = link.streamType.name,
             targetUri = File(dir, fileName).toURI().toString(),
             fileName = fileName,
-            displayPath = "EndlessSea/$fileName",
+            displayPath = (relDirs + fileName).joinToString("/"),
             status = "QUEUED",
         )
         downloads.enqueue(task)

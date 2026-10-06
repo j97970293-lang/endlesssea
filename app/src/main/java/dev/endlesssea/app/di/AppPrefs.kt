@@ -128,6 +128,23 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "mauve" to 0xFFD7A8E8,
             "prune" to 0xFFC79BD8,
             "perle" to 0xFFE8E2F2,
+            // §couleurs-3 : teintes vives demandées (retour #6)
+            "saphir" to 0xFF6FA8FF,
+            "cobalt" to 0xFF7E9BFF,
+            "electrique" to 0xFF6FD2FF,
+            "lagon" to 0xFF5FD6C8,
+            "menthol" to 0xFF7CE8B4,
+            "pistache" to 0xFFB6E88A,
+            "olive" to 0xFFCBD98A,
+            "miel" to 0xFFFFD98A,
+            "cuivre" to 0xFFF0A878,
+            "corail_vif" to 0xFFFF9A8A,
+            "fuchsia" to 0xFFFF8ED0,
+            "bonbon" to 0xFFFFA6D2,
+            "amethyste" to 0xFFC49BFF,
+            "nuit_bleue" to 0xFF8FA8E8,
+            "argent" to 0xFFD2D8E2,
+            "sable" to 0xFFE6D5B8,
             "argent" to 0xFFCFD6DF,
             "etain" to 0xFFB9C2CC,
             "sable" to 0xFFE4D2A8,
@@ -649,6 +666,22 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putString("ext_languages", "[\"" + next.joinToString("\",\"") + "\"]").apply()
         _extLanguages.value = next
     }
+
+    /** §luminosite : éclaircissement des surfaces sombres (0..40 %). */
+    private val _uiBrightness = MutableStateFlow(p.getInt("ui_brightness", 0))
+    val uiBrightness: StateFlow<Int> = _uiBrightness
+    fun setUiBrightness(v: Int) {
+        val safe = v.coerceIn(0, 40)
+        p.edit().putInt("ui_brightness", safe).apply(); _uiBrightness.value = safe
+    }
+
+    /**
+     * §stockage : dossier choisi par l'utilisateur (SAF), style Aniyomi.
+     * C'est le MÊME réglage que « Emplacement des téléchargements » — un seul
+     * dossier pour les téléchargements et la bibliothèque hors ligne.
+     */
+    val storageRoot: StateFlow<String?> get() = storageUri
+    fun setStorageRoot(uri: String?) = setStorageUri(uri)
 
     private fun loadJsonStringList(key: String): List<String> =
         p.getString(key, null)?.let { json ->

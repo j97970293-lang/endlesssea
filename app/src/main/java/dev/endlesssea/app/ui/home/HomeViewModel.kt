@@ -88,8 +88,7 @@ class HomeViewModel @Inject constructor(
                             val meta = prefs.localFileMeta(h.episodeId)
                             SearchItemUi(
                                 id = "local:" + h.episodeId,
-                                title = meta.title
-                                    ?: android.net.Uri.decode(h.episodeId.substringAfterLast("/")),
+                                title = meta.title ?: prettyLocalName(h.episodeId),
                                 posterUrl = meta.coverUri,
                                 subtitle = "Fichier local — reprise à $pct %",
                             )
@@ -106,6 +105,16 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(favorites = items)
             }
         }
+    }
+
+    /**
+     * §nom-fichier : une URI SAF finit par « primary%3AMovies%2Ffilm.mp4 » —
+     * on en extrait le vrai nom de fichier, sans chemin ni extension.
+     */
+    private fun prettyLocalName(uri: String): String {
+        val decoded = android.net.Uri.decode(uri)
+        val last = decoded.substringAfterLast('/').substringAfterLast(':')
+        return last.substringBeforeLast('.').replace('_', ' ').trim().ifBlank { last }
     }
 
     // ---------- Contenu réel des extensions (ce qui donne vie à l'accueil)

@@ -213,19 +213,33 @@ fun SettingsScreen(
                     "Ajouter un dépôt, activer, mettre à jour, supprimer", expanded = false) { onOpenExtensions() }
             }
             if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis et halos")) item {
-                SettingCategory(Icons.Filled.Dashboard, "Interface",
-                    "Styles de cartes, carrousel, barre, arrondis et halos", expanded = "ui" in openCategories) { toggleCategory("ui") }
+                SettingCategory(Icons.Filled.Dashboard, "Interface et thème",
+                    "Couleurs, luminosité, cartes, carrousel, barre, arrondis, police, fond",
+                    expanded = "ui" in openCategories) { toggleCategory("ui") }
             }
             if ("ui" in openCategories) {
                 item { UiSettingsSection(viewModel, state) }
             }
-            if (openCategoryFull == null && matchesQuery(settingsQuery, "Thème", "Verre liquide, AMOLED, accent, police, fond d'écran")) item {
-                SettingCategory(Icons.Filled.Palette, "Thème",
-                    "Verre liquide, AMOLED, accent, police, fond d'écran", expanded = "interface" in openCategories) { toggleCategory("interface") }
-            }
-            if ("interface" in openCategories) {
+            // §fusion-reglages : « Thème » n'est plus une page séparée — tout
+            // est dans « Interface » (une seule page d'apparence).
+            if ("interface" in openCategories || "ui" in openCategories) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    // §luminosite : « l'interface est trop sombre »
+                    val brightness = viewModel.uiBrightness.collectAsState().value
+                    Text("Luminosité de l'interface", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (brightness == 0) "Sombre d'origine"
+                        else "Surfaces éclaircies de $brightness %",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Slider(
+                        value = brightness.toFloat(),
+                        onValueChange = { viewModel.setUiBrightness(it.toInt()) },
+                        valueRange = 0f..40f,
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text("Thème", style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(8.dp))
                     Row(
@@ -609,9 +623,12 @@ fun SettingsScreen(
             }
                 item {
                     SettingRow(
-                        title = "Emplacement des téléchargements",
-                        subtitle = state.storageUri?.let { "Dossier choisi (SAF) : ${it.substringAfterLast("/")}" }
-                            ?: "Automatique : stockage privé de l'app (EndlessSea/)",
+                        title = "Dossier de stockage (téléchargements + hors ligne)",
+                        subtitle = state.storageUri?.let {
+                            "Dossier choisi : " + android.net.Uri.decode(it.substringAfterLast("/")) +
+                                " — arborescence downloads/<Source>/<Série>/<Épisode>"
+                        } ?: "Aucun dossier choisi — les vidéos vont dans Movies/EndlessSea " +
+                            "(visible dans le gestionnaire de fichiers). Touchez pour choisir.",
                         onClick = { storagePicker.launch(null) },
                     )
                 }

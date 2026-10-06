@@ -167,7 +167,9 @@ class LibraryViewModel @Inject constructor(
     private var durationJob: kotlinx.coroutines.Job? = null
 
     fun scanLocal() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val dirs = prefs.localVideoDirs.value
+        // §stockage-public : le dossier de stockage (téléchargements + localanime,
+        // arborescence Aniyomi) est TOUJOURS scanné, en plus des dossiers ajoutés.
+        val dirs = (prefs.localVideoDirs.value + listOfNotNull(prefs.storageRoot.value)).distinct()
         _uiState.value = _uiState.value.copy(localScanning = true)
         val known = _uiState.value.localFiles.associate { it.uri to it.durationMs }
         val files = dirs
@@ -266,6 +268,10 @@ class LibraryViewModel @Inject constructor(
     fun addCategory(name: String) = prefs.addCustomCategory(name)
     fun removeCategory(name: String) = prefs.removeCustomCategory(name)
     fun categoryItems(name: String): List<String> = prefs.categoryItems(name)
+
+    /** §stockage : dossier racine (style Aniyomi) choisi par l'utilisateur. */
+    val storageRoot: StateFlow<String?> = prefs.storageRoot
+    fun setStorageRoot(uri: String?) { prefs.setStorageRoot(uri); scanLocal() }
 
     /** §affichage-dossiers : "folders" ou "flat". */
     val localFolderView: StateFlow<String> = prefs.localFolderView

@@ -27,7 +27,19 @@ data class LocalVideoFile(
     val durationMs: Long? = null,
 )
 
+/** §structure-aniyomi : métadonnées lues dans un dossier de série. */
+data class SeriesMeta(
+    val title: String? = null,
+    val description: String? = null,
+    val author: String? = null,
+    val genres: List<String> = emptyList(),
+    val coverUri: String? = null,
+)
+
 object LocalVideos {
+
+    /** Métadonnées par dossier (clé = URI du dossier), remplies pendant le scan. */
+    val seriesMeta = java.util.concurrent.ConcurrentHashMap<String, SeriesMeta>()
 
     private val VIDEO_EXT = setOf(
         "mp4", "mkv", "ts", "avi", "webm", "mov", "m4v", "mpg", "mpeg", "3gp",
@@ -88,6 +100,36 @@ object LocalVideos {
                         val size = if (c.isNull(3)) 0L else c.getLong(3)
                         if (mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
                             subDirs += id
+                        } else if (name.equals("cover.jpg", true) || name.equals("cover.png", true)) {
+                            // §structure-aniyomi : affiche de la série
+                            seriesMeta.compute(dirUri) { _, old ->
+                                (old ?: SeriesMeta()).copy(
+                                    coverUri = android.provider.DocumentsContract
+                                        .buildDocumentUriUsingTree(tree, id).toString(),
+                                )
+                            }
+                        } else if (name.equals("details.json", true)) {
+                            // §structure-aniyomi : métadonnées de la série
+                            val docUri = android.provider.DocumentsContract
+                                .buildDocumentUriUsingTree(tree, id).toString()
+                            val text = runCatching {
+                                context.contentResolver.openInputStream(Uri.parse(docUri))
+                                    ?.bufferedReader()?.use { r -> r.readText() }
+                            }.getOrNull()
+                            if (text != null) {
+                                val o = runCatching { org.json.JSONObject(text) }.getOrNull()
+                                if (o != null) {
+                                    seriesMeta.compute(dirUri) { _, old ->
+                                        (old ?: SeriesMeta()).copy(
+                                            title = o.optString("title").ifBlank { null },
+                                            description = o.optString("description").ifBlank { null },
+                                            author = o.optString("author").ifBlank { null },
+                                            genres = (0 until (o.optJSONArray("genre")?.length() ?: 0))
+                                                .mapNotNull { k -> o.optJSONArray("genre")?.optString(k) },
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             val ext = name.substringAfterLast('.', "").lowercase()
                             if (ext in VIDEO_EXT || mime.startsWith("video/")) {

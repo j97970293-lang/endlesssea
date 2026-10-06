@@ -184,18 +184,18 @@ class PlayerViewModel @Inject constructor(
             // §anime-4k : netteté GPU (unsharp mask 5 échantillons) — l'esprit
             // d'Anime4K sans ses multiples passes qui font ramer un téléphone.
             "anime" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.85f) }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.30f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(8f).build()
             }
             "anime_fort" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(1.4f) }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.55f) }
                 runCatching { effects += androidx.media3.effect.Contrast(0.08f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(12f).build()
             }
             "net" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.45f) }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.18f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(4f).build()
             }
@@ -240,7 +240,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
         if (st.filterSharp > 0f) {
-            runCatching { effects += dev.endlesssea.player.SharpenEffect(st.filterSharp * 1.5f) }
+            runCatching { effects += dev.endlesssea.player.SharpenEffect(st.filterSharp * 0.6f) }
         }
         // 3) le triplet classique (luminosité / saturation / teinte), toujours en dernier
         val lightness = st.filterBrightness + (st.filterGamma - 1f) * 20f

@@ -448,6 +448,8 @@ private fun LocalFilesPanel(
                 // ---- Niveau 1 : les dossiers (une carte par dossier)
                 if (openFolder == null && folderView != "flat") {
                     items(folders, key = { it.first }) { (parent, files) ->
+                        // §structure-aniyomi : métadonnées hors ligne du dossier
+                        val meta = dev.endlesssea.app.local.LocalVideos.seriesMeta[parent]
                         dev.endlesssea.app.ui.components.GlassCard(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                         ) {
@@ -455,15 +457,26 @@ private fun LocalFilesPanel(
                                 Modifier.fillMaxWidth().clickable { openFolder = parent },
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             ) {
-                                androidx.compose.material3.Icon(
-                                    androidx.compose.material.icons.Icons.Filled.Folder,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(end = 12.dp),
-                                )
+                                if (meta?.coverUri != null) {
+                                    coil.compose.AsyncImage(
+                                        model = meta.coverUri,
+                                        contentDescription = null,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.padding(end = 12.dp)
+                                            .width(48.dp).height(70.dp)
+                                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
+                                    )
+                                } else {
+                                    androidx.compose.material3.Icon(
+                                        androidx.compose.material.icons.Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(end = 12.dp),
+                                    )
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        files.first().folderName,
+                                        meta?.title ?: files.first().folderName,
                                         style = MaterialTheme.typography.bodyLarge,
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -476,6 +489,15 @@ private fun LocalFilesPanel(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                    meta?.description?.takeIf { it.isNotBlank() }?.let { d ->
+                                        Text(
+                                            d,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        )
+                                    }
                                 }
                                 Text("›", style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.primary)

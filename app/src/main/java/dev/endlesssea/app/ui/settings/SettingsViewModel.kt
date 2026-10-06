@@ -227,6 +227,10 @@ class SettingsViewModel @Inject constructor(
     fun setBorderStrength(v: Int) = prefs.setBorderStrength(v)
 
     // §fond-flou / §historique-local / §fichiers-caches / §reprise-fiche
+    val uiBrightness: StateFlow<Int> = prefs.uiBrightness
+    fun setUiBrightness(v: Int) = prefs.setUiBrightness(v)
+    val storageRoot: StateFlow<String?> = prefs.storageRoot
+    fun setStorageRoot(uri: String?) = prefs.setStorageRoot(uri)
     val bgBlur: StateFlow<Int> = prefs.bgBlur
     fun setBgBlur(v: Int) = prefs.setBgBlur(v)
     val localInHistory: StateFlow<Boolean> = prefs.localInHistory

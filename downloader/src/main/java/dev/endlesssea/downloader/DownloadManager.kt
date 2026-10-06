@@ -50,6 +50,12 @@ class DownloadManager(
     private val dao: DownloadsDao,
     private val http: OkHttpClient,
     private val tempDirProvider: () -> File,
+    /**
+     * §stockage-public : déplace le fichier terminé vers son emplacement
+     * définitif (dossier choisi par l'utilisateur / stockage public) et renvoie
+     * l'URI finale. Null = on laisse le fichier là où il est.
+     */
+    private val publisher: ((DownloadTaskEntity, File) -> String?)? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val maxParallel: Int = 2,
     private val partsPerTask: Int = 4,
@@ -211,6 +217,7 @@ class DownloadManager(
                 notices.trySend(DownloadNotice(taskId, finalName, "Fichier suspect refusé", ok = false))
                 return
             }
+            publishFinal(taskId, task, finalFile)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             notices.trySend(DownloadNotice(taskId, finalName, "Téléchargement terminé", ok = true))
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -260,6 +267,7 @@ class DownloadManager(
             val finalFile = part.parentFile?.resolve(finalName) ?: File(finalName)
             part.renameTo(finalFile)
             dao.upsert(task.copy(totalBytes = bytes, updatedAt = System.currentTimeMillis()))
+            publishFinal(taskId, dao.byId(taskId) ?: task, finalFile)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             notices.trySend(
                 DownloadNotice(taskId, finalName, "Téléchargement terminé ($totalCount segments)", ok = true),
@@ -277,7 +285,25 @@ class DownloadManager(
         }
     }
 
-    // ------------------------------------------------------------ helpers
+    /**
+     * Déplace le fichier vers le stockage public et met l'URI à jour en base —
+     * sans ça, la vidéo restait dans le dossier privé de l'app et ne se lisait
+     * pas (bug « les vidéos téléchargées ne marchent pas »).
+     */
+    private suspend fun publishFinal(taskId: String, task: DownloadTaskEntity, file: File) {
+        val pub = publisher ?: return
+        val size = file.length()
+        val uri = runCatching { pub(task, file) }.getOrNull() ?: return
+        dao.upsert(
+            (dao.byId(taskId) ?: task).copy(
+                targetUri = uri,
+                totalBytes = if (size > 0) size else task.totalBytes,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    // ------------------------------------------------------------ helpers    // ------------------------------------------------------------ helpers
 
     private fun partFile(fileName: String): File =
         tempDirProvider().resolve(".tmp/${fileName.removeSuffix(".part")}.part")

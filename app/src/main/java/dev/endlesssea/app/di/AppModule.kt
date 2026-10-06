@@ -70,8 +70,29 @@ object AppModule {
     @Provides fun provideExtensionDao(db: EsDatabase): ExtensionDao = db.extensionDao()
 
     @Provides @Singleton
-    fun provideDownloadEngine(dao: DownloadsDao, http: OkHttpClient, @ApplicationContext context: Context): DownloadEngine =
-        DownloadManager(dao = dao, http = http, tempDirProvider = { context.filesDir })
+    fun provideDownloadEngine(
+        dao: DownloadsDao,
+        http: OkHttpClient,
+        @ApplicationContext context: Context,
+        prefs: dev.endlesssea.app.di.AppPrefs,
+    ): DownloadEngine =
+        DownloadManager(
+            dao = dao, http = http, tempDirProvider = { context.filesDir },
+            // §stockage-public : arborescence Aniyomi dans le dossier choisi
+            // (downloads/<Source>/<Série>/<Épisode>/fichier) — jamais en privé.
+            publisher = { task, file ->
+                val dirs = task.displayPath.substringBeforeLast('/', "")
+                    .split('/').filter { it.isNotBlank() }
+                    .ifEmpty { listOf(dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR) }
+                dev.endlesssea.app.local.DownloadStorage.publish(
+                    context = context,
+                    rootUri = prefs.storageRoot.value,
+                    relativeDirs = dirs,
+                    fileName = task.fileName.removeSuffix(".part"),
+                    source = file,
+                )
+            },
+        )
 
     @Provides @Singleton
     fun provideExtensionLoader(
