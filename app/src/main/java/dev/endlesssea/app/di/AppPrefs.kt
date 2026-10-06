@@ -208,11 +208,11 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     fun setAutoResume(v: Boolean) { p.edit().putBoolean("auto_resume", v).apply(); _autoResume.value = v }
 
     // ---------------------------------------------------------------- liquid mode
-    private val _glassOverlay = MutableStateFlow(p.getInt("glass_overlay", 12))
+    private val _glassOverlay = MutableStateFlow(p.getInt("glass_overlay", 22))
     val glassOverlay: StateFlow<Int> = _glassOverlay
     fun setGlassOverlay(v: Int) { val c = v.coerceIn(0, 30); p.edit().putInt("glass_overlay", c).apply(); _glassOverlay.value = c }
 
-    private val _glassScrim = MutableStateFlow(p.getInt("glass_scrim", 25))
+    private val _glassScrim = MutableStateFlow(p.getInt("glass_scrim", 16))
     val glassScrim: StateFlow<Int> = _glassScrim
     fun setGlassScrim(v: Int) { val c = v.coerceIn(0, 100); p.edit().putInt("glass_scrim", c).apply(); _glassScrim.value = c }
 
@@ -394,7 +394,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     fun setGlassVariant(v: String) { p.edit().putString("glass_variant", v).apply(); _glassVariant.value = v }
 
     /** §verre-liquide : intensité du dégradé « liquide » sur les cartes verre (0 = off, 100 = fort). */
-    private val _liquidGlass = MutableStateFlow(p.getInt("liquid_glass", 40))
+    private val _liquidGlass = MutableStateFlow(p.getInt("liquid_glass", 70))
     val liquidGlass: StateFlow<Int> = _liquidGlass
     fun setLiquidGlass(v: Int) {
         val c = v.coerceIn(0, 100)

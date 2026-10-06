@@ -69,9 +69,28 @@ fun HomeScreen(
     // from the context of a @Composable function »).
     var providerSheetOpen by remember { mutableStateOf(false) }
     val carouselStyle by dev.endlesssea.app.ui.components.UiTuning.carouselStyle.collectAsState()
+    // §fournisseur-en-haut : la barre du haut demande l'ouverture de la feuille
+    val providerRequest by HomeUiBus.providerSheetRequest.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(providerRequest) {
+        if (providerRequest > 0) providerSheetOpen = true
+    }
+    // Le libellé affiché dans la barre suit le filtre courant
+    androidx.compose.runtime.LaunchedEffect(state.sourceFilter, state.sources) {
+        HomeUiBus.publishProvider(
+            state.sources.firstOrNull { it.first == state.sourceFilter }?.second ?: "Toutes mes sources",
+        )
+    }
     val animationsOn by dev.endlesssea.app.ui.components.UiTuning.animations.collectAsState()
 
-    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+    // §accueil-actualiser : tirer vers le bas recharge les catalogues des extensions
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = state.loading,
+        onRefresh = {
+            viewModel.loadRemote()
+            viewModel.publishSources()
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -108,26 +127,8 @@ fun HomeScreen(
             }
         }
 
-        // ---- §fournisseurs (capture AnyMEX) : Choose Provider en feuille —
-        // catalogue « à la une » par extension + trackers gratuits annoncés honnêtement.
-        if (state.extensionCount > 0) {
-            item(key = "providerBtn") {
-                androidx.compose.material3.OutlinedButton(
-                    onClick = { providerSheetOpen = true },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                ) {
-                    Text("☁ Fournisseur : " + (
-                        state.sources.firstOrNull { it.first == state.sourceFilter }?.second
-                            ?: "Toutes mes sources"
-                        ), maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    Spacer(Modifier.width(6.dp))
-                    Text("▾", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-
+        // §fournisseur-en-haut : le bouton n'est plus au milieu de la liste,
+        // il vit dans la barre du haut (MainActivity) ; seule la feuille reste ici.
 
         // ---- Rangées en ligne des extensions (la vraie vie de l'accueil)
         // §accueil-multi : filtrer l'accueil sur UNE extension ou tout voir.

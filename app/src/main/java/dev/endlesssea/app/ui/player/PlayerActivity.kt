@@ -525,111 +525,143 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             }
 
             if (!state.locked) {
-                // ---- Bas : glissière de temps + contrôles modernes
+                // §lecteur-redessiné : UNE seule ligne de progression (temps à gauche
+                // et à droite), une rangée de contrôles aérée, et le mégaskip en
+                // pastille flottante à droite — plus de glissière de luminosité
+                // empilée au milieu des boutons (le geste vertical gauche la règle).
+                val dur = state.durationMs.coerceAtLeast(1)
+                val progress = (slidingPos ?: (state.positionMs.toFloat() / dur)).coerceIn(0f, 1f)
+
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.End,
                 ) {
-                    // Barre de progression + temps
-                    val dur = state.durationMs.coerceAtLeast(1)
-                    Slider(
-                        value = (slidingPos ?: (state.positionMs.toFloat() / dur)).coerceIn(0f, 1f),
-                        onValueChange = { slidingPos = it },
-                        onValueChangeFinished = {
-                            slidingPos?.let { viewModel.engine.player.seekTo((it * dur).toLong()) }
-                            slidingPos = null
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(
-                            formatTime(slidingPos?.let { (it * dur).toLong() } ?: state.positionMs),
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            formatTime(dur),
-                            color = Color.White.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
+                    // ---- Mégaskip : pastille flottante (réf. capture utilisateur)
                     Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 10.dp, end = 4.dp),
                     ) {
-                        Icon(
-                            Icons.Filled.BrightnessMedium, "Luminosité",
-                            tint = Color.White, modifier = Modifier.padding(end = 8.dp),
-                        )
-                        Slider(
-                            value = brightness,
-                            onValueChange = { v ->
-                                brightness = v
-                                (context as? android.app.Activity)?.let { activity ->
-                                    val lp = activity.window.attributes
-                                    lp.screenBrightness = v.coerceIn(0f, 1f)
-                                    activity.window.attributes = lp
-                                }
-                            },
-                            modifier = Modifier.width(120.dp),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        // §mégaskip : grand saut ±85s (réglable) autour du play
-                        IconButton(onClick = { viewModel.megaJump(-state.megaSkipSeconds) }) {
-                            Text("−${state.megaSkipSeconds}", color = Color.White.copy(alpha = 0.8f),
-                                style = MaterialTheme.typography.labelMedium)
+                        MegaSkipPill("−${state.megaSkipSeconds} s") { viewModel.megaJump(-state.megaSkipSeconds) }
+                        MegaSkipPill("+${state.megaSkipSeconds} s") { viewModel.megaJump(state.megaSkipSeconds) }
+                    }
+
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(Color.Black.copy(alpha = 0.62f))
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        // ---- Ligne unique : 21:34 ──────●──────── 1:01:58
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                formatTime(slidingPos?.let { (it * dur).toLong() } ?: state.positionMs),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Slider(
+                                value = progress,
+                                onValueChange = { slidingPos = it },
+                                onValueChangeFinished = {
+                                    slidingPos?.let { viewModel.engine.player.seekTo((it * dur).toLong()) }
+                                    slidingPos = null
+                                },
+                                modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                                colors = androidx.compose.material3.SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.22f),
+                                ),
+                                thumb = {
+                                    Box(
+                                        Modifier
+                                            .size(13.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .background(MaterialTheme.colorScheme.primary),
+                                    )
+                                },
+                                track = { sliderState ->
+                                    val frac = (sliderState.value - sliderState.valueRange.start) /
+                                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(3.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .background(Color.White.copy(alpha = 0.22f)),
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth(frac.coerceIn(0f, 1f))
+                                                .height(3.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .background(MaterialTheme.colorScheme.primary),
+                                        )
+                                    }
+                                },
+                            )
+                            Text(
+                                formatTime(dur),
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
                         }
-                        IconButton(onClick = { viewModel.jumpBy(-state.skipSeconds) }) {
-                            Text("−${state.skipSeconds}s", color = Color.White,
-                                style = MaterialTheme.typography.labelLarge)
-                        }
-                        IconButton(
-                            onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(RoundedCornerShape(28.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
+
+                        // ---- Rangée de contrôles : transport au centre, outils aux bords
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                "Lecture/Pause", tint = Color.White,
-                                modifier = Modifier.size(34.dp),
+                            Text(
+                                "${state.speed}×",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier
+                                    .clickable {
+                                        val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
+                                        viewModel.setSpeed(next)
+                                    }
+                                    .padding(8.dp),
                             )
-                        }
-                        IconButton(onClick = { viewModel.jumpBy(state.skipSeconds) }) {
-                            Text("+${state.skipSeconds}s", color = Color.White,
-                                style = MaterialTheme.typography.labelLarge)
-                        }
-                        IconButton(onClick = { viewModel.megaJump(state.megaSkipSeconds) }) {
-                            Text("+${state.megaSkipSeconds}", color = Color.White.copy(alpha = 0.8f),
-                                style = MaterialTheme.typography.labelMedium)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        // Vitesse (cycle)
-                        Text(
-                            "${state.speed}×",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier
-                                .clickable {
-                                    val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
-                                    viewModel.setSpeed(next)
-                                }
-                                .padding(8.dp),
-                        )
-                        // Filtres vidéo (préréglages + préréglages sauvegardés)
-                        IconButton(onClick = { showFilterDialog = true }) {
-                            Icon(
-                                Icons.Filled.Tune, "Filtres vidéo",
-                                tint = if (state.filterPresetName != "none" && state.filterPresetName != "Aucun")
-                                    MaterialTheme.colorScheme.primary else Color.White,
-                            )
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { viewModel.jumpBy(-state.skipSeconds) }) {
+                                Text(
+                                    "−${state.skipSeconds}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                            IconButton(
+                                onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
+                                modifier = Modifier
+                                    .size(58.dp)
+                                    .clip(RoundedCornerShape(29.dp))
+                                    .background(MaterialTheme.colorScheme.primary),
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    "Lecture/Pause", tint = Color.Black,
+                                    modifier = Modifier.size(32.dp),
+                                )
+                            }
+                            IconButton(onClick = { viewModel.jumpBy(state.skipSeconds) }) {
+                                Text(
+                                    "+${state.skipSeconds}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { showFilterDialog = true }) {
+                                Icon(
+                                    Icons.Filled.Tune, "Filtres vidéo",
+                                    tint = if (state.filterPresetName != "none" && state.filterPresetName != "Aucun")
+                                        MaterialTheme.colorScheme.primary else Color.White,
+                                )
+                            }
                         }
                     }
                 }
@@ -929,4 +961,24 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
 @Composable
 private fun TextButtonBack(onBack: () -> Unit) {
     TextButton(onClick = onBack) { Text("← Retour") }
+}
+
+
+/** §lecteur-redessiné : pastille de grand saut (mégaskip), façon « +85 s ». */
+@Composable
+private fun MegaSkipPill(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.92f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+    ) {
+        Text(
+            label,
+            color = Color.Black,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
+    }
 }

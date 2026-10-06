@@ -232,6 +232,16 @@ private fun LocalFilesPanel(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var editMeta by remember { androidx.compose.runtime.mutableStateOf<LocalVideoUi?>(null) }
+    // §scan-par-dossier (façon Kotatsu / Aniyomi) : tout ce qui est dans un même
+    // dossier forme UNE entrée ; on n'ouvre la liste des fichiers que si on entre
+    // dans le dossier.
+    var openFolder by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val folders = remember(state.localFiles) {
+        state.localFiles.groupBy { it.parentUri }.toList().sortedBy { it.second.first().folderName.lowercase() }
+    }
+    val visibleFiles = remember(state.localFiles, openFolder) {
+        if (openFolder == null) emptyList() else state.localFiles.filter { it.parentUri == openFolder }
+    }
 
     // Choix d'un dossier SAF (persistance longue durée incluse)
     val dirPicker = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -304,7 +314,52 @@ private fun LocalFilesPanel(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
             ) {
-                items(state.localFiles, key = { it.uri }) { video ->
+                // ---- Niveau 1 : les dossiers (une carte par dossier)
+                if (openFolder == null) {
+                    items(folders, key = { it.first }) { (parent, files) ->
+                        dev.endlesssea.app.ui.components.GlassCard(
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().clickable { openFolder = parent },
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                Text("📂", style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.padding(end = 12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        files.first().folderName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        "${files.size} vidéo(s) · " +
+                                            dev.endlesssea.app.local.LocalVideos.humanSize(
+                                                files.sumOf { it.sizeBytes },
+                                            ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text("›", style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+                // ---- Niveau 2 : les fichiers du dossier ouvert
+                if (openFolder != null) {
+                    item {
+                        androidx.compose.material3.AssistChip(
+                            onClick = { openFolder = null },
+                            label = {
+                                Text("‹ " + (visibleFiles.firstOrNull()?.folderName ?: "Tous les dossiers"))
+                            },
+                        )
+                    }
+                }
+                items(visibleFiles, key = { it.uri }) { video ->
                     dev.endlesssea.app.ui.components.GlassCard(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
                     ) {

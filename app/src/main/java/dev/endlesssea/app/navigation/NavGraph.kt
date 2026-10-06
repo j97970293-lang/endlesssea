@@ -185,7 +185,9 @@ fun EsNavGraph(nav: NavHostController) {
         composable(Screen.Extensions.route) {
             ExtensionsScreen(onExplore = { nav.navigate(Screen.Explore.route) })
         }
-        composable(Screen.Settings.route) { SettingsScreen() }
+        composable(Screen.Settings.route) {
+            SettingsScreen(onOpenExtensions = { nav.navigate(Screen.Extensions.route) })
+        }
 
         composable("details/{id}") { entry ->
             val id = Uri.decode(entry.arguments?.getString("id").orEmpty())

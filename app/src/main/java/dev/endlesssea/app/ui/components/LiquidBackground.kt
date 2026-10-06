@@ -80,21 +80,21 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
         val tau = 2f * PI.toFloat()
         // Nappe principale (accent) — grande orbite lente en haut
         blob(
-            accent, 0.150f,
+            accent, 0.240f,
             0.30f + 0.28f * cos(p1 * tau),
             0.24f + 0.18f * sin(p1 * tau * 0.9f + 0.6f),
             0.72f,
         )
         // Nappe secondaire — contre-orbite au milieu
         blob(
-            second, 0.110f,
+            second, 0.176f,
             0.72f + 0.24f * cos(p2 * tau + 2.1f),
             0.52f + 0.22f * sin(p2 * tau * 1.1f),
             0.80f,
         )
         // Petite lueur tertiaire en bas — mouvement de houle
         blob(
-            third, 0.095f,
+            third, 0.152f,
             0.42f + 0.30f * sin(p3 * tau * 0.8f),
             0.86f + 0.14f * cos(p3 * tau + 4.0f),
             0.62f,

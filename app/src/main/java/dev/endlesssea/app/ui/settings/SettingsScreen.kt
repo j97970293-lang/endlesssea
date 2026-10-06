@@ -34,6 +34,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -68,6 +70,9 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun SettingsScreen(
+    /** §extensions-déplacées : l'icône de la barre du haut a cédé la place au
+     *  sélecteur de fournisseur — on ouvre la gestion des extensions d'ici. */
+    onOpenExtensions: () -> Unit = {},
     viewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -75,6 +80,8 @@ fun SettingsScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
 
+    // §réglages-recherche : filtre instantané sur le titre et le sous-titre
+    var settingsQuery by remember { mutableStateOf("") }
     var showNumbersDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showGenreManager by remember { mutableStateOf(false) }
@@ -168,20 +175,44 @@ fun SettingsScreen(
                     }
                 }
             }
-            // ------------------------------------------------------ APPARENCE
+            // §réglages-recherche : une barre de recherche en haut de la page
             if (openCategoryFull == null) {
+                item {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = settingsQuery,
+                        onValueChange = { settingsQuery = it },
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (settingsQuery.isNotEmpty()) {
+                                IconButton(onClick = { settingsQuery = "" }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Effacer")
+                                }
+                            }
+                        },
+                        placeholder = { Text("Rechercher un réglage…") },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            // ------------------------------------------------------ APPARENCE
+            if (openCategoryFull == null && settingsQuery.isBlank()) {
                 item { GroupTitle("Apparence & interface") }
             }
             // §anymex-ui : deux entrées distinctes comme AnyMEX — « Interface » (mise
             // en page, styles de cartes, multiplicateurs) et « Thème » (couleurs, verre).
-            item {
+            if (matchesQuery(settingsQuery, "Extensions installées", "Ajouter un dépôt, activer, mettre à jour, supprimer")) item {
+                SettingCategory("🧩", "Extensions installées",
+                    "Ajouter un dépôt, activer, mettre à jour, supprimer", expanded = false) { onOpenExtensions() }
+            }
+            if (matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis et halos")) item {
                 SettingCategory("🪟", "Interface",
                     "Styles de cartes, carrousel, barre, arrondis et halos", expanded = "ui" in openCategories) { toggleCategory("ui") }
             }
             if ("ui" in openCategories) {
                 item { UiSettingsSection(viewModel, state) }
             }
-            item {
+            if (matchesQuery(settingsQuery, "Thème", "Verre liquide, AMOLED, accent, police, fond d'écran")) item {
                 SettingCategory("🎨", "Thème",
                     "Verre liquide, AMOLED, accent, police, fond d'écran", expanded = "interface" in openCategories) { toggleCategory("interface") }
             }
@@ -584,12 +615,12 @@ fun SettingsScreen(
             // ------------------------------------------------------- STOCKAGE
             }
             // --------------------------------------------------- TÉLÉCHARGEMENT
-            if (openCategoryFull == null) {
+            if (openCategoryFull == null && settingsQuery.isBlank()) {
                 item { GroupTitle("Média & lecture") }
             }
-            item {
+            if (matchesQuery(settingsQuery, "Téléchargement", "Wi-Fi seul, segments, tâches parallèles et résolveur DNS")) item {
                 SettingCategory("📥", "Téléchargement",
-                    "Wi-Fi seul, segments et tâches parallèles", expanded = "download" in openCategories) { toggleCategory("download") }
+                    "Wi-Fi seul, segments, tâches parallèles et résolveur DNS", expanded = "download" in openCategories) { toggleCategory("download") }
             }
             if ("download" in openCategories) {
             item {
@@ -618,7 +649,7 @@ fun SettingsScreen(
 
             // --------------------------------------------------------- LECTEUR
             }
-            item {
+            if (matchesQuery(settingsQuery, "Lecteur", "Vitesse, gestes, mégaskip, filtres vidéo, orientation")) item {
                 SettingCategory("⏯", "Lecteur",
                     "Vitesse, gestes, mégaskip, filtres vidéo, orientation", expanded = "player" in openCategories) { toggleCategory("player") }
             }
@@ -743,7 +774,7 @@ fun SettingsScreen(
 
             // ---------------------------------------------------------- GENRES
             }
-            item {
+            if (matchesQuery(settingsQuery, "Genres", "Ajouter, renommer, réordonner, masquer")) item {
                 SettingCategory("🏷", "Genres",
                     "Ajouter, renommer, réordonner, masquer", expanded = "genres" in openCategories) { toggleCategory("genres") }
             }
@@ -758,7 +789,7 @@ fun SettingsScreen(
 
             // -------------------------------------- RÉGLAGES PAR EXTENSION
             }
-            item {
+            if (matchesQuery(settingsQuery, "Sources — réglages par extension", "Options déclarées par chaque source installée")) item {
                 SettingCategory("🧩", "Sources — réglages par extension",
                     "Options déclarées par chaque source installée", expanded = "sources" in openCategories) { toggleCategory("sources") }
             }
@@ -801,14 +832,10 @@ fun SettingsScreen(
 
             // ------------------------------------------------------- SAUVEGARDE
             }
-            if (openCategoryFull == null) {
+            if (openCategoryFull == null && settingsQuery.isBlank()) {
                 item { GroupTitle("Préférences & système") }
             }
-            item {
-                SettingCategory("🌐", "Réseau & DNS",
-                    "DNS système / Cloudflare / Google — contourne certains blocages", expanded = "network" in openCategories) { toggleCategory("network") }
-            }
-            if ("network" in openCategories) {
+            if ("download" in openCategories) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Text("Résolveur DNS", style = MaterialTheme.typography.bodyLarge)
@@ -837,7 +864,7 @@ fun SettingsScreen(
                 }
             }
             }
-            item {
+            if (matchesQuery(settingsQuery, "Sauvegarde", "Export / import JSON + sauvegarde automatique locale")) item {
                 SettingCategory("💾", "Sauvegarde",
                     "Export / import JSON + sauvegarde automatique locale", expanded = "backup" in openCategories) { toggleCategory("backup") }
             }
@@ -871,11 +898,7 @@ fun SettingsScreen(
 
             // --------------------------------------------------- MISES À JOUR
             }
-            item {
-                SettingCategory("🩺", "Diagnostic — erreurs",
-                    "Journal des erreurs de la session, copier / exporter", expanded = "diag" in openCategories) { toggleCategory("diag") }
-            }
-            if ("diag" in openCategories) {
+            if ("about" in openCategories) {
             item {
                 val diagTick = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
                 val entries = androidx.compose.runtime.remember(diagTick.value) {
@@ -938,11 +961,7 @@ fun SettingsScreen(
                 }
             }
             }
-            item {
-                SettingCategory("🔄", "Mises à jour de l'application",
-                    "Vérifier la release GitHub, installer depuis l'app", expanded = "updates" in openCategories) { toggleCategory("updates") }
-            }
-            if ("updates" in openCategories) {
+            if ("about" in openCategories) {
             item {
                 SettingSwitch(
                     title = "Mise à jour automatique",
@@ -961,9 +980,9 @@ fun SettingsScreen(
 
             // --------------------------------------------------------- À PROPOS
             }
-            item {
+            if (matchesQuery(settingsQuery, "À propos", "Version, mises à jour, journal d'erreurs, licence")) item {
                 SettingCategory("🍥", "À propos",
-                    "Version, licence, dépôt GitHub", expanded = "about" in openCategories) { toggleCategory("about") }
+                    "Version, mises à jour, journal d'erreurs, licence", expanded = "about" in openCategories) { toggleCategory("about") }
             }
             if ("about" in openCategories) {
             item {
@@ -1226,6 +1245,19 @@ private fun GenreManagerDialog(
 
 
 /** Titre de section de la colonne d'accueil (style AnyMEX — capitales sobres). */
+/**
+ * §réglages-recherche : une catégorie reste visible si la requête est vide ou si
+ * elle apparaît dans son titre ou son sous-titre (sans accents ni casse).
+ */
+private fun matchesQuery(query: String, title: String, subtitle: String): Boolean {
+    if (query.isBlank()) return true
+    fun norm(v: String) = java.text.Normalizer.normalize(v, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+    val q = norm(query)
+    return norm(title).contains(q) || norm(subtitle).contains(q)
+}
+
 @Composable
 private fun GroupTitle(title: String) {
     Text(

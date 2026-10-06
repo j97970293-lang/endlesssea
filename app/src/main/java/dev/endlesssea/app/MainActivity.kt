@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -246,8 +247,22 @@ class MainActivity : ComponentActivity() {
                             // d'application en haut — seul l'en-tête classique le réaffiche.
                             title = { if (legacyHeader) Text(title) },
                             actions = {
-                                IconButton(onClick = { nav.navigate(Screen.Extensions.route) }) {
-                                    Icon(Icons.Filled.Extension, contentDescription = "Extensions")
+                                // §fournisseur-en-haut : le sélecteur de source remplace
+                                // l'icône Extensions (déplacée dans les Réglages).
+                                if (route == Screen.Home.route) {
+                                    val provider by dev.endlesssea.app.ui.home.HomeUiBus
+                                        .currentProvider.collectAsState()
+                                    androidx.compose.material3.TextButton(
+                                        onClick = { dev.endlesssea.app.ui.home.HomeUiBus.openProviderSheet() },
+                                    ) {
+                                        Text(
+                                            "☁ " + provider,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 180.dp),
+                                        )
+                                        Text(" ▾")
+                                    }
                                 }
                                 IconButton(onClick = { nav.navigate(Screen.Settings.route) }) {
                                     Icon(Icons.Filled.Settings, contentDescription = "Paramètres")

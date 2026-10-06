@@ -45,4 +45,44 @@ object EsNet {
                     .getOrElse { Dns.SYSTEM.lookup(hostname) }
         }
     }
+
+    // ------------------------------------------------- §taille-avant-téléchargement
+
+    private val probeClient: OkHttpClient by lazy {
+        HttpClients.baseBuilder().build()
+    }
+
+    private fun request(url: String, headers: Map<String, String>) =
+        okhttp3.Request.Builder().url(url).apply {
+            headers.forEach { (k, v) -> header(k, v) }
+        }
+
+    /**
+     * Taille d'une ressource en octets, ou null si le serveur ne la déclare pas.
+     * HEAD d'abord ; si le serveur le refuse (405/501) on retente un GET
+     * `Range: bytes=0-0` dont l'en-tête `Content-Range` porte la taille totale.
+     */
+    fun contentLength(url: String, headers: Map<String, String> = emptyMap()): Long? {
+        runCatching {
+            probeClient.newCall(request(url, headers).head().build()).execute().use { res ->
+                val len = res.header("Content-Length")?.toLongOrNull()
+                if (res.isSuccessful && len != null && len > 0) return len
+            }
+        }
+        runCatching {
+            val req = request(url, headers).header("Range", "bytes=0-0").get().build()
+            probeClient.newCall(req).execute().use { res ->
+                val range = res.header("Content-Range") ?: return@use
+                return range.substringAfter('/', "").trim().toLongOrNull()
+            }
+        }
+        return null
+    }
+
+    /** Corps texte d'une URL (playlists HLS), ou null en cas d'échec. */
+    fun text(url: String, headers: Map<String, String> = emptyMap()): String? = runCatching {
+        probeClient.newCall(request(url, headers).get().build()).execute().use { res ->
+            if (res.isSuccessful) res.body?.string() else null
+        }
+    }.getOrNull()
 }

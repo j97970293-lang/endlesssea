@@ -33,6 +33,8 @@ data class LibraryUiState(
 data class LocalVideoUi(
     val uri: String,
     val name: String,
+    /** §scan-par-dossier : dossier SAF contenant le fichier (regroupement Kotatsu/Aniyomi). */
+    val parentUri: String = "",
     val sizeBytes: Long,
     val durationMs: Long? = null,
     val customTitle: String? = null,
@@ -42,6 +44,11 @@ data class LocalVideoUi(
     val outroStartSec: Int? = null,
 ) {
     val displayName: String get() = customTitle ?: name
+
+    /** Nom lisible du dossier parent (« Animes/One Piece » → « One Piece »). */
+    val folderName: String
+        get() = android.net.Uri.decode(parentUri).substringAfterLast(':')
+            .trimEnd('/').substringAfterLast('/').ifBlank { "Dossier" }
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
     val humanDuration: String get() = dev.endlesssea.app.local.LocalVideos.humanDuration(durationMs)
 }
@@ -156,7 +163,8 @@ class LibraryViewModel @Inject constructor(
             .map { f ->
                 val m = prefs.localFileMeta(f.uri)
                 LocalVideoUi(
-                    uri = f.uri, name = f.displayName, sizeBytes = f.sizeBytes,
+                    uri = f.uri, name = f.displayName, parentUri = f.parentUri,
+                    sizeBytes = f.sizeBytes,
                     durationMs = dev.endlesssea.app.local.LocalVideos.durationMs(context, f.uri),
                     customTitle = m.title, customCoverUri = m.coverUri,
                     introStartSec = m.introStartSec, introEndSec = m.introEndSec,

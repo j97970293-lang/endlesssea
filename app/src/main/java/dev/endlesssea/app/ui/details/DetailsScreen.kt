@@ -134,6 +134,24 @@ fun DetailsScreen(
             .ifEmpty { state.episodes }
     }
 
+    // §film-et-serie : une même fiche peut porter un FILM et des saisons (cas
+    // fréquent des animes : le long-métrage et la série partagent l'affiche).
+    // On ne sépare pas les fiches — on sépare seulement les rangées, et un film
+    // n'affiche jamais « Saison 1 · Épisode 1 ».
+    val mediaIsMovie = state.details?.type == dev.endlesssea.extensions.api.model.MediaType.MOVIE
+    val movieEpisodes = remember(episodesShown, mediaIsMovie) {
+        episodesShown.filter { ep ->
+            val alone = episodesShown.size == 1
+            val noSeason = ep.season == null || ep.season == 0
+            mediaIsMovie && (alone || noSeason) ||
+                (ep.title?.contains("film", ignoreCase = true) == true) ||
+                (ep.title?.contains("movie", ignoreCase = true) == true)
+        }
+    }
+    val serieEpisodes = remember(episodesShown, movieEpisodes) {
+        episodesShown.filterNot { it in movieEpisodes }
+    }
+
     // ---- §use-poster-color : halo émotionnel teinté par l'affiche (Réglages → Thème)
     val usePosterColor by viewModel.usePosterColor.collectAsState()
     var posterGlowExtract by remember { mutableStateOf<Color?>(null) }
@@ -566,7 +584,14 @@ fun DetailsScreen(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("Épisodes", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                when {
+                                    serieEpisodes.isEmpty() && movieEpisodes.isNotEmpty() -> "Film"
+                                    movieEpisodes.isNotEmpty() -> "Film & épisodes"
+                                    else -> "Épisodes"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                            )
                             Spacer(Modifier.weight(1f))
                             Text(
                                 "${episodesShown.size}/${state.episodes.size}",
@@ -588,7 +613,37 @@ fun DetailsScreen(
                             }
                         }
                     }
-                    items(episodesShown, key = { it.id }) { episode ->
+                    if (movieEpisodes.isNotEmpty()) {
+                        item {
+                            Text(
+                                "🎬  Film",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        items(movieEpisodes, key = { "movie-" + it.id }) { episode ->
+                            EpisodeRowAnymex(
+                                episode = episode,
+                                loading = state.linksLoadingEpisode == episode.id,
+                                onPlay = { playSheetEpisode = episode },
+                                onDownload = { downloadSheetEpisode = episode },
+                                isMovie = true,
+                                mediaTitle = state.details?.title,
+                            )
+                        }
+                    }
+                    if (serieEpisodes.isNotEmpty() && movieEpisodes.isNotEmpty()) {
+                        item {
+                            Text(
+                                "📺  Série",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                    items(serieEpisodes, key = { it.id }) { episode ->
                         EpisodeRowAnymex(
                             episode = episode,
                             loading = state.linksLoadingEpisode == episode.id,
@@ -1112,6 +1167,19 @@ private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
     val direct = link.streamType == StreamType.DIRECT_FILE || link.streamType == StreamType.HLS
+
+    // §taille-avant-téléchargement : un HEAD (ou un GET Range de 0 octet si le
+    // serveur refuse HEAD) donne Content-Length ; pour le HLS on additionne la
+    // taille des premiers segments et on extrapole sur la durée annoncée.
+    var sizeLabel by androidx.compose.runtime.remember(link.url) {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    androidx.compose.runtime.LaunchedEffect(link.url) {
+        if (!direct) return@LaunchedEffect
+        sizeLabel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { probeSize(link) }.getOrNull()
+        }
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -1127,6 +1195,7 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             val extras = buildList {
+                sizeLabel?.let { add(it) }
                 if (link.subtitles.isNotEmpty()) add("${link.subtitles.size} sous-titres")
                 add(
                     when (link.streamType) {
@@ -1157,6 +1226,9 @@ private fun EpisodeRowAnymex(
     loading: Boolean,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
+    /** §film-et-serie : un film n'a ni saison ni numéro d'épisode à afficher. */
+    isMovie: Boolean = false,
+    mediaTitle: String? = null,
 ) {
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1199,7 +1271,10 @@ private fun EpisodeRowAnymex(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).clickable(onClick = onPlay)) {
                 dev.endlesssea.app.ui.components.ExpandableText(
-                    text = episode.title ?: "Épisode ${episode.number.toInt()}",
+                    text = when {
+                        isMovie -> episode.title?.takeIf { it.isNotBlank() } ?: mediaTitle ?: "Film"
+                        else -> episode.title ?: "Épisode ${episode.number.toInt()}"
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     // §textes-longs : 1 ligne — les longs titres ne remplissent plus
                     // l'écran verticalement ; tap = titre entier en dialogue.
@@ -1207,7 +1282,7 @@ private fun EpisodeRowAnymex(
                     dialogTitle = "Titre de l'épisode",
                 )
                 val meta = buildList {
-                    episode.season?.let { add("Saison $it") }
+                    if (isMovie) add("Film") else episode.season?.let { add("Saison $it") }
                     episode.durationMs?.let { add("${it / 60_000} min") }
                 }.joinToString(" · ")
                 if (meta.isNotBlank()) {
@@ -1224,4 +1299,43 @@ private fun EpisodeRowAnymex(
             }
         }
     }
+}
+
+
+/**
+ * §taille-avant-téléchargement — estime le poids d'un lien.
+ *
+ * Fichier direct : `Content-Length` de la réponse HEAD (repli sur un GET avec
+ * `Range: bytes=0-0`, dont le `Content-Range` porte la taille totale).
+ * HLS : somme des segments listés dans la playlist, mesurés sur les trois
+ * premiers, extrapolée au nombre total de segments (préfixée « ≈ »).
+ */
+private suspend fun probeSize(link: dev.endlesssea.extensions.api.model.VideoLink): String? {
+    val headers = link.headers
+    fun fmt(bytes: Long, approx: Boolean): String {
+        val mo = bytes / 1_048_576.0
+        val txt = if (mo >= 1024) "%.2f Go".format(mo / 1024) else "%.0f Mo".format(mo)
+        return if (approx) "≈ $txt" else txt
+    }
+    if (link.streamType == StreamType.DIRECT_FILE) {
+        val len = dev.endlesssea.core.net.EsNet.contentLength(link.url, headers) ?: return null
+        return if (len > 0) fmt(len, false) else null
+    }
+    if (link.streamType == StreamType.HLS) {
+        val playlist = dev.endlesssea.core.net.EsNet.text(link.url, headers) ?: return null
+        val base = link.url.substringBeforeLast('/', "")
+        val segments = playlist.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .map { if (it.startsWith("http")) it else "$base/$it" }
+            .toList()
+        if (segments.isEmpty()) return null
+        val sampled = segments.take(3).mapNotNull {
+            dev.endlesssea.core.net.EsNet.contentLength(it, headers)
+        }
+        if (sampled.isEmpty()) return null
+        val avg = sampled.average()
+        return fmt((avg * segments.size).toLong(), true)
+    }
+    return null
 }
