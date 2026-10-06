@@ -997,11 +997,8 @@ fun DetailsScreen(
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 )
                             }
-                            androidx.compose.material3.IconButton(onClick = { viewModel.loadLinks(ep) }) {
-                                androidx.compose.material3.Icon(
-                                    androidx.compose.material.icons.Icons.Filled.Refresh,
-                                    contentDescription = "Chercher les serveurs",
-                                )
+                            TextButton(onClick = { viewModel.loadLinks(ep) }) {
+                                Text("Serveurs")
                             }
                         }
                         }
