@@ -55,7 +55,7 @@ object LocalVideos {
         val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
         val gate = kotlinx.coroutines.sync.Semaphore(8)
 
-        suspend fun walk(docId: String, depth: Int) {
+        suspend fun walk(docId: String, depth: Int): Unit {
             if (depth > MAX_DEPTH || out.size >= MAX_FILES_PER_ROOT) return
             val children = android.provider.DocumentsContract
                 .buildChildDocumentsUriUsingTree(tree, docId)
@@ -97,11 +97,13 @@ object LocalVideos {
                 }
             }
             // sous-dossiers en parallèle (8 curseurs max simultanés)
-            subDirs.map { sub ->
-                kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-                    gate.withPermit { walk(sub, depth + 1) }
-                }
-            }.forEach { it.await() }
+            kotlinx.coroutines.coroutineScope {
+                subDirs.map { sub ->
+                    kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                        gate.withPermit { walk(sub, depth + 1) }
+                    }
+                }.forEach { it.await() }
+            }
         }
 
         gate.withPermit { walk(rootId, 0) }

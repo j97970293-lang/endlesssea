@@ -47,8 +47,8 @@ class SearchViewModel @Inject constructor(
     /** §recherche-sources : liste des sources activables (id, nom) et exclusions. */
     val searchExcluded: StateFlow<Set<String>> = prefs.searchExcluded
     val resultsOnly: StateFlow<Boolean> = prefs.searchResultsOnly
-    fun availableSources(): List<Pair<String, String>> =
-        registry.enabledExtensions().map { (_, ext) -> ext.info.id to ext.info.name }
+    private val _availableSources = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val availableSources: StateFlow<List<Pair<String, String>>> = _availableSources
     fun toggleSearchSource(id: String) {
         prefs.toggleSearchExcluded(id)
         if (_uiState.value.query.isNotBlank()) {
@@ -66,6 +66,11 @@ class SearchViewModel @Inject constructor(
     val uiState: StateFlow<SearchUiState> = _uiState
 
     init {
+        viewModelScope.launch {
+            _availableSources.value = runCatching {
+                registry.enabledExtensions().map { (_, ext) -> ext.info.id to ext.info.name }
+            }.getOrDefault(emptyList())
+        }
         viewModelScope.launch {
             kotlinx.coroutines.flow.combine(queryFlow, filtersFlow) { q, f -> q to f }
                 .debounce(350)

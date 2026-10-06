@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
@@ -105,7 +106,7 @@ fun SearchScreen(
             )
         }
         if (showSourcePicker) {
-            val sources = androidx.compose.runtime.remember { viewModel.availableSources() }
+            val sources by viewModel.availableSources.collectAsState()
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showSourcePicker = false },
                 confirmButton = {
