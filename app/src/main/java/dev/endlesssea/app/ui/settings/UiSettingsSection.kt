@@ -2,6 +2,8 @@ package dev.endlesssea.app.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -301,7 +303,7 @@ private fun NavRow(emoji: String, title: String, value: String, onClick: () -> U
             )
         }
         Icon(
-            androidx.compose.material.icons.Icons.Filled.KeyboardArrowRight,
+            Icons.Filled.KeyboardArrowRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )

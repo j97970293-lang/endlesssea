@@ -106,7 +106,6 @@ class SettingsViewModel @Inject constructor(
     fun setNavBarStyle(v: String) = prefs.setNavBarStyle(v)
 
     // ------------------------------------------------ §anymex-ui : page « Interface »
-    val navBarStyle: kotlinx.coroutines.flow.StateFlow<String> = prefs.navBarStyle
     val navBarLayout: kotlinx.coroutines.flow.StateFlow<String> = prefs.navBarLayout
     fun setNavBarLayout(v: String) = prefs.setNavBarLayout(v)
     val historyCardStyle: kotlinx.coroutines.flow.StateFlow<String> = prefs.historyCardStyle
