@@ -135,7 +135,7 @@ private fun formatTime(ms: Long): String {
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@androidx.compose.material3.ExperimentalMaterial3Api
+@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
