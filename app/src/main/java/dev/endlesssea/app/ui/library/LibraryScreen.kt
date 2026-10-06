@@ -162,7 +162,7 @@ fun LibraryScreen(
 
         // ---- Onglet « Fichiers » : panneau vidéos locales et on s'arrête là
         if (tabs[tab].second == "LOCAL") {
-            LocalFilesPanel(viewModel, state)
+            LocalFilesPanel(viewModel, onLocalFolderClick, state)
             return@Column
         }
 
@@ -323,6 +323,7 @@ fun LibraryScreen(
 @Composable
 private fun LocalFilesPanel(
     viewModel: LibraryViewModel,
+    onLocalFolderClick: (String) -> Unit,
     state: dev.endlesssea.app.ui.library.LibraryUiState,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current

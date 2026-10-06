@@ -70,6 +70,8 @@ class HomeViewModel @Inject constructor(
     private fun safeLaunch(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
         viewModelScope.launch(safeHandler) { runCatching { block() } }
 
+    /** Même garde-fou, mais le bloc peut utiliser `return@safeBody`. */
+
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
@@ -146,7 +148,7 @@ class HomeViewModel @Inject constructor(
     fun loadRemote() = safeLaunch {
         val extensions = runCatching { registry.enabledExtensions() }.getOrDefault(emptyList())
         _uiState.value = _uiState.value.copy(extensionCount = extensions.size)
-        if (extensions.isEmpty()) return@launch
+        if (extensions.isEmpty()) return@safeLaunch
 
         val rows = mutableListOf<HomeRowUi>()
         coroutineScope {
@@ -230,8 +232,8 @@ class HomeViewModel @Inject constructor(
      * vue « toutes sources »), sinon l'accueil filtré paraissait vide.
      */
     fun loadSourceCatalogue(id: String) = safeLaunch {
-        val entry = registry.enabledExtensions().firstOrNull { (_, ext) -> ext.info.id == id }
-            ?: return@launch
+        val entry = runCatching { registry.enabledExtensions() }.getOrDefault(emptyList())
+            .firstOrNull { (_, ext) -> ext.info.id == id } ?: return@safeLaunch
         val ext = entry.second
         _uiState.value = _uiState.value.copy(loading = true)
         val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
