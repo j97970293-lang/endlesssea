@@ -40,12 +40,40 @@ object EsImages {
     @Volatile
     private var _ok: Boolean = false
 
-    /** Brique primaire : ImageLoader partagé. */
+    /**
+     * Instance unique, créée une seule fois par process.
+     *
+     * 「Piège」`imageLoader()` est appelé depuis un composable : sans
+     * mémoïsation, chaque recomposition reconstruisait un ImageLoader complet —
+     * donc un second `DiskCache` sur LE MÊME répertoire. Coil/okio verrouille ce
+     * répertoire : la deuxième instance échoue à ouvrir son journal et TOUTES
+     * les images partent en `State.Error` (placeholder partout), pendant que les
+     * OkHttpClient et leurs pools de threads s'accumulent.
+     */
+    @Volatile
+    private var instance: ImageLoader? = null
+
+    /** Brique primaire : ImageLoader partagé — construit une fois, réutilisé ensuite. */
     fun imageLoader(context: Context): ImageLoader {
-        val appContext = context.applicationContext
+        instance?.let { return it }
+        return synchronized(this) {
+            instance ?: build(context.applicationContext).also {
+                instance = it
+                Coil.setImageLoader(it)
+                _ok = true
+            }
+        }
+    }
+
+    private fun build(appContext: Context): ImageLoader {
         return ImageLoader.Builder(appContext)
             .diskCache {
+                // 「Piège」Coil 2.x : DiskCache.Builder.build() fait
+                // checkNotNull(directory) { "directory == null" }. Sans
+                // .directory(...), la construction LÈVE une IllegalStateException
+                // à la première image demandée — donc AUCUNE image ne s'affiche.
                 DiskCache.Builder()
+                    .directory(java.io.File(appContext.cacheDir, "image_cache"))
                     .maxSizeBytes(512L * 1024 * 1024) // 512 Mo — les posters s'accumulent
                     .build()
             }
@@ -79,10 +107,6 @@ object EsImages {
             .respectCacheHeaders(false) // certains serveurs d'extensions ferment le cache
             .crossfade(true)
             .build()
-            .also {
-                Coil.setImageLoader(it)
-                _ok = true
-            }
     }
 
     /**
@@ -180,6 +204,7 @@ fun SafeAsyncImage(
 ) {
     val context = LocalContextOfImages.current
     val safeUrl = EsImages.safeImageUrl(url)
+    val loader = androidx.compose.runtime.remember(context) { EsImages.imageLoader(context) }
     androidx.compose.foundation.layout.Box(modifier = modifier) {
         coil.compose.SubcomposeAsyncImage(
             model = ImageRequest.Builder(context)
@@ -187,7 +212,7 @@ fun SafeAsyncImage(
                 .crossfade(true)
                 .build(),
             contentDescription = contentDescription,
-            imageLoader = EsImages.imageLoader(context),
+            imageLoader = loader,
             modifier = Modifier.matchParentSize(),
         ) {
             when (painter.state) {

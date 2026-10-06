@@ -282,20 +282,44 @@ class DetailsViewModel @Inject constructor(
     }
 
     /** Résout les liens d'un épisode (serveurs × qualités, spec §14) avec mise en cache mémoire. */
+    /**
+     * Résout les lecteurs d'un épisode **au fil de l'eau** : chaque serveur prêt
+     * est publié immédiatement (`EsExtension.loadLinksFlow`, repli automatique
+     * sur `loadLinks` pour les extensions qui ne l'implémentent pas). La feuille
+     * « Serveurs & priorité » affiche donc les lecteurs déjà résolus pendant que
+     * les plus lents continuent de charger, au lieu d'attendre le dernier
+     * timeout de 20 s.
+     */
     fun loadLinks(episode: Episode, onDone: (List<VideoLink>) -> Unit = {}) = viewModelScope.launch {
-        _uiState.value.linksByEpisode[episode.id]?.let { onDone(it); return@launch }
+        val cached = _uiState.value.linksByEpisode[episode.id]
+        if (_uiState.value.linksLoadingEpisode == episode.id) return@launch // déjà en cours
+        if (cached != null) { onDone(cached); return@launch }
         _uiState.value = _uiState.value.copy(linksLoadingEpisode = episode.id)
-        val links = runCatching {
-            registry.instance(extensionId).loadLinks(LinkRequest(episode = episode, mediaId = mediaId))
-        }.getOrElse { emptyList() }
-        if (links.isEmpty()) {
+
+        val collected = mutableListOf<VideoLink>()
+        runCatching {
+            withContext(Dispatchers.IO) {
+                registry.instance(extensionId)
+                    .loadLinksFlow(LinkRequest(episode = episode, mediaId = mediaId))
+                    .collect { link ->
+                        collected += link
+                        // Publication immédiate : la feuille serveurs se remplit en direct.
+                        // Préférence VF/VOSTFR appliquée au fur et à mesure.
+                        val partial = orderByLangPref(collected.toList())
+                        _uiState.value = _uiState.value.copy(
+                            linksByEpisode = _uiState.value.linksByEpisode + (episode.id to partial),
+                        )
+                    }
+            }
+        }
+
+        if (collected.isEmpty()) {
             _uiState.value = _uiState.value.copy(
                 linksLoadingEpisode = null,
                 message = "Aucun lien trouvé pour cet épisode",
             )
         } else {
-            // ---- Préférence VF/VOSTFR : la langue choisie passe en tête (qualité à égalité)
-            val ordered = orderByLangPref(links)
+            val ordered = orderByLangPref(collected.toList())
             _uiState.value = _uiState.value.copy(
                 linksLoadingEpisode = null,
                 linksByEpisode = _uiState.value.linksByEpisode + (episode.id to ordered),

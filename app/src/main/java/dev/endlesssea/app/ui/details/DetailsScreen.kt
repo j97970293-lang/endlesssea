@@ -755,8 +755,10 @@ fun DetailsScreen(
                     val grouped = links.groupBy { it.server.ifBlank { "Source" } }.toList()
                         .sortedWith(compareBy<Pair<String, List<dev.endlesssea.extensions.api.model.VideoLink>>> { serverRank(it.first) }
                             .thenBy { it.first.lowercase() })
+                    val stillLoading = state.linksLoadingEpisode == episode.id
                     Text(
-                        "${grouped.size} serveur(s) — ${links.size} lien(s)",
+                        "${grouped.size} serveur(s) — ${links.size} lien(s)" +
+                            if (stillLoading) " · recherche en cours…" else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
