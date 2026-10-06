@@ -999,7 +999,7 @@ fun DetailsScreen(
                             }
                             androidx.compose.material3.IconButton(onClick = { viewModel.loadLinks(ep) }) {
                                 androidx.compose.material3.Icon(
-                                    androidx.compose.material.icons.Icons.Filled.Search,
+                                    androidx.compose.material.icons.Icons.Filled.Refresh,
                                     contentDescription = "Chercher les serveurs",
                                 )
                             }
