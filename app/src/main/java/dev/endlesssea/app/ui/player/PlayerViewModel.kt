@@ -52,6 +52,9 @@ data class PlayerUiState(
     val sleepEndAt: Long? = null,
     /** Notification brève affichée en surimpression (ex: pause par minuterie). */
     val toast: String? = null,
+    /** §épisode-suivant : y a-t-il un élément avant / après dans la file ? */
+    val hasPrev: Boolean = false,
+    val hasNext: Boolean = false,
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -228,6 +231,47 @@ class PlayerViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(error = it.message ?: "Lecture impossible", loading = false)
         }
         _uiState.value = _uiState.value.copy(loading = false)
+        refreshQueueFlags()
+    }
+
+    /**
+     * §épisode-suivant — passe à l'élément voisin de la file (offset −1 ou +1).
+     * Fonctionne pour les épisodes d'extension (liens résolus à la demande) comme
+     * pour les vidéos locales (liens déjà connus).
+     */
+    fun playQueueOffset(offset: Int) = viewModelScope.launch {
+        val queue = PlayerLaunchStore.queue
+        val target = PlayerLaunchStore.queueIndex + offset
+        if (target !in queue.indices) return@launch
+        persistPosition()
+        val item = queue[target]
+        _uiState.value = _uiState.value.copy(loading = true, title = item.title, error = null)
+        val links = item.links.ifEmpty {
+            val id = item.episodeId
+            if (id == null) emptyList()
+            else runCatching { PlayerLaunchStore.resolver?.invoke(id) ?: emptyList() }.getOrDefault(emptyList())
+        }
+        if (links.isEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                loading = false,
+                toast = "Aucun lien pour « ${item.title} »",
+            )
+            return@launch
+        }
+        PlayerLaunchStore.queueIndex = target
+        prepare(
+            mediaId = mediaId, episodeId = item.episodeId,
+            title = item.title, links = links, startIndex = 0,
+        )
+    }
+
+    private fun refreshQueueFlags() {
+        val q = PlayerLaunchStore.queue
+        val i = PlayerLaunchStore.queueIndex
+        _uiState.value = _uiState.value.copy(
+            hasPrev = i > 0 && q.isNotEmpty(),
+            hasNext = i >= 0 && i < q.lastIndex,
+        )
     }
 
     fun setSpeed(speed: Float) {
@@ -250,6 +294,10 @@ class PlayerViewModel @Inject constructor(
     fun megaJump(deltaSec: Int) = viewModelScope.launch {
         engine.player.seekTo((engine.player.currentPosition + deltaSec * 1000L).coerceAtLeast(0))
     }
+
+    /** §rendu-vidéo : "texture" (filtres) ou "surface" (perf/HDR). */
+    val videoRender: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.videoRender
+    fun setVideoRender(v: String) = prefs.setVideoRender(v)
 
     fun toggleLock() = _uiState.value.let { _uiState.value = it.copy(locked = !it.locked) }
     fun toggleControls() = _uiState.value.let { _uiState.value = it.copy(controlsVisible = !it.controlsVisible) }

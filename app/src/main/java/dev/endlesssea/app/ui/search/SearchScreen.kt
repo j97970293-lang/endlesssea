@@ -52,9 +52,14 @@ data class SearchItemUi(
 @Composable
 fun SearchScreen(
     onMediaClick: (String) -> Unit,
+    /** §recherche-source : source imposée par l'appelant (bouton de la barre du haut). */
+    initialSource: String = "ALL",
     viewModel: SearchViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(initialSource) {
+        if (initialSource.isNotBlank()) viewModel.setSourceFilter(initialSource)
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         OutlinedTextField(

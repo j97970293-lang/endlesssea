@@ -207,6 +207,10 @@ class SettingsViewModel @Inject constructor(
     fun setMegaSkipSeconds(v: Int) { prefs.setMegaSkipSeconds(v) }
     fun setAutoSkipMarkers(v: Boolean) { prefs.setAutoSkipMarkers(v) }
     fun setPlayerOrientation(v: String) { prefs.setPlayerOrientation(v) }
+
+    /** §rendu-vidéo : TextureView (filtres) ou SurfaceView (perf/HDR). */
+    val videoRender: StateFlow<String> = prefs.videoRender
+    fun setVideoRender(v: String) { prefs.setVideoRender(v) }
     fun setAccentGlassLink(v: Boolean) { prefs.setAccentLinkedToGlass(v) }
     fun setLogoTint(v: String) { prefs.setLogoTint(v); toastState(if (v == "original") "Logo original" else "Logo teinté $v") }
     fun setFontId(v: String) { prefs.setFontId(v); toastState("Police appliquée") }

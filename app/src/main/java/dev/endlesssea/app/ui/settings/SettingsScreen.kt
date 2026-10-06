@@ -742,6 +742,33 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §rendu-vidéo : choix de la surface de rendu
+                    Text("Rendu vidéo", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Texture : compatible avec les filtres vidéo. " +
+                            "Surface : rendu matériel direct — plus fluide, moins gourmand " +
+                            "(recommandé sur TV / appareils lents), mais sans filtres.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val render = viewModel.videoRender.collectAsState().value
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = render != "surface",
+                            onClick = { viewModel.setVideoRender("texture") },
+                            label = { Text("🎨 Texture (filtres)") },
+                        )
+                        FilterChip(
+                            selected = render == "surface",
+                            onClick = { viewModel.setVideoRender("surface") },
+                            label = { Text("⚡ Surface (perf)") },
+                        )
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Text(
                         "Filtres vidéo (luminosité/teinte/saturation) : réglés dans le lecteur, bouton 🎛, avec préréglages sauvegardés.",
                         style = MaterialTheme.typography.bodySmall,

@@ -1130,16 +1130,24 @@ private fun CharacterCard(credit: dev.endlesssea.extensions.api.model.CharacterC
 
 @Composable
 private fun MetaPill(text: String, accent: Boolean = false) {
+    // §contraste-badges : texte « on… » sur son propre conteneur (le couple
+    // primaryContainer/primary était illisible) + liseré léger pour détacher
+    // la pastille du fond verre.
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = if (accent) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceVariant,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            (if (accent) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = 0.28f),
+        ),
     ) {
         Text(
             text,
             style = MaterialTheme.typography.labelMedium,
-            color = if (accent) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (accent) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
@@ -1154,7 +1162,7 @@ private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
         shape = RoundedCornerShape(28.dp),
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.primary,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ),
         border = FilterChipDefaults.filterChipBorder(
             enabled = true, selected = selected,

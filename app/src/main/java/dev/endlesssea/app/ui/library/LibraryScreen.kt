@@ -54,6 +54,17 @@ fun LibraryScreen(
 ) {
     var tab by remember { mutableIntStateOf(0) }
     val state by viewModel.uiState.collectAsState()
+    // §catégories-perso : onglets = catégories natives + celles créées par l'utilisateur
+    val customCats by viewModel.customCategories.collectAsState()
+    val catTick by viewModel.categoryItemsTick.collectAsState()
+    var showNewCategory by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    var newCategoryName by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf("")
+    }
+    val tabs = remember(customCats) { LIBRARY_TABS + customCats.map { it to "CUSTOM:$it" } }
+    if (tab >= tabs.size) tab = 0
     /** §métadonnées-éditées : fiche en cours d'édition (appui long dans la grille). */
     var editMediaMeta by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<SearchItemUi?>(null)
@@ -71,13 +82,17 @@ fun LibraryScreen(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LIBRARY_TABS.forEachIndexed { i, (label, key) ->
+            tabs.forEachIndexed { i, (label, key) ->
                 androidx.compose.material3.FilterChip(
                     selected = tab == i,
                     onClick = {
                         tab = i
-                        if (key == "LOCAL") viewModel.setLocalMode(true)
-                        else { viewModel.setLocalMode(false); viewModel.onCategory(key) }
+                        when {
+                            key == "LOCAL" -> viewModel.setLocalMode(true)
+                            // la catégorie perso contient des fichiers locaux : on scanne
+                            key.startsWith("CUSTOM:") -> viewModel.setLocalMode(true)
+                            else -> { viewModel.setLocalMode(false); viewModel.onCategory(key) }
+                        }
                     },
                     label = {
                         Text(
@@ -89,10 +104,51 @@ fun LibraryScreen(
                     },
                 )
             }
+            androidx.compose.material3.AssistChip(
+                onClick = { newCategoryName = ""; showNewCategory = true },
+                label = { Text("＋ Catégorie") },
+            )
         }
+
+        if (showNewCategory) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showNewCategory = false },
+                confirmButton = {
+                    androidx.compose.material3.Button(onClick = {
+                        viewModel.addCategory(newCategoryName)
+                        showNewCategory = false
+                    }) { Text("Créer") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showNewCategory = false }) {
+                        Text("Annuler")
+                    }
+                },
+                title = { Text("Nouvelle catégorie") },
+                text = {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        label = { Text("Nom (ex. « À revoir »)") },
+                        singleLine = true,
+                    )
+                },
+            )
+        }
+
         // ---- Onglet « Fichiers » : panneau vidéos locales et on s'arrête là
-        if (LIBRARY_TABS[tab].second == "LOCAL") {
+        if (tabs[tab].second == "LOCAL") {
             LocalFilesPanel(viewModel, state)
+            return@Column
+        }
+
+        // ---- Onglet catégorie perso : les fichiers locaux rangés dedans
+        val currentKey = tabs[tab].second
+        if (currentKey.startsWith("CUSTOM:")) {
+            val catName = currentKey.removePrefix("CUSTOM:")
+            val uris = remember(catName, catTick) { viewModel.categoryItems(catName).toSet() }
+            val picked = state.localFiles.filter { it.uri in uris }
+            CustomCategoryPanel(viewModel, catName, picked)
             return@Column
         }
 
@@ -232,6 +288,10 @@ private fun LocalFilesPanel(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var editMeta by remember { androidx.compose.runtime.mutableStateOf<LocalVideoUi?>(null) }
+    /** §catégories-perso : fichier qu'on range dans une catégorie. */
+    var addToCat by remember { androidx.compose.runtime.mutableStateOf<LocalVideoUi?>(null) }
+    val cats by viewModel.customCategories.collectAsState()
+    val catsTick by viewModel.categoryItemsTick.collectAsState()
     // §scan-par-dossier (façon Kotatsu / Aniyomi) : tout ce qui est dans un même
     // dossier forme UNE entrée ; on n'ouvre la liste des fichiers que si on entre
     // dans le dossier.
@@ -397,10 +457,33 @@ private fun LocalFilesPanel(
                                     )
                                 }
                             }
+                            androidx.compose.material3.TextButton(onClick = { addToCat = video }) {
+                                Text("＋")
+                            }
                             androidx.compose.material3.TextButton(onClick = { editMeta = video }) {
                                 Text("✎")
                             }
                             androidx.compose.material3.Button(onClick = {
+                                // §épisode-suivant : toutes les vidéos du dossier
+                                // forment la file de lecture (précédent / suivant).
+                                dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
+                                dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
+                                    visibleFiles.map { f ->
+                                        dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
+                                            title = f.displayName,
+                                            episodeId = f.uri,
+                                            links = listOf(
+                                                dev.endlesssea.extensions.api.model.VideoLink(
+                                                    url = f.uri,
+                                                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                                                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+                                                    server = "Fichier local",
+                                                ),
+                                            ),
+                                        )
+                                    },
+                                    visibleFiles.indexOfFirst { it.uri == video.uri },
+                                )
                                 dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
                                     title = video.displayName,
                                     mediaId = null, episodeId = video.uri,
@@ -429,6 +512,40 @@ private fun LocalFilesPanel(
             }
         }
 
+        // §catégories-perso : choix des catégories qui contiennent ce fichier
+        addToCat?.let { video ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { addToCat = null },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { addToCat = null }) { Text("Fermer") }
+                },
+                title = { Text("Ranger dans une catégorie") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (cats.isEmpty()) {
+                            Text(
+                                "Aucune catégorie : crée-en une avec « ＋ Catégorie » " +
+                                    "en haut de la bibliothèque.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        cats.forEach { c ->
+                            val inside = remember(c, catsTick, video.uri) {
+                                video.uri in viewModel.categoryItems(c)
+                            }
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                androidx.compose.material3.Checkbox(
+                                    checked = inside,
+                                    onCheckedChange = { viewModel.toggleCategoryItem(c, video.uri) },
+                                )
+                                Text(c)
+                            }
+                        }
+                    }
+                },
+            )
+        }
+
         // Dialogue métadonnées §métadonnées-locales
         editMeta?.let { video ->
             var title by androidx.compose.runtime.remember(video.uri) {
@@ -446,6 +563,9 @@ private fun LocalFilesPanel(
             var outroStart by androidx.compose.runtime.remember(video.uri) {
                 androidx.compose.runtime.mutableStateOf(video.outroStartSec?.toString() ?: "")
             }
+            var wholeFolder by androidx.compose.runtime.remember(video.uri) {
+                androidx.compose.runtime.mutableStateOf(false)
+            }
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { editMeta = null },
                 confirmButton = {
@@ -458,6 +578,16 @@ private fun LocalFilesPanel(
                             introEnd.toIntOrNull(),
                             outroStart.toIntOrNull(),
                         )
+                        // §métadonnées-dossier : même affiche et mêmes marqueurs partout
+                        if (wholeFolder) {
+                            viewModel.saveFolderMeta(
+                                video.parentUri,
+                                cover.takeIf { it.isNotBlank() },
+                                introStart.toIntOrNull(),
+                                introEnd.toIntOrNull(),
+                                outroStart.toIntOrNull(),
+                            )
+                        }
                         editMeta = null
                     }) { Text("Enregistrer") }
                 },
@@ -506,6 +636,16 @@ private fun LocalFilesPanel(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(
+                                checked = wholeFolder,
+                                onCheckedChange = { wholeFolder = it },
+                            )
+                            Text(
+                                "Appliquer l'affiche et les marqueurs à tout le dossier",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         Text(
                             "Laisse vide pour revenir aux informations du fichier. " +
                                 "Les modifications sont conservées par l'app.",
@@ -515,6 +655,99 @@ private fun LocalFilesPanel(
                     }
                 },
             )
+        }
+    }
+}
+
+/** §catégories-perso : contenu d'une catégorie créée par l'utilisateur. */
+@Composable
+private fun CustomCategoryPanel(
+    viewModel: LibraryViewModel,
+    name: String,
+    files: List<LocalVideoUi>,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            androidx.compose.material3.TextButton(onClick = { viewModel.removeCategory(name) }) {
+                Text("Supprimer")
+            }
+        }
+        if (files.isEmpty()) {
+            Text(
+                "Catégorie vide — ouvre « 🎬 Fichiers », puis « ＋ » sur une vidéo pour la ranger ici.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+        androidx.compose.foundation.lazy.LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(files, key = { it.uri }) { video ->
+                dev.endlesssea.app.ui.components.GlassCard(
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
+                ) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        if (video.customCoverUri != null) {
+                            dev.endlesssea.app.SafeAsyncImage(
+                                url = video.customCoverUri,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 10.dp).width(48.dp).height(72.dp),
+                                placeholderModifier = Modifier.padding(end = 10.dp).width(48.dp).height(72.dp),
+                            )
+                        } else {
+                            Text("🎬", style = MaterialTheme.typography.headlineMedium,
+                                modifier = Modifier.padding(end = 10.dp))
+                        }
+                        Text(video.displayName, maxLines = 2, modifier = Modifier.weight(1f))
+                        androidx.compose.material3.TextButton(
+                            onClick = { viewModel.toggleCategoryItem(name, video.uri) },
+                        ) { Text("Retirer") }
+                        androidx.compose.material3.Button(onClick = {
+                            dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
+                            dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
+                                files.map { f ->
+                                    dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
+                                        title = f.displayName,
+                                        episodeId = f.uri,
+                                        links = listOf(
+                                            dev.endlesssea.extensions.api.model.VideoLink(
+                                                url = f.uri,
+                                                streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                                                quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+                                                server = "Fichier local",
+                                            ),
+                                        ),
+                                    )
+                                },
+                                files.indexOfFirst { it.uri == video.uri },
+                            )
+                            dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
+                                title = video.displayName,
+                                mediaId = null, episodeId = video.uri,
+                                links = listOf(
+                                    dev.endlesssea.extensions.api.model.VideoLink(
+                                        url = video.uri,
+                                        streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                                        quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+                                        server = "Fichier local",
+                                    ),
+                                ),
+                                markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
+                                    introStartSec = video.introStartSec,
+                                    introEndSec = video.introEndSec,
+                                    outroStartSec = video.outroStartSec,
+                                ),
+                            )
+                            context.startActivity(
+                                android.content.Intent(context, dev.endlesssea.app.ui.player.PlayerActivity::class.java),
+                            )
+                        }) { Text("Lire") }
+                    }
+                }
+            }
         }
     }
 }

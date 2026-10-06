@@ -25,6 +25,30 @@ object PlayerLaunchStore {
         val hasAny: Boolean get() = introStartSec != null || outroStartSec != null
     }
 
+    /**
+     * §épisode-suivant : élément de la file de lecture. Les liens peuvent être
+     * vides pour un épisode pas encore résolu — le lecteur appelle alors
+     * [resolver] au moment de passer dessus.
+     */
+    data class QueueItem(
+        val title: String,
+        val episodeId: String?,
+        val links: List<VideoLink> = emptyList(),
+    )
+
+    @Volatile var queue: List<QueueItem> = emptyList()
+        private set
+
+    @Volatile var queueIndex: Int = -1
+
+    /** Résolveur de liens à la demande (posé par l'écran Détails, même processus). */
+    @Volatile var resolver: (suspend (String) -> List<VideoLink>)? = null
+
+    fun setQueue(items: List<QueueItem>, index: Int) {
+        queue = items
+        queueIndex = index
+    }
+
     @Volatile var pending: Launch = Launch()
         private set
 

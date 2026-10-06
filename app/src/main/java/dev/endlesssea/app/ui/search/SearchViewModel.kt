@@ -29,6 +29,8 @@ data class SearchUiState(
     val selTypes: Set<String> = emptySet(),
     /** Langues sélectionnées (« vf », « vostfr », « vo »). */
     val selLangs: Set<String> = emptySet(),
+    /** §recherche-source : "ALL" ou l'id de l'extension interrogée seule. */
+    val sourceFilter: String = "ALL",
 )
 
 /**
@@ -61,6 +63,23 @@ class SearchViewModel @Inject constructor(
                 }
         }
     }
+
+    /**
+     * §recherche-source : limite la recherche à UNE extension (id de l'extension),
+     * ou "ALL" pour interroger toutes les sources activées.
+     */
+    fun setSourceFilter(id: String) {
+        sourceFilter = id.ifBlank { "ALL" }
+        _uiState.value = _uiState.value.copy(sourceFilter = sourceFilter)
+        if (_uiState.value.query.isNotBlank()) {
+            _uiState.value = _uiState.value.copy(loading = true)
+            queryFlow.value = _uiState.value.query + " "   // force un nouveau cycle
+            queryFlow.value = _uiState.value.query
+        }
+    }
+
+    @Volatile
+    private var sourceFilter: String = "ALL"
 
     fun onQueryChange(query: String) {
         _uiState.value = _uiState.value.copy(query = query, loading = query.isNotBlank())
@@ -100,7 +119,9 @@ class SearchViewModel @Inject constructor(
         val results = mutableListOf<Triple<dev.endlesssea.extensions.api.model.SearchItem, String, String>>()
         val errors = mutableMapOf<String, String>()
 
-        registry.enabledExtensions().map { (name, ext) ->
+        registry.enabledExtensions()
+            .filter { (_, ext) -> sourceFilter == "ALL" || ext.info.id == sourceFilter }
+            .map { (name, ext) ->
             async {
                 runCatching { ext.search(query, page = 1, filters = filters) }
                     .onSuccess { page ->

@@ -24,5 +24,13 @@ object HomeUiBus {
     /** Libellé du fournisseur actif, affiché dans la barre du haut. */
     val currentProvider: StateFlow<String> = _currentProvider
 
-    fun publishProvider(label: String) { _currentProvider.value = label }
+    private val _currentProviderId = MutableStateFlow("ALL")
+
+    /** Id de l'extension sélectionnée (ou "ALL") — utilisé par la recherche. */
+    val currentProviderId: StateFlow<String> = _currentProviderId
+
+    fun publishProvider(label: String, id: String = "ALL") {
+        _currentProvider.value = label
+        _currentProviderId.value = id
+    }
 }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -250,6 +251,14 @@ class MainActivity : ComponentActivity() {
                             actions = {
                                 // §fournisseur-en-haut : le sélecteur de source remplace
                                 // l'icône Extensions (déplacée dans les Réglages).
+                                // §recherche-barre : loupe qui cherche dans la source choisie
+                                if (route == Screen.Home.route || route == Screen.Explore.route) {
+                                    val src by dev.endlesssea.app.ui.home.HomeUiBus
+                                        .currentProviderId.collectAsState()
+                                    IconButton(onClick = { nav.navigate("search/" + android.net.Uri.encode(src)) }) {
+                                        Icon(Icons.Filled.Search, contentDescription = "Rechercher")
+                                    }
+                                }
                                 if (route == Screen.Home.route) {
                                     val provider by dev.endlesssea.app.ui.home.HomeUiBus
                                         .currentProvider.collectAsState()

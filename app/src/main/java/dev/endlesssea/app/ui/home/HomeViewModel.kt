@@ -157,13 +157,70 @@ class HomeViewModel @Inject constructor(
     fun publishSources() = viewModelScope.launch {
         val exts = registry.enabledExtensions()
         _uiState.value = _uiState.value.copy(
-            sources = exts.map { (pkg, ext) -> Triple(pkg, ext.info.name, ext.info.iconUrl) },
+            // §catalogue-par-source : les rangées sont indexées par ext.info.id —
+            // publier le nom de paquet ici rendait le filtre TOUJOURS vide.
+            sources = exts.map { (_, ext) -> Triple(ext.info.id, ext.info.name, ext.info.iconUrl) },
         )
     }
 
     /** §accueil-multi : ne garder qu'une source sur l'accueil (« ALL » = toutes). */
     fun setSourceFilter(pkg: String) {
-        _uiState.value = _uiState.value.copy(sourceFilter = pkg.ifBlank { "ALL" })
+        val id = pkg.ifBlank { "ALL" }
+        _uiState.value = _uiState.value.copy(sourceFilter = id)
+        if (id != "ALL") loadSourceCatalogue(id)
+    }
+
+    /**
+     * §catalogue-par-source : quand une seule extension est sélectionnée, on va
+     * chercher jusqu'à six de ses catégories (au lieu des deux chargées pour la
+     * vue « toutes sources »), sinon l'accueil filtré paraissait vide.
+     */
+    fun loadSourceCatalogue(id: String) = viewModelScope.launch {
+        val entry = registry.enabledExtensions().firstOrNull { (_, ext) -> ext.info.id == id }
+            ?: return@launch
+        val ext = entry.second
+        _uiState.value = _uiState.value.copy(loading = true)
+        val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
+            .filter { it.key.isNotBlank() }
+        val cats = declared.ifEmpty {
+            listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+        }.take(6)
+        val fresh = mutableListOf<HomeRowUi>()
+        coroutineScope {
+            cats.map { cat ->
+                async {
+                    val key = if (declared.isEmpty()) "main" else cat.key
+                    runCatching { ext.getMainPage(MainPageRequest(category = key, page = 1)) }
+                        .onSuccess { page ->
+                            if (page.items.isEmpty()) return@onSuccess
+                            val items = page.items.take(20).map {
+                                SearchItemUi(
+                                    id = "${ext.info.id}:${it.url}",
+                                    title = it.title,
+                                    posterUrl = it.posterUrl,
+                                    bannerUrl = it.posterUrl,
+                                    subtitle = it.year?.toString() ?: it.type.name,
+                                    rating = it.rating,
+                                    audioLangs = it.audioLangs.map { l -> l.name },
+                                )
+                            }
+                            val label = if (declared.isEmpty()) ext.info.name
+                            else "${ext.info.name} — ${cat.title}"
+                            synchronized(fresh) {
+                                fresh += HomeRowUi(
+                                    label, items,
+                                    sourcePkg = ext.info.id,
+                                    sourceName = ext.info.name,
+                                    iconUrl = ext.info.iconUrl,
+                                )
+                            }
+                        }
+                }
+            }.forEach { it.await() }
+        }
+        val merged = (_uiState.value.remoteRows.filterNot { it.sourcePkg == id } + fresh)
+            .sortedBy { it.title }
+        _uiState.value = _uiState.value.copy(loading = false, remoteRows = merged)
     }
 
     fun onAddToLibrary(mediaId: String) = viewModelScope.launch {

@@ -78,6 +78,7 @@ fun HomeScreen(
     androidx.compose.runtime.LaunchedEffect(state.sourceFilter, state.sources) {
         HomeUiBus.publishProvider(
             state.sources.firstOrNull { it.first == state.sourceFilter }?.second ?: "Toutes mes sources",
+            state.sourceFilter,
         )
     }
     val animationsOn by dev.endlesssea.app.ui.components.UiTuning.animations.collectAsState()
@@ -130,39 +131,8 @@ fun HomeScreen(
         // §fournisseur-en-haut : le bouton n'est plus au milieu de la liste,
         // il vit dans la barre du haut (MainActivity) ; seule la feuille reste ici.
 
-        // ---- Rangées en ligne des extensions (la vraie vie de l'accueil)
-        // §accueil-multi : filtrer l'accueil sur UNE extension ou tout voir.
-        if (state.sources.size > 1) {
-            item(key = "srcFilter") {
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                ) {
-                    item {
-                        androidx.compose.material3.FilterChip(
-                            selected = state.sourceFilter == "ALL",
-                            onClick = { viewModel.setSourceFilter("ALL") },
-                            label = { Text("Tout") },
-                        )
-                    }
-                    items(state.sources, key = { it.first }) { (pkg, name, iconUrl) ->
-                        androidx.compose.material3.FilterChip(
-                            selected = state.sourceFilter == pkg,
-                            onClick = { viewModel.setSourceFilter(if (state.sourceFilter == pkg) "ALL" else pkg) },
-                            label = { Text(name) },
-                            leadingIcon = {
-                                dev.endlesssea.app.SafeAsyncImage(
-                                    url = iconUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.width(20.dp).height(20.dp),
-                                )
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-            }
-        }
+        // §fournisseur-en-haut : la rangée de pastilles de sources a disparu —
+        // le bouton de la barre du haut suffit (demande utilisateur).
 
         state.remoteRows
             .filter { state.sourceFilter == "ALL" || it.sourcePkg == state.sourceFilter }

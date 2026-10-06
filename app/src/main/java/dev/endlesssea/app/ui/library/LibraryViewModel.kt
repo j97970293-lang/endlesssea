@@ -203,6 +203,27 @@ class LibraryViewModel @Inject constructor(
         )
     }
 
+    /**
+     * §métadonnées-dossier : applique affiche + marqueurs intro/outro à TOUS les
+     * fichiers du dossier (le titre reste propre à chaque fichier).
+     */
+    fun saveFolderMeta(
+        parentUri: String, coverUri: String?,
+        introStartSec: Int? = null, introEndSec: Int? = null, outroStartSec: Int? = null,
+    ) {
+        _uiState.value.localFiles.filter { it.parentUri == parentUri }.forEach { f ->
+            saveLocalMeta(f.uri, f.customTitle, coverUri, introStartSec, introEndSec, outroStartSec)
+        }
+    }
+
+    /** §catégories-perso : catégories créées par l'utilisateur. */
+    val customCategories: StateFlow<List<String>> = prefs.customCategories
+    val categoryItemsTick: StateFlow<Int> = prefs.categoryItemsTick
+    fun addCategory(name: String) = prefs.addCustomCategory(name)
+    fun removeCategory(name: String) = prefs.removeCustomCategory(name)
+    fun categoryItems(name: String): List<String> = prefs.categoryItems(name)
+    fun toggleCategoryItem(name: String, item: String) = prefs.toggleCategoryItem(name, item)
+
     /** §métadonnées-éditées : titre/affiche perso sur une source (téléchargée ou non). */
     fun saveCustomMediaMeta(mediaId: String, title: String?, coverUri: String?) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {

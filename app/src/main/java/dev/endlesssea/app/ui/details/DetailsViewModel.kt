@@ -343,6 +343,36 @@ class DetailsViewModel @Inject constructor(
 
     /** Lecture : met les liens dans le canal mémoire, puis [onReady] lance PlayerActivity. */
     fun playEpisode(episode: Episode, startIndex: Int = 0, onReady: () -> Unit = {}) = viewModelScope.launch {
+        // §épisode-suivant : la file = tous les épisodes de la fiche, dans l'ordre ;
+        // les liens des voisins sont résolus à la demande par ce résolveur.
+        val all = _uiState.value.episodes
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
+            all.map { ep ->
+                dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
+                    title = buildEpisodeTitle(ep),
+                    episodeId = ep.id,
+                    links = _uiState.value.linksByEpisode[ep.id].orEmpty(),
+                )
+            },
+            all.indexOfFirst { it.id == episode.id },
+        )
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = { id ->
+            val ep = _uiState.value.episodes.firstOrNull { it.id == id }
+            if (ep == null) {
+                emptyList()
+            } else {
+                _uiState.value.linksByEpisode[id] ?: withContext(Dispatchers.IO) {
+                    val out = mutableListOf<VideoLink>()
+                    runCatching {
+                        registry.instance(extensionId)
+                            .loadLinksFlow(LinkRequest(episode = ep, mediaId = mediaId))
+                            .collect { out += it }
+                    }
+                    orderByLangPref(out)
+                }
+            }
+        }
+
         val existing = _uiState.value.linksByEpisode[episode.id]
         if (existing != null) {
             dev.endlesssea.app.ui.player.PlayerLaunchStore.set(

@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,6 +41,8 @@ import dev.endlesssea.app.ui.home.MediaRow
 @Composable
 fun ExploreScreen(
     onMediaClick: (String) -> Unit,
+    /** §recherche-dans-explorer : (requête, source) → écran de résultats. */
+    onSearch: (String, String) -> Unit = { _, _ -> },
     /** (pkg, catégorie) → page « Tout voir » de cette rangée. */
     onSeeAll: (String, String) -> Unit,
     viewModel: ExploreViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
@@ -48,6 +52,28 @@ fun ExploreScreen(
     var selectedPkg by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize()) {
+        // §recherche-dans-explorer : la recherche vit ici (plus d'onglet dédié) et
+        // interroge la source sélectionnée dans les pastilles ci-dessous.
+        var exploreQuery by remember { mutableStateOf("") }
+        androidx.compose.material3.OutlinedTextField(
+            value = exploreQuery,
+            onValueChange = { exploreQuery = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+            placeholder = { Text("Rechercher dans " + (selectedPkg?.let { pkg -> state.extensions.firstOrNull { it.first == pkg }?.second } ?: "toutes les sources") + "…") },
+            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            trailingIcon = {
+                IconButton(onClick = { if (exploreQuery.isNotBlank()) onSearch(exploreQuery, selectedPkg ?: "ALL") }) {
+                    Icon(Icons.Filled.Search, "Lancer la recherche")
+                }
+            },
+            singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onSearch = { if (exploreQuery.isNotBlank()) onSearch(exploreQuery, selectedPkg ?: "ALL") },
+            ),
+        )
         Row(
             Modifier
                 .fillMaxWidth()

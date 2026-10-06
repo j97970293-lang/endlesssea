@@ -56,7 +56,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 
 /** Toutes les entrées possibles de la barre, dans un ordre stable. */
 val allTabScreens: List<Screen> =
-    listOf(Screen.Home, Screen.Explore, Screen.Search, Screen.Library, Screen.Downloads)
+    listOf(Screen.Home, Screen.Explore, Screen.Library, Screen.Downloads)
 
 /** Barre de navigation flottante « verre » — onglets filtrés par les préférences utilisateur. */
 @Composable
@@ -166,6 +166,7 @@ fun EsNavGraph(nav: NavHostController) {
                 onSeeAll = { pkg, category ->
                     nav.navigate("seeAll/${Uri.encode(pkg)}/${Uri.encode(category)}")
                 },
+                onSearch = { _, source -> nav.navigate("search/${Uri.encode(source)}") },
             )
         }
         composable("seeAll/{pkg}/{category}") { entry ->
@@ -177,6 +178,13 @@ fun EsNavGraph(nav: NavHostController) {
         }
         composable(Screen.Search.route) {
             SearchScreen(onMediaClick = { openDetails(nav, it) })
+        }
+        // §recherche-source : « rechercher dans <extension> » depuis la barre du haut
+        composable("search/{source}") { entry ->
+            SearchScreen(
+                onMediaClick = { openDetails(nav, it) },
+                initialSource = entry.arguments?.getString("source") ?: "ALL",
+            )
         }
         composable(Screen.Library.route) {
             LibraryScreen(onMediaClick = { openDetails(nav, it) })

@@ -55,8 +55,9 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         const val THEME_AMOLED = 3
 
         // Toutes les destinations possibles de la barre
-        val ALL_TAB_ROUTES = listOf("home", "explore", "search", "library", "downloads")
-        val DEFAULT_TABS = setOf("home", "explore", "search", "library", "downloads")
+        // §recherche-dans-explorer : l'onglet « Recherche » a quitté la barre.
+        val ALL_TAB_ROUTES = listOf("home", "explore", "library", "downloads")
+        val DEFAULT_TABS = setOf("home", "explore", "library", "downloads")
 
         // Palettes d'accent (primary) proposées dans les réglages
         val ACCENTS = linkedMapOf(
@@ -109,7 +110,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     // --------------------------------------------------------- barre flottante
     private val _barTabs = MutableStateFlow(
-        p.getStringSet("bar_tabs", DEFAULT_TABS)?.toSet() ?: DEFAULT_TABS,
+        (p.getStringSet("bar_tabs", DEFAULT_TABS)?.toSet() ?: DEFAULT_TABS)
+            .filter { it in ALL_TAB_ROUTES }.toSet().ifEmpty { DEFAULT_TABS },
     )
     val barTabs: StateFlow<Set<String>> = _barTabs
     fun setBarTab(route: String, enabled: Boolean) {
@@ -241,6 +243,19 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _autoSkipMarkers = MutableStateFlow(p.getBoolean("auto_skip_markers", true))
     val autoSkipMarkers: StateFlow<Boolean> = _autoSkipMarkers
     fun setAutoSkipMarkers(v: Boolean) { p.edit().putBoolean("auto_skip_markers", v).apply(); _autoSkipMarkers.value = v }
+
+    /**
+     * §rendu-vidéo : surface de rendu du lecteur.
+     *  - "texture" (défaut) : TextureView, nécessaire aux filtres vidéo ;
+     *  - "surface" : SurfaceView, plus rapide / moins gourmand, compatible HDR
+     *    et Android TV, mais sans filtres.
+     */
+    private val _videoRender = MutableStateFlow(p.getString("video_render", "texture") ?: "texture")
+    val videoRender: StateFlow<String> = _videoRender
+    fun setVideoRender(v: String) {
+        val safe = if (v == "surface") "surface" else "texture"
+        p.edit().putString("video_render", safe).apply(); _videoRender.value = safe
+    }
 
     /** §orientation-lecteur : "landscape" (défaut, lecture à l'horizontale) ou "portrait". */
     private val _playerOrientation = MutableStateFlow(p.getString("player_orientation", "landscape") ?: "landscape")
@@ -381,6 +396,38 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val json = "[\"" + safe.joinToString("\",\"") + "\"]"
         p.edit().putString("server_order", json).apply()
         _serverOrder.value = safe
+    }
+
+    /**
+     * §catégories-perso : catégories créées par l'utilisateur dans la bibliothèque
+     * (onglets en plus de Favoris/Anime/Films/…). Stockées en liste JSON.
+     */
+    private val _customCategories = MutableStateFlow<List<String>>(loadJsonStringList("lib_categories"))
+    val customCategories: StateFlow<List<String>> = _customCategories
+    fun addCustomCategory(name: String) {
+        val clean = name.trim().replace("\"", "'").take(24)
+        if (clean.isBlank() || _customCategories.value.any { it.equals(clean, true) }) return
+        val next = _customCategories.value + clean
+        p.edit().putString("lib_categories", "[\"" + next.joinToString("\",\"") + "\"]").apply()
+        _customCategories.value = next
+    }
+    fun removeCustomCategory(name: String) {
+        val next = _customCategories.value.filterNot { it == name }
+        p.edit().putString("lib_categories", "[\"" + next.joinToString("\",\"") + "\"]").apply()
+        _customCategories.value = next
+        p.edit().remove("lib_cat_items_" + name).apply()
+        _categoryItemsTick.value++
+    }
+
+    /** §catégories-perso : contenu d'une catégorie (URIs de fichiers locaux ou mediaId). */
+    private val _categoryItemsTick = MutableStateFlow(0)
+    val categoryItemsTick: StateFlow<Int> = _categoryItemsTick
+    fun categoryItems(name: String): List<String> = loadJsonStringList("lib_cat_items_" + name)
+    fun toggleCategoryItem(name: String, item: String) {
+        val cur = categoryItems(name)
+        val next = if (item in cur) cur - item else cur + item
+        p.edit().putString("lib_cat_items_" + name, "[\"" + next.joinToString("\",\"") { it.replace("\"", " ") } + "\"]").apply()
+        _categoryItemsTick.value++
     }
 
     private fun loadJsonStringList(key: String): List<String> =

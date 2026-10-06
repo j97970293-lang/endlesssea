@@ -18,8 +18,18 @@ object HttpClients {
 
     /** Base builder: polite defaults reused by app + per-extension clients. */
     fun baseBuilder(): OkHttpClient.Builder {
+        // §serveurs-lents : OkHttp limite par défaut à 5 requêtes simultanées PAR HÔTE
+        // (et 64 au total) — la résolution des serveurs d'un épisode, qui tape
+        // souvent 10-20 URLs du même domaine, se retrouvait sérialisée. On élargit
+        // le dispatcher et le pool, et on échoue plus vite sur un hôte mort.
+        val dispatcher = okhttp3.Dispatcher().apply {
+            maxRequests = 96
+            maxRequestsPerHost = 24
+        }
         val builder = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .dispatcher(dispatcher)
+            .connectionPool(okhttp3.ConnectionPool(32, 5, TimeUnit.MINUTES))
+            .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)

@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Audiotrack
@@ -165,17 +167,34 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
-        AndroidView(
-            factory = { ctx ->
-                android.view.TextureView(ctx).also {
-                    viewModel.engine.player.setVideoTextureView(it)
-                    textureView = it
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxSize(),
-        )
+        val renderMode by viewModel.videoRender.collectAsState()
+        if (renderMode == "surface") {
+            // §rendu-vidéo : SurfaceView — rendu matériel direct (plus fluide,
+            // compatible HDR / Android TV) ; les filtres vidéo sont inactifs.
+            AndroidView(
+                factory = { ctx ->
+                    android.view.SurfaceView(ctx).also {
+                        viewModel.engine.player.setVideoSurfaceView(it)
+                        textureView = null
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxSize(),
+            )
+        } else {
+            AndroidView(
+                factory = { ctx ->
+                    android.view.TextureView(ctx).also {
+                        viewModel.engine.player.setVideoTextureView(it)
+                        textureView = it
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxSize(),
+            )
+        }
 
         // Zoom (contenir ↔ remplir) appliqué par matrice sur la TextureView
         LaunchedEffect(zoomFit, videoSize) {
@@ -481,27 +500,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         Icon(Icons.Filled.HighQuality, "Qualité / serveur", tint = Color.White)
                     }
                 }
-                IconButton(onClick = {
-                    val act = context as? android.app.Activity
-                    landscapeNow = !landscapeNow
-                    viewModel.setOrientationPreference(if (landscapeNow) "landscape" else "portrait")
-                    act?.requestedOrientation = if (!landscapeNow) {
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                    } else {
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    }
-                }) {
-                    Icon(
-                        Icons.Filled.ScreenRotation, "Basculer portrait/paysage",
-                        tint = Color.White,
-                    )
-                }
-                IconButton(onClick = { zoomFit = !zoomFit }) {
-                    Icon(
-                        Icons.Filled.ZoomIn, "Zoom plein écran",
-                        tint = if (zoomFit) Color.White else MaterialTheme.colorScheme.primary,
-                    )
-                }
                 if (subtitleTracks.isNotEmpty()) {
                     IconButton(onClick = { showCcDialog = true }) {
                         Icon(Icons.Filled.ClosedCaption, "Sous-titres", tint = Color.White)
@@ -512,156 +510,188 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         Icon(Icons.Filled.Audiotrack, "Piste audio", tint = Color.White)
                     }
                 }
-                IconButton(onClick = { showMoreSheet = true }) {
-                    Icon(Icons.Filled.MoreVert, "Plus", tint = Color.White)
-                }
-                IconButton(onClick = { viewModel.toggleLock() }) {
-                    Icon(
-                        if (state.locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                        if (state.locked) "Verrouillé" else "Verrouiller",
-                        tint = Color.White,
-                    )
+                if (state.locked) {
+                    IconButton(onClick = { viewModel.toggleLock() }) {
+                        Icon(Icons.Filled.Lock, "Déverrouiller", tint = Color.White)
+                    }
                 }
             }
 
             if (!state.locked) {
-                // §lecteur-redessiné : UNE seule ligne de progression (temps à gauche
-                // et à droite), une rangée de contrôles aérée, et le mégaskip en
-                // pastille flottante à droite — plus de glissière de luminosité
-                // empilée au milieu des boutons (le geste vertical gauche la règle).
+                // §lecteur-modele : habillage façon mpv — AUCUN bandeau translucide.
+                // Transport au centre de l'image, ligne de temps fine tout en bas,
+                // outils sur une rangée d'icônes, mégaskip en pastille flottante
+                // (vers l'AVANT uniquement, comme demandé).
                 val dur = state.durationMs.coerceAtLeast(1)
                 val progress = (slidingPos ?: (state.positionMs.toFloat() / dur)).coerceIn(0f, 1f)
 
+                // ---- Transport central : précédent · lecture · suivant
+                Row(
+                    Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(44.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { viewModel.playQueueOffset(-1) },
+                        enabled = state.hasPrev,
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.SkipPrevious, "Précédent",
+                            tint = if (state.hasPrev) Color.White else Color.White.copy(alpha = 0.25f),
+                            modifier = Modifier.size(44.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
+                        modifier = Modifier.size(78.dp),
+                    ) {
+                        Icon(
+                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            "Lecture/Pause", tint = Color.White,
+                            modifier = Modifier.size(70.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = { viewModel.playQueueOffset(1) },
+                        enabled = state.hasNext,
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.SkipNext, "Suivant",
+                            tint = if (state.hasNext) Color.White else Color.White.copy(alpha = 0.25f),
+                            modifier = Modifier.size(44.dp),
+                        )
+                    }
+                }
+
+                // ---- Mégaskip : une seule pastille, vers l'avant
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 20.dp, top = 120.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable { viewModel.megaJump(state.megaSkipSeconds) }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        "+${state.megaSkipSeconds} s",
+                        color = Color.Black,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                }
+
+                // ---- Bas : ligne de temps fine, puis rangée d'outils
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.End,
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            ),
+                        )
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
                 ) {
-                    // ---- Mégaskip : pastille flottante (réf. capture utilisateur)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 10.dp, end = 4.dp),
-                    ) {
-                        MegaSkipPill("−${state.megaSkipSeconds} s") { viewModel.megaJump(-state.megaSkipSeconds) }
-                        MegaSkipPill("+${state.megaSkipSeconds} s") { viewModel.megaJump(state.megaSkipSeconds) }
-                    }
-
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(26.dp))
-                            .background(Color.Black.copy(alpha = 0.62f))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        // ---- Ligne unique : 21:34 ──────●──────── 1:01:58
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                formatTime(slidingPos?.let { (it * dur).toLong() } ?: state.positionMs),
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            Slider(
-                                value = progress,
-                                onValueChange = { slidingPos = it },
-                                onValueChangeFinished = {
-                                    slidingPos?.let { viewModel.engine.player.seekTo((it * dur).toLong()) }
-                                    slidingPos = null
-                                },
-                                modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                                colors = androidx.compose.material3.SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.22f),
-                                ),
-                                thumb = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            formatTime(slidingPos?.let { (it * dur).toLong() } ?: state.positionMs),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Slider(
+                            value = progress,
+                            onValueChange = { slidingPos = it },
+                            onValueChangeFinished = {
+                                slidingPos?.let { viewModel.engine.player.seekTo((it * dur).toLong()) }
+                                slidingPos = null
+                            },
+                            modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                            thumb = {
+                                Box(
+                                    Modifier
+                                        .size(14.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(MaterialTheme.colorScheme.primary),
+                                )
+                            },
+                            track = { sliderState ->
+                                val frac = (sliderState.value - sliderState.valueRange.start) /
+                                    (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(Color.White.copy(alpha = 0.30f)),
+                                ) {
                                     Box(
                                         Modifier
-                                            .size(13.dp)
+                                            .fillMaxWidth(frac.coerceIn(0f, 1f))
+                                            .height(3.dp)
                                             .clip(RoundedCornerShape(50))
                                             .background(MaterialTheme.colorScheme.primary),
                                     )
-                                },
-                                track = { sliderState ->
-                                    val frac = (sliderState.value - sliderState.valueRange.start) /
-                                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
-                                    Box(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .height(3.dp)
-                                            .clip(RoundedCornerShape(50))
-                                            .background(Color.White.copy(alpha = 0.22f)),
-                                    ) {
-                                        Box(
-                                            Modifier
-                                                .fillMaxWidth(frac.coerceIn(0f, 1f))
-                                                .height(3.dp)
-                                                .clip(RoundedCornerShape(50))
-                                                .background(MaterialTheme.colorScheme.primary),
-                                        )
-                                    }
-                                },
-                            )
-                            Text(
-                                formatTime(dur),
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelMedium,
+                                }
+                            },
+                        )
+                        Text(
+                            formatTime(dur),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = { viewModel.toggleLock() }) {
+                            Icon(
+                                if (state.locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                "Verrouiller", tint = Color.White,
                             )
                         }
-
-                        // ---- Rangée de contrôles : transport au centre, outils aux bords
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "${state.speed}×",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier
-                                    .clickable {
-                                        val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
-                                        viewModel.setSpeed(next)
-                                    }
-                                    .padding(8.dp),
+                        IconButton(onClick = {
+                            val act = context as? android.app.Activity
+                            landscapeNow = !landscapeNow
+                            viewModel.setOrientationPreference(if (landscapeNow) "landscape" else "portrait")
+                            act?.requestedOrientation = if (!landscapeNow) {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                            } else {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            }
+                        }) {
+                            Icon(Icons.Filled.ScreenRotation, "Orientation", tint = Color.White)
+                        }
+                        IconButton(onClick = { zoomFit = !zoomFit }) {
+                            Icon(
+                                Icons.Filled.ZoomIn, "Zoom",
+                                tint = if (zoomFit) Color.White else MaterialTheme.colorScheme.primary,
                             )
-                            Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { viewModel.jumpBy(-state.skipSeconds) }) {
-                                Text(
-                                    "−${state.skipSeconds}",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                            IconButton(
-                                onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
-                                modifier = Modifier
-                                    .size(58.dp)
-                                    .clip(RoundedCornerShape(29.dp))
-                                    .background(MaterialTheme.colorScheme.primary),
-                            ) {
-                                Icon(
-                                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    "Lecture/Pause", tint = Color.Black,
-                                    modifier = Modifier.size(32.dp),
-                                )
-                            }
-                            IconButton(onClick = { viewModel.jumpBy(state.skipSeconds) }) {
-                                Text(
-                                    "+${state.skipSeconds}",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                            Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { showFilterDialog = true }) {
-                                Icon(
-                                    Icons.Filled.Tune, "Filtres vidéo",
-                                    tint = if (state.filterPresetName != "none" && state.filterPresetName != "Aucun")
-                                        MaterialTheme.colorScheme.primary else Color.White,
-                                )
-                            }
+                        }
+                        Text(
+                            "${state.speed}×",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier
+                                .clickable {
+                                    val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
+                                    viewModel.setSpeed(next)
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { showFilterDialog = true }) {
+                            Icon(
+                                Icons.Filled.Tune, "Filtres vidéo",
+                                tint = if (state.filterPresetName != "none" && state.filterPresetName != "Aucun")
+                                    MaterialTheme.colorScheme.primary else Color.White,
+                            )
+                        }
+                        IconButton(onClick = { showMoreSheet = true }) {
+                            Icon(Icons.Filled.MoreVert, "Plus", tint = Color.White)
                         }
                     }
                 }
