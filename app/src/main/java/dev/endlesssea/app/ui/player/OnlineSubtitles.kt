@@ -47,7 +47,8 @@ object OnlineSubtitles {
                 buildList {
                     for (i in 0 until minOf(arr.length(), 30)) {
                         val o = arr.optJSONObject(i) ?: continue
-                        val link = o.optString("SubDownloadLink").ifBlank { continue }
+                        val link = o.optString("SubDownloadLink")
+                        if (link.isBlank()) continue
                         add(
                             OnlineSubtitle(
                                 name = o.optString("SubFileName").ifBlank { "Sous-titre" },
