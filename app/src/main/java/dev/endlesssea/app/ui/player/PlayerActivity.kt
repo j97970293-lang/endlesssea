@@ -31,8 +31,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Timelapse
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
@@ -40,6 +42,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -143,6 +147,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var showCcDialog by remember { mutableStateOf(false) }
     var showAudioDialog by remember { mutableStateOf(false) }
     var showFilterDialog by remember { mutableStateOf(false) }
+    /** §sheet-plus : panneau « Plus » (minuterie de veille + filtres vidéo). */
+    var showMoreSheet by remember { mutableStateOf(false) }
     var brightness by remember { mutableStateOf(1f) }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     var zoomFit by remember { mutableStateOf(true) } // true = contenir, false = remplir
@@ -504,6 +510,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         Icon(Icons.Filled.Audiotrack, "Piste audio", tint = Color.White)
                     }
                 }
+                IconButton(onClick = { showMoreSheet = true }) {
+                    Icon(Icons.Filled.MoreVert, "Plus", tint = Color.White)
+                }
                 IconButton(onClick = { viewModel.toggleLock() }) {
                     Icon(
                         if (state.locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
@@ -639,6 +648,116 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     Text(error, color = Color.White)
                     TextButtonBack(onBack)
                 }
+            }
+        }
+    }
+
+    // ---- §sheet-plus : panneau « Plus » façon lecteurs pro — minuterie de veille
+    // (Arrêt/15/30/45/60 min) + filtres vidéo en grille, tout au même endroit.
+    if (showMoreSheet) {
+        ModalBottomSheet(onDismissRequest = { showMoreSheet = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Plus",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+
+                // ---- ⏲ Minuterie de veille
+                Text(
+                    "Minuterie de veille",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.sleepEndAt != null) {
+                    Text(
+                        "Pause programmée ${"%.0f".format(((state.sleepEndAt ?: 0L) - System.currentTimeMillis()) / 60_000f)} min restantes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(0 to "Arrêt", 15 to "15'", 30 to "30'", 45 to "45'", 60 to "60'").forEach { (min, label) ->
+                        val remain = state.sleepEndAt
+                        val sel = if (min == 0) remain == null else remain != null
+                        FilterChip(
+                            selected = sel,
+                            onClick = { viewModel.scheduleSleep(min) },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+
+                // ---- 🎚 Filtres vidéo en grille (12 préréglages)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Tune, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Filtres vidéo",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    BUILTIN_PRESETS.forEach { preset ->
+                        val sel = state.filterPresetName == preset.name
+                        FilterChip(
+                            selected = sel,
+                            onClick = { viewModel.applyPreset(preset) },
+                            label = { Text(preset.name) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = {
+                    showMoreSheet = false
+                    showFilterDialog = true
+                }) { Text("Réglage fin & préréglages personnels…") }
+                Spacer(Modifier.height(30.dp))
+            }
+        }
+    }
+
+    // ---- Toast lecteur bref (§minuterie : pause programmée, etc.)
+    LaunchedEffect(state.toast) {
+        state.toast?.let {
+            kotlinx.coroutines.delay(2_400)
+            viewModel.clearToast()
+        }
+    }
+    state.toast?.let {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(top = 100.dp),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.Black.copy(alpha = 0.66f),
+            ) {
+                Text(
+                    it, color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                )
             }
         }
     }

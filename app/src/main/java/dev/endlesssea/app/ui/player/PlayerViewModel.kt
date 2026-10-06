@@ -48,6 +48,10 @@ data class PlayerUiState(
     val savedPresets: List<VideoFilterPreset> = emptyList(),
     /** Affichage bref du saut (double appui) : « −15 s » / « +15 s » ou null. */
     val skipFlash: String? = null,
+    /** §minuterie : timestamp de fin de minuterie (null = inactive), pause auto. */
+    val sleepEndAt: Long? = null,
+    /** Notification brève affichée en surimpression (ex: pause par minuterie). */
+    val toast: String? = null,
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -140,6 +144,27 @@ class PlayerViewModel @Inject constructor(
 
     fun applyPreset(preset: VideoFilterPreset) =
         applyFilter(preset.brightness, preset.saturation, preset.hue, preset.name)
+
+    // ---- §minuterie (mpv-infinity) : 0/off ou 15/30/45/60 min puis pause automatique
+    private var sleepJob: kotlinx.coroutines.Job? = null
+
+    fun scheduleSleep(minutes: Int) {
+        sleepJob?.cancel()
+        sleepJob = null
+        if (minutes <= 0) {
+            _uiState.value = _uiState.value.copy(sleepEndAt = null, toast = "⏰ Minuterie désactivée")
+            return
+        }
+        val endAt = System.currentTimeMillis() + minutes * 60_000L
+        _uiState.value = _uiState.value.copy(sleepEndAt = endAt, toast = "⏰ Pause dans $minutes min")
+        sleepJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(minutes * 60_000L)
+            engine.pause()
+            _uiState.value = _uiState.value.copy(sleepEndAt = null, toast = "⏰ Minuterie — lecture mise en pause")
+        }
+    }
+
+    fun clearToast() { if (_uiState.value.toast != null) _uiState.value = _uiState.value.copy(toast = null) }
 
     /** Enregistre le filtre courant comme préréglage nommé (dans les préférences JSON). */
     fun saveCurrentAsPreset(name: String) {
