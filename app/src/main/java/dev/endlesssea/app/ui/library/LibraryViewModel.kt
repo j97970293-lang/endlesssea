@@ -29,8 +29,6 @@ data class LibraryUiState(
     val localScanning: Boolean = false,
     /** §retour-visuel : texte de progression du scan. */
     val localScanLabel: String = "",
-    /** §retour-visuel : texte de progression du scan. */
-    val localScanLabel: String = "",
     /** Tic de recomposition quand une métadonnée locale change. */
     val localMetaTick: Int = 0,
 )

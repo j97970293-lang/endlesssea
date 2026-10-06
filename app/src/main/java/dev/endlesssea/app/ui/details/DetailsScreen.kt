@@ -217,6 +217,27 @@ fun DetailsScreen(
                 )
             }
         }
+        // §appui-long : confirmation de suppression d'un téléchargement
+        var deleteCandidate by remember {
+            androidx.compose.runtime.mutableStateOf<dev.endlesssea.app.ui.details.DeviceFileUi?>(null)
+        }
+        deleteCandidate?.let { f ->
+            AlertDialog(
+                onDismissRequest = { deleteCandidate = null },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.deleteDeviceFile(f)
+                        deleteCandidate = null
+                    }) { Text("Supprimer") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteCandidate = null }) { Text("Annuler") }
+                },
+                title = { Text("Supprimer ce téléchargement ?") },
+                text = { Text(f.label) },
+            )
+        }
+
         LazyColumn(
             contentPadding = PaddingValues(bottom = 110.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -805,27 +826,6 @@ fun DetailsScreen(
     }
 
     // ---- §fiche-serveurs : au clic sur un épisode, choix du serveur avant lecture
-    // §appui-long : confirmation de suppression d'un téléchargement
-    var deleteCandidate by remember {
-        androidx.compose.runtime.mutableStateOf<dev.endlesssea.app.ui.details.DeviceFileUi?>(null)
-    }
-    deleteCandidate?.let { f ->
-        AlertDialog(
-            onDismissRequest = { deleteCandidate = null },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.deleteDeviceFile(f)
-                    deleteCandidate = null
-                }) { Text("Supprimer") }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteCandidate = null }) { Text("Annuler") }
-            },
-            title = { Text("Supprimer ce téléchargement ?") },
-            text = { Text(f.label) },
-        )
-    }
-
     // §reprise-fiche : proposition automatique de reprendre où on s'était arrêté
     val resumePromptOn by viewModel.resumePrompt.collectAsState()
     var resumeAsked by remember { androidx.compose.runtime.mutableStateOf(false) }
