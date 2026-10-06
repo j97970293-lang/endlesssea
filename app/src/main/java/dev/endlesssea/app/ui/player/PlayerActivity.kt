@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -134,6 +135,7 @@ private fun formatTime(ms: Long): String {
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
