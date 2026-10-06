@@ -35,6 +35,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +90,78 @@ fun HomeScreen(
         if (state.continueWatching.isNotEmpty()) {
             item {
                 MediaRow(title = "Reprendre la lecture", items = state.continueWatching, onMediaClick = onMediaClick)
+            }
+        }
+
+        // ---- §fournisseurs (capture AnyMEX) : Choose Provider en feuille —
+        // catalogue « à la une » par extension + trackers gratuits annoncés honnêtement.
+        var providerSheetOpen by remember { mutableStateOf(false) }
+        if (state.extensionCount > 0) {
+            item(key = "providerBtn") {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { providerSheetOpen = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Text("☁ Fournisseur : " + (
+                        state.sources.firstOrNull { it.first == state.sourceFilter }?.second
+                            ?: "Toutes mes sources"
+                        ), maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(6.dp))
+                    Text("▾", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+
+        if (providerSheetOpen) {
+            androidx.compose.material3.ModalBottomSheet(
+                onDismissRequest = { providerSheetOpen = false },
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    Text("Choisir le fournisseur", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Quelle source alimente l'accueil « à la une » ?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    ProviderRow(
+                        title = "Toutes mes sources",
+                        subtitle = "Les catalogues de chaque extension fusionnés",
+                        selected = state.sourceFilter == "ALL",
+                        enabled = true,
+                    ) { viewModel.setSourceFilter("ALL"); providerSheetOpen = false }
+
+                    state.sources.forEach { (pkg, name, iconUrl) ->
+                        ProviderRow(
+                            title = name,
+                            subtitle = "Catalogue de l'extension $name",
+                            iconUrl = iconUrl,
+                            selected = state.sourceFilter == pkg,
+                            enabled = true,
+                        ) { viewModel.setSourceFilter(pkg); providerSheetOpen = false }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Trackers & métadonnées (gratuits)",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    listOf(
+                        "AniList" to "Suivi anime & manga (gratuit)",
+                        "MyAnimeList" to "La plus grande base anime & manga",
+                        "Simkl" to "Suivi films & séries",
+                    ).forEach { (t, sub) ->
+                        ProviderRow(
+                            title = t, subtitle = "$sub · bientôt dans Endless Sea",
+                            selected = false, enabled = false,
+                        ) {}
+                    }
+                    Spacer(Modifier.height(28.dp))
+                }
             }
         }
 
@@ -363,5 +438,56 @@ private fun EmptyHome(onBrowseExtensions: () -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
         Button(onClick = onBrowseExtensions) { Text("Ouvrir Extensions") }
+    }
+}
+
+
+@Composable
+private fun ProviderRow(
+    title: String,
+    subtitle: String,
+    iconUrl: String? = null,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        color = if (!enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
+        else if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (iconUrl != null) {
+                dev.endlesssea.app.SafeAsyncImage(
+                    url = iconUrl, contentDescription = null,
+                    modifier = Modifier.width(36.dp).height(36.dp),
+                )
+            } else {
+                androidx.compose.material3.Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                ) { Text("🧩", Modifier.padding(8.dp), style = MaterialTheme.typography.titleMedium) }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            if (selected) {
+                Text("✓", color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleMedium)
+            }
+        }
     }
 }

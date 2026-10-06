@@ -68,10 +68,12 @@ class MainActivity : ComponentActivity() {
             val glassVariant by prefs.glassVariant.collectAsState()
             val fontId by prefs.fontId.collectAsState()
             val liquidGlass by prefs.liquidGlass.collectAsState()
+            val bloom by prefs.bloom.collectAsState()
+            val grain by prefs.grain.collectAsState()
             val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
             androidx.compose.runtime.LaunchedEffect(
                 glassOverlay, glassScrim, cardStyle, preferredAudioLang,
-                glassVariant, liquidGlass, accentGlassLink, accentName,
+                glassVariant, liquidGlass, accentGlassLink, accentName, bloom,
             ) {
                 // §couleurs : « fusion accent/verre » — si liées, l'accent teinte aussi le verre ;
                 // sinon la variante Glass saturée choisie s'applique (beaucoup de couleurs).
@@ -84,6 +86,7 @@ class MainActivity : ComponentActivity() {
                     glassOverlay, glassScrim, cardStyle,
                     tintArgb = tint, liquid = liquidGlass,
                 )
+                dev.endlesssea.app.ui.components.UiTuning.updateBloom(bloom)
                 dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
             val pendingUpdate = androidx.compose.runtime.remember {
@@ -179,6 +182,10 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                     if (showLiquid && bgImage == null) {
                         dev.endlesssea.app.ui.components.LiquidBackground(Modifier.fillMaxSize())
+                    }
+                    // §anymex-theme : texture « film grain » par-dessus tout
+                    if (grain) {
+                        dev.endlesssea.app.ui.components.GrainOverlay()
                     }
                     bgImage?.let { uri ->
                         coil.compose.AsyncImage(

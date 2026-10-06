@@ -169,8 +169,12 @@ fun SettingsScreen(
                 }
             }
             // ------------------------------------------------------ APPARENCE
+            if (openCategoryFull == null) {
+                item { GroupTitle("Apparence & interface") }
+            }
             item {
-                SettingCategory("🎨", "Interface & thème", expanded = "interface" in openCategories) { toggleCategory("interface") }
+                SettingCategory("🎨", "Interface & thème",
+                    "Verre liquide, thème AMOLED, accent, police, barre", expanded = "interface" in openCategories) { toggleCategory("interface") }
             }
             if ("interface" in openCategories) {
             item {
@@ -476,25 +480,96 @@ fun SettingsScreen(
                 }
             }
 
+            // ------------------------------------------------- THÈME AnyMEX
+            if ("interface" in openCategories) {
+                item {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        // ---- §anymex-theme : les réglages de la capture Theme (AnyMEX)
+                        Text("Thème AnyMEX", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(4.dp))
+                        val amoledOn = state.themeMode == dev.endlesssea.app.di.AppPrefs.THEME_AMOLED
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Mode OLED", style = MaterialTheme.typography.bodyMedium)
+                                Text("Noir vraiment pur (« Super Dark Mode »)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = amoledOn, onCheckedChange = { on ->
+                                viewModel.setThemeMode(
+                                    if (on) dev.endlesssea.app.di.AppPrefs.THEME_AMOLED
+                                    else dev.endlesssea.app.di.AppPrefs.THEME_DARK
+                                )
+                            })
+                        }
+                        val liquidNow = viewModel.liquidGlass.collectAsState().value
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Mode Liquide", style = MaterialTheme.typography.bodyMedium)
+                                Text("Fond vivant + reflets « goutte » partout",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = liquidNow > 0, onCheckedChange = { on ->
+                                viewModel.setLiquidGlass(if (on) 60 else 0)
+                            })
+                        }
+                        val posterCol = viewModel.usePosterColor.collectAsState().value
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Couleur de l'affiche", style = MaterialTheme.typography.bodyMedium)
+                                Text("La fiche s'illumine de la dominante colorée de l'affiche",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = posterCol,
+                                onCheckedChange = { viewModel.setUsePosterColor(it) })
+                        }
+                        val bloomOn = viewModel.bloom.collectAsState().value
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Bloom", style = MaterialTheme.typography.bodyMedium)
+                                Text("Halos de lumière accentués sur le fond liquide",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = bloomOn,
+                                onCheckedChange = { viewModel.setBloom(it) })
+                        }
+                        val grainOn = viewModel.grain.collectAsState().value
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Texture « grain de film »", style = MaterialTheme.typography.bodyMedium)
+                                Text("Léger bruit discret sur toute l'interface",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = grainOn,
+                                onCheckedChange = { viewModel.setGrain(it) })
+                        }
+                        if (state.bgImageUri != null) {
+                            TextButton(onClick = { viewModel.setBgImage(null) }) {
+                                Text("↩ Affiche par défaut (retirer l'image de fond)")
+                            }
+                        }
+                    }
+                }
+            }
             // ------------------------------------------------------- STOCKAGE
             }
-            item {
-                SettingCategory("📦", "Stockage", expanded = "stockage" in openCategories) { toggleCategory("stockage") }
-            }
-            if ("stockage" in openCategories) {
-            item {
-                SettingRow(
-                    title = "Emplacement des téléchargements",
-                    subtitle = state.storageUri?.let { "Dossier choisi (SAF) : ${it.substringAfterLast("/")}" }
-                        ?: "Automatique : stockage privé de l'app (EndlessSea/)",
-                    onClick = { storagePicker.launch(null) },
-                )
-            }
-
             // --------------------------------------------------- TÉLÉCHARGEMENT
             }
+            if (openCategoryFull == null) {
+                item { GroupTitle("Média & lecture") }
+            }
             item {
-                SettingCategory("📥", "Téléchargement", expanded = "download" in openCategories) { toggleCategory("download") }
+                SettingCategory("📥", "Téléchargement",
+                    "Wi-Fi seul, segments et tâches parallèles", expanded = "download" in openCategories) { toggleCategory("download") }
             }
             if ("download" in openCategories) {
             item {
@@ -511,12 +586,20 @@ fun SettingsScreen(
                     subtitle = "${state.partsPerTask} segments par fichier · ${state.parallelTasks} tâche(s) simultanée(s)",
                     onClick = { showNumbersDialog = true },
                 )
-            }
+                item {
+                    SettingRow(
+                        title = "Emplacement des téléchargements",
+                        subtitle = state.storageUri?.let { "Dossier choisi (SAF) : ${it.substringAfterLast("/")}" }
+                            ?: "Automatique : stockage privé de l'app (EndlessSea/)",
+                        onClick = { storagePicker.launch(null) },
+                    )
+                }
 
             // --------------------------------------------------------- LECTEUR
             }
             item {
-                SettingCategory("⏯", "Lecteur", expanded = "player" in openCategories) { toggleCategory("player") }
+                SettingCategory("⏯", "Lecteur",
+                    "Vitesse, gestes, mégaskip, filtres vidéo, orientation", expanded = "player" in openCategories) { toggleCategory("player") }
             }
             if ("player" in openCategories) {
             item {
@@ -640,7 +723,8 @@ fun SettingsScreen(
             // ---------------------------------------------------------- GENRES
             }
             item {
-                SettingCategory("🏷", "Genres", expanded = "genres" in openCategories) { toggleCategory("genres") }
+                SettingCategory("🏷", "Genres",
+                    "Ajouter, renommer, réordonner, masquer", expanded = "genres" in openCategories) { toggleCategory("genres") }
             }
             if ("genres" in openCategories) {
             item {
@@ -654,7 +738,8 @@ fun SettingsScreen(
             // -------------------------------------- RÉGLAGES PAR EXTENSION
             }
             item {
-                SettingCategory("🧩", "Sources — réglages par extension", expanded = "sources" in openCategories) { toggleCategory("sources") }
+                SettingCategory("🧩", "Sources — réglages par extension",
+                    "Options déclarées par chaque source installée", expanded = "sources" in openCategories) { toggleCategory("sources") }
             }
             if ("sources" in openCategories) {
             item {
@@ -695,8 +780,12 @@ fun SettingsScreen(
 
             // ------------------------------------------------------- SAUVEGARDE
             }
+            if (openCategoryFull == null) {
+                item { GroupTitle("Préférences & système") }
+            }
             item {
-                SettingCategory("🌐", "Réseau & DNS", expanded = "network" in openCategories) { toggleCategory("network") }
+                SettingCategory("🌐", "Réseau & DNS",
+                    "DNS système / Cloudflare / Google — contourne certains blocages", expanded = "network" in openCategories) { toggleCategory("network") }
             }
             if ("network" in openCategories) {
             item {
@@ -728,7 +817,8 @@ fun SettingsScreen(
             }
             }
             item {
-                SettingCategory("💾", "Sauvegarde", expanded = "backup" in openCategories) { toggleCategory("backup") }
+                SettingCategory("💾", "Sauvegarde",
+                    "Export / import JSON + sauvegarde automatique locale", expanded = "backup" in openCategories) { toggleCategory("backup") }
             }
             if ("backup" in openCategories) {
             item {
@@ -761,7 +851,8 @@ fun SettingsScreen(
             // --------------------------------------------------- MISES À JOUR
             }
             item {
-                SettingCategory("🩺", "Diagnostic — erreurs", expanded = "diag" in openCategories) { toggleCategory("diag") }
+                SettingCategory("🩺", "Diagnostic — erreurs",
+                    "Journal des erreurs de la session, copier / exporter", expanded = "diag" in openCategories) { toggleCategory("diag") }
             }
             if ("diag" in openCategories) {
             item {
@@ -827,7 +918,8 @@ fun SettingsScreen(
             }
             }
             item {
-                SettingCategory("🔄", "Mises à jour de l'application", expanded = "updates" in openCategories) { toggleCategory("updates") }
+                SettingCategory("🔄", "Mises à jour de l'application",
+                    "Vérifier la release GitHub, installer depuis l'app", expanded = "updates" in openCategories) { toggleCategory("updates") }
             }
             if ("updates" in openCategories) {
             item {
@@ -849,12 +941,13 @@ fun SettingsScreen(
             // --------------------------------------------------------- À PROPOS
             }
             item {
-                SettingCategory("🍥", "À propos", expanded = "about" in openCategories) { toggleCategory("about") }
+                SettingCategory("🍥", "À propos",
+                    "Version, licence, dépôt GitHub", expanded = "about" in openCategories) { toggleCategory("about") }
             }
             if ("about" in openCategories) {
             item {
                 SettingRow(
-                    title = "Endless Sea 0.8.0",
+                    title = "Endless Sea 0.13.0",
                     subtitle = "GPL-3.0 · aucune source incluse · github.com/j97970293-lang/endlesssea",
                     onClick = { },
                 )
@@ -1111,30 +1204,69 @@ private fun GenreManagerDialog(
 }
 
 
+/** Titre de section de la colonne d'accueil (style AnyMEX — capitales sobres). */
+@Composable
+private fun GroupTitle(title: String) {
+    Text(
+        title.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 6.dp, top = 18.dp, bottom = 8.dp),
+    )
+}
+
+/** §réglages-maison-capture : carte d'entrée pleine largeur — icône en tuile
+ *  arrondie, titre, sous-titre, chevron. Ouvre la page dédiée de la section. */
 @Composable
 private fun SettingCategory(
     icon: String,
     title: String,
+    subtitle: String,
     expanded: Boolean,
     onToggle: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier.fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clickable(onClick = onToggle),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        tonalElevation = if (expanded) 2.dp else 0.dp,
     ) {
-        Text(icon, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.width(10.dp))
-        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f))
-        Icon(
-            if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
-            contentDescription = if (expanded) "Replier" else "Déplier",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(40.dp).height(40.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                        androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(icon, style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
+                contentDescription = if (expanded) "Replier" else "Ouvrir la page",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
-    if (expanded) HorizontalDivider()
 }
 
 @Composable

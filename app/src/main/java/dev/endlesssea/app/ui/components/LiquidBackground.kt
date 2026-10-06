@@ -33,6 +33,7 @@ import kotlin.math.sin
 @Composable
 fun LiquidBackground(modifier: Modifier = Modifier) {
     val liquid by UiTuning.liquid.collectAsState()
+    val bloom by UiTuning.bloom.collectAsState()
     val base = MaterialTheme.colorScheme.background
     val accent = MaterialTheme.colorScheme.primary
     val second = MaterialTheme.colorScheme.secondary
@@ -44,7 +45,8 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
         return
     }
 
-    val strength = liquid / 100f
+    // §anymex-theme : Bloom amplifie les halos (~1.6×) sans changer la durée.
+    val strength = (liquid / 100f) * if (bloom) 1.6f else 1f
     val flow = rememberInfiniteTransition(label = "liquidFlow")
     val p1 by flow.animateFloat(
         0f, 1f, infiniteRepeatable(tween(26_000, easing = LinearEasing)), label = "p1",

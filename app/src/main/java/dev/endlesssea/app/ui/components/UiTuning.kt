@@ -16,6 +16,7 @@ object UiTuning {
     private val _cardStyle = MutableStateFlow("detail")
     private val _glassTint = MutableStateFlow<Long?>(null)
     private val _liquid = MutableStateFlow(40)
+    private val _bloom = MutableStateFlow(false)
 
     /** Opacité de la couche « verre » (%) — 0 (invisible) .. 30 (laiteux). Défaut 12. */
     val glassOverlay: StateFlow<Int> = _glassOverlay
@@ -31,6 +32,11 @@ object UiTuning {
 
     /** §verre-liquide : intensité du reflet « liquide » (0..100, défaut 40). */
     val liquid: StateFlow<Int> = _liquid
+
+    /** §anymex-theme : halos amplifiés du fond liquide (Bloom d'AnyMEX). */
+    val bloom: StateFlow<Boolean> = _bloom
+
+    fun updateBloom(v: Boolean) { _bloom.value = v }
 
     fun update(overlay: Int, scrim: Int, style: String, tintArgb: Long? = null, liquid: Int = 40) {
         _glassOverlay.value = overlay.coerceIn(0, 30)

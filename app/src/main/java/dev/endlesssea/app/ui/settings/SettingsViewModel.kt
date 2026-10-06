@@ -95,6 +95,16 @@ class SettingsViewModel @Inject constructor(
         private const val BACKUP_INTERVAL_MS = 24L * 60 * 60 * 1000
     }
 
+    // ---- §anymex-theme : réglages de la page Thème exposés en direct
+    val usePosterColor = prefs.usePosterColor
+    fun setUsePosterColor(v: Boolean) = prefs.setUsePosterColor(v)
+    val bloom = prefs.bloom
+    fun setBloom(v: Boolean) = prefs.setBloom(v)
+    val grain = prefs.grain
+    fun setGrain(v: Boolean) = prefs.setGrain(v)
+    val navBarStyle = prefs.navBarStyle
+    fun setNavBarStyle(v: String) = prefs.setNavBarStyle(v)
+
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState
 
