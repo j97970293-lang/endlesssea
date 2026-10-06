@@ -540,6 +540,18 @@ fun SettingsScreen(
                             Switch(checked = bloomOn,
                                 onCheckedChange = { viewModel.setBloom(it) })
                         }
+                        val immersion = viewModel.immersiveMode.collectAsState().value
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Mode immersif", style = MaterialTheme.typography.bodyMedium)
+                                Text("Masque les barres système (statut + navigation) dans tout l'app",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = immersion,
+                                onCheckedChange = { viewModel.setImmersiveMode(it) })
+                        }
                         val grainOn = viewModel.grain.collectAsState().value
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically) {

@@ -156,15 +156,6 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val navBarStyle: StateFlow<String> = _navBarStyle
     fun setNavBarStyle(v: String) { _navBarStyle.value = v; p.edit().putString("nav_bar_style", v).apply() }
 
-    /** §anymex-theme : « Bloom » — halos du fond liquide accentués (×1.6). */
-    private val _bloom = MutableStateFlow(p.getBoolean("bloom", false))
-    val bloom: StateFlow<Boolean> = _bloom
-    fun setBloom(v: Boolean) { _bloom.value = v; p.edit().putBoolean("bloom", v).apply() }
-
-    /** §anymex-theme : « Grain » — légère texture de film sur toute l'interface. */
-    private val _grain = MutableStateFlow(p.getBoolean("grain", false))
-    val grain: StateFlow<Boolean> = _grain
-    fun setGrain(v: Boolean) { _grain.value = v; p.edit().putBoolean("grain", v).apply() }
     fun setBarMargin(dp: Int) {
         val c = dp.coerceIn(0, 64); p.edit().putInt("bar_margin", c).apply(); _barMargin.value = c
     }

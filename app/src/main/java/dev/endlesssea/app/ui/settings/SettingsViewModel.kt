@@ -104,6 +104,8 @@ class SettingsViewModel @Inject constructor(
     fun setGrain(v: Boolean) = prefs.setGrain(v)
     val navBarStyle = prefs.navBarStyle
     fun setNavBarStyle(v: String) = prefs.setNavBarStyle(v)
+    val immersiveMode = prefs.immersiveMode
+    fun setImmersiveMode(v: Boolean) = prefs.setImmersiveMode(v)
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState

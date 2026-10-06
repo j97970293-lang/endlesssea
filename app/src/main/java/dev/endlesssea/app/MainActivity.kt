@@ -70,6 +70,17 @@ class MainActivity : ComponentActivity() {
             val liquidGlass by prefs.liquidGlass.collectAsState()
             val bloom by prefs.bloom.collectAsState()
             val grain by prefs.grain.collectAsState()
+            val immersiveMode by prefs.immersiveMode.collectAsState()
+            // §anymex-immersif : barres système (statut + navigation) masquées quand demandé
+            androidx.compose.runtime.DisposableEffect(immersiveMode) {
+                val wc = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                if (immersiveMode) {
+                    wc.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                } else {
+                    wc.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                }
+                onDispose { }
+            }
             val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
             androidx.compose.runtime.LaunchedEffect(
                 glassOverlay, glassScrim, cardStyle, preferredAudioLang,
