@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Tab
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,7 +60,12 @@ fun LibraryScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab) {
+        // §onglets-scrollés : 7 catégories sans cassure verticale (bug « Fa vo ris »)
+        ScrollableTabRow(
+            selectedTabIndex = tab,
+            edgePadding = 8.dp,
+            divider = {},
+        ) {
             LIBRARY_TABS.forEachIndexed { i, (label, key) ->
                 Tab(
                     selected = tab == i,

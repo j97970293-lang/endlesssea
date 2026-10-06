@@ -3,7 +3,13 @@ package dev.endlesssea.app.navigation
 import dev.endlesssea.app.di.AppPrefs
 
 import android.net.Uri
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +25,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -58,6 +65,8 @@ fun EsBottomBar(
     tabs: Set<String>,
     order: List<String> = AppPrefs.ALL_TAB_ROUTES,
     marginDp: Int = 16,
+    /** §barre-dynamique : "dynamic" = pilule (icône+libellé sélectionné) · "classic" = icônes seules. */
+    style: String = "dynamic",
 ) {
     val byRoute = allTabScreens.associateBy { it.route }
     val shown = order.mapNotNull { byRoute[it] }.filter { it.route in tabs }.ifEmpty { listOf(Screen.Home) }
@@ -74,25 +83,63 @@ fun EsBottomBar(
         ) {
             shown.forEach { screen ->
                 val selected = currentRoute == screen.route
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = {
-                        nav.navigate(screen.route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
+                if (style == "dynamic") {
+                    // §barre-dynamique : l'onglet actif s'étire en pilule avec son libellé
+                    Row(
+                        modifier = Modifier
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                else Color.Transparent,
+                            )
+                            .clickable {
+                                nav.navigate(screen.route) {
+                                    popUpTo(Screen.Home.route) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                            .padding(horizontal = 13.dp, vertical = 9.dp)
+                            .animateContentSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            screen.icon,
+                            contentDescription = screen.label,
+                            tint = if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        if (selected) {
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                screen.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                         }
-                    },
-                    // Icônes seules (style Anymex) — le rôle reste accessible via contentDescription
-                    icon = { Icon(screen.icon, contentDescription = screen.label) },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                )
+                    }
+                } else {
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = {
+                            nav.navigate(screen.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        // Icônes seules (style Anymex) — le rôle reste accessible via contentDescription
+                        icon = { Icon(screen.icon, contentDescription = screen.label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                }
             }
         }
     }

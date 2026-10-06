@@ -198,7 +198,10 @@ class MainActivity : ComponentActivity() {
                     else if (amoled) Color.Black else MaterialTheme.colorScheme.background,
                     topBar = {
                         // §réglages-pleine-page : sur Paramètres, AUCUNE barre — page dédiée.
-                        if (route != Screen.Settings.route) {
+                        // §fiche-immersive : la fiche détail gère elle-même son arrière-plan
+                        // et ses boutons — aucune barre de l'app (capture utilisateur : barre barrée).
+                        val immersive = route?.startsWith("details/") == true
+                        if (route != Screen.Settings.route && !immersive) {
                         CenterAlignedTopAppBar(
                             modifier = Modifier.statusBarsPadding(),
                             title = { Text(title) },
@@ -219,9 +222,15 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     bottomBar = {
-                        if (route != Screen.Settings.route) {
+                        val immersive = route?.startsWith("details/") == true
+                        if (route != Screen.Settings.route && !immersive) {
                             Box(Modifier.navigationBarsPadding()) {
-                                EsBottomBar(nav, currentRoute = route, tabs = barTabs, order = tabOrder, marginDp = barMargin)
+                                EsBottomBar(
+                                    nav, currentRoute = route, tabs = barTabs,
+                                    order = tabOrder, marginDp = barMargin,
+                                    // §barre-dynamique : pilule avec libellé par défaut (réf. Anymex)
+                                    style = prefs.navBarStyle.collectAsState().value,
+                                )
                             }
                         }
                     },

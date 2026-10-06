@@ -133,6 +133,11 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     // Marge horizontale de la barre flottante (dp)
     private val _barMargin = MutableStateFlow(p.getInt("bar_margin", 16))
     val barMargin: StateFlow<Int> = _barMargin
+
+    // ---- §barre-dynamique : « pill » = onglet sélectionné avec libellé, autres icônes seules
+    private val _navBarStyle = MutableStateFlow(p.getString("nav_bar_style", "dynamic") ?: "dynamic")
+    val navBarStyle: StateFlow<String> = _navBarStyle
+    fun setNavBarStyle(v: String) { _navBarStyle.value = v; p.edit().putString("nav_bar_style", v).apply() }
     fun setBarMargin(dp: Int) {
         val c = dp.coerceIn(0, 64); p.edit().putInt("bar_margin", c).apply(); _barMargin.value = c
     }
