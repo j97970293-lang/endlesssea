@@ -15,8 +15,8 @@ android {
         applicationId = "dev.endlesssea.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 20
-        versionName = "0.20.0"
+        versionCode = 21
+        versionName = "0.21.0"
         vectorDrawables { useSupportLibrary = true }
     }
 

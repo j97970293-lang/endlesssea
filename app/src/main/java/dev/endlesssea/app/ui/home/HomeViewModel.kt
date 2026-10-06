@@ -56,6 +56,20 @@ class HomeViewModel @Inject constructor(
     private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
 ) : ViewModel() {
 
+    /**
+     * §anti-plantage : une extension tierce qui lève une exception (ou un
+     * AbstractMethodError sur un vieux .esx) remontait jusqu'au scope du
+     * ViewModel et FERMAIT l'application dès l'ouverture de l'accueil.
+     * Tous les lancements passent maintenant par ce garde-fou.
+     */
+    private val safeHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.w("HomeViewModel", "erreur ignorée sur l'accueil", e)
+        _uiState.value = _uiState.value.copy(loading = false)
+    }
+
+    private fun safeLaunch(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
+        viewModelScope.launch(safeHandler) { runCatching { block() } }
+
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
@@ -74,7 +88,7 @@ class HomeViewModel @Inject constructor(
 
     // ---------- Sources locales (fonctionnent hors-ligne dès le premier usage)
     private fun observeLocal() {
-        viewModelScope.launch {
+        safeLaunch {
             mediaDao.recent(20).collect { recent ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
@@ -83,7 +97,7 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
-        viewModelScope.launch {
+        safeLaunch {
             historyDao.observeContinueWatching(12).collect { history ->
                 val items = history.mapNotNull { h ->
                     val pct = if (h.durationMs > 0) (h.positionMs * 100 / h.durationMs).toInt() else 0
@@ -110,7 +124,7 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(continueWatching = items)
             }
         }
-        viewModelScope.launch {
+        safeLaunch {
             libraryDao.observeFavorites().collect { favs ->
                 val items = favs.mapNotNull { f -> mediaDao.byId(f.mediaId)?.toUi() }
                 _uiState.value = _uiState.value.copy(favorites = items)
@@ -129,8 +143,8 @@ class HomeViewModel @Inject constructor(
         dev.endlesssea.app.local.LocalNames.pretty(uri)
 
     // ---------- Contenu réel des extensions (ce qui donne vie à l'accueil)
-    fun loadRemote() = viewModelScope.launch {
-        val extensions = registry.enabledExtensions()
+    fun loadRemote() = safeLaunch {
+        val extensions = runCatching { registry.enabledExtensions() }.getOrDefault(emptyList())
         _uiState.value = _uiState.value.copy(extensionCount = extensions.size)
         if (extensions.isEmpty()) return@launch
 
@@ -138,6 +152,7 @@ class HomeViewModel @Inject constructor(
         coroutineScope {
             extensions.map { (pkg, ext) ->
                 async {
+                  runCatching {
                     // ---- Catalogues par genre : 2 premières rangées déclarées (ou « main »)
                     val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
                         .filter { it.key.isNotBlank() }
@@ -173,8 +188,9 @@ class HomeViewModel @Inject constructor(
                                 }
                             }
                     }
+                  }
                 }
-            }.forEach { it.await() }
+            }.forEach { runCatching { it.await() } }
         }
 
         val remote = rows.sortedBy { it.title }
@@ -192,8 +208,8 @@ class HomeViewModel @Inject constructor(
     )
 
     /** §accueil-multi : publie la liste des sources (après chargement distant). */
-    fun publishSources() = viewModelScope.launch {
-        val exts = registry.enabledExtensions()
+    fun publishSources() = safeLaunch {
+        val exts = runCatching { registry.enabledExtensions() }.getOrDefault(emptyList())
         _uiState.value = _uiState.value.copy(
             // §catalogue-par-source : les rangées sont indexées par ext.info.id —
             // publier le nom de paquet ici rendait le filtre TOUJOURS vide.
@@ -213,7 +229,7 @@ class HomeViewModel @Inject constructor(
      * chercher jusqu'à six de ses catégories (au lieu des deux chargées pour la
      * vue « toutes sources »), sinon l'accueil filtré paraissait vide.
      */
-    fun loadSourceCatalogue(id: String) = viewModelScope.launch {
+    fun loadSourceCatalogue(id: String) = safeLaunch {
         val entry = registry.enabledExtensions().firstOrNull { (_, ext) -> ext.info.id == id }
             ?: return@launch
         val ext = entry.second
@@ -262,7 +278,7 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(loading = false, remoteRows = merged)
     }
 
-    fun onAddToLibrary(mediaId: String) = viewModelScope.launch {
+    fun onAddToLibrary(mediaId: String) = safeLaunch {
         libraryDao.upsert(dev.endlesssea.data.db.LibraryEntity(mediaId = mediaId, category = "ANIME"))
     }
 }

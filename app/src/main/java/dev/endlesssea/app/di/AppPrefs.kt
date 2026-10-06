@@ -268,6 +268,10 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     fun setStorageUri(uri: String?) {
         p.edit().apply { if (uri == null) remove("storage_uri") else putString("storage_uri", uri) }.apply()
         _storageUri.value = uri
+        // §emplacement : on MÉMORISE l'ancien emplacement pour que les
+        // téléchargements déjà présents restent trouvables, lisibles et
+        // supprimables exactement comme les nouveaux.
+        if (uri != null) rememberStorageRoot(uri)
     }
 
     // ---------------------------------------------------------------- téléchargement
@@ -665,6 +669,38 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val next = if (code in _extLanguages.value) _extLanguages.value - code else _extLanguages.value + code
         p.edit().putString("ext_languages", "[\"" + next.joinToString("\",\"") + "\"]").apply()
         _extLanguages.value = next
+    }
+
+    /**
+     * §upscale : facteur d'agrandissement de l'image (1 = natif, 1.5, 2…).
+     * On parle d'ÉCHELLE, pas de « 720p/1080p » : le résultat dépend de la
+     * définition de la source, pas d'une cible fixe.
+     */
+    private val _videoScale = MutableStateFlow(p.getFloat("video_scale", 1f))
+    val videoScale: StateFlow<Float> = _videoScale
+    fun setVideoScale(v: Float) {
+        val safe = v.coerceIn(1f, 2f)
+        p.edit().putFloat("video_scale", safe).apply(); _videoScale.value = safe
+    }
+
+    /** §upscale : intensité du renforcement de contours (0..2). */
+    private val _videoSharpen = MutableStateFlow(p.getFloat("video_sharpen", 0.6f))
+    val videoSharpen: StateFlow<Float> = _videoSharpen
+    fun setVideoSharpen(v: Float) {
+        val safe = v.coerceIn(0f, 2f)
+        p.edit().putFloat("video_sharpen", safe).apply(); _videoSharpen.value = safe
+    }
+
+    /** §telechargements : tous les emplacements de stockage déjà utilisés. */
+    private val _storageHistory = MutableStateFlow(
+        (p.getString("storage_history", "") ?: "").split("|").filter { it.isNotBlank() },
+    )
+    val storageHistory: StateFlow<List<String>> = _storageHistory
+    fun rememberStorageRoot(uri: String) {
+        if (uri.isBlank()) return
+        val next = (_storageHistory.value + uri).distinct().takeLast(8)
+        p.edit().putString("storage_history", next.joinToString("|")).apply()
+        _storageHistory.value = next
     }
 
     /** §lisibilite : ombre portée sur les textes (meilleure lecture). */

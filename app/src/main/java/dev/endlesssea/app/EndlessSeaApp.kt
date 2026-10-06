@@ -20,6 +20,8 @@ class EndlessSeaApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // §diagnostic : journaliser les plantages AVANT tout le reste
+        dev.endlesssea.app.util.CrashReporter.install(this)
         // §4 — Images des extensions : Coil partagé avec cache disque, UA honnête
         // et DNS DoH. Doit être initialisé AVANT la première AsyncImage.
         EsImages.imageLoader(this)

@@ -56,6 +56,8 @@ val LIBRARY_TABS = listOf(
 @Composable
 fun LibraryScreen(
     onMediaClick: (String) -> Unit,
+    /** §fiche-locale : ouverture de la fiche d'un dossier de vidéos locales. */
+    onLocalFolderClick: (String) -> Unit = {},
     viewModel: LibraryViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -465,7 +467,7 @@ private fun LocalFilesPanel(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                         ) {
                             Row(
-                                Modifier.fillMaxWidth().clickable { openFolder = parent },
+                                Modifier.fillMaxWidth().clickable { onLocalFolderClick(parent) },
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             ) {
                                 if (meta?.coverUri != null) {

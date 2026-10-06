@@ -919,10 +919,8 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         listOf(
-                            "none" to "Aucune", "720p" to "Upscale 720p",
-                            "1080p" to "Upscale 1080p",
-                            "anime" to "Anime HD (720p + netteté)",
-                            "anime_fort" to "Anime HD+ (1080p)", "net" to "Netteté douce",
+                            "none" to "Aucun", "anime" to "Anime",
+                            "anime_fort" to "Anime fort", "net" to "Netteté douce",
                             "eclat" to "Éclat", "doux" to "Anti-grain",
                             "cinema" to "Cinéma", "nuit" to "Nuit",
                         ).forEach { (key, label) ->
@@ -969,6 +967,39 @@ fun SettingsScreen(
             // réglages du lecteur (plus de page séparée).
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §upscale : échelle + contours, appliqués en direct au lecteur
+                    val scale = viewModel.videoScale.collectAsState().value
+                    Text(
+                        "Agrandissement de l'image : x%.2f".format(scale),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        "L'image est réellement agrandie puis ses contours sont renforcés " +
+                            "(utile sur une source 480p). Appliqué immédiatement, même en pleine lecture.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1f to "Natif", 1.25f to "x1.25", 1.5f to "x1.5", 2f to "x2")
+                            .forEach { (value, label) ->
+                                FilterChip(
+                                    selected = kotlin.math.abs(scale - value) < 0.01f,
+                                    onClick = { viewModel.setVideoScale(value) },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
+                                )
+                            }
+                    }
+                    val sharpen = viewModel.videoSharpen.collectAsState().value
+                    Text(
+                        "Renforcement des contours : %d %%".format((sharpen * 100).toInt()),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Slider(
+                        value = sharpen,
+                        onValueChange = { viewModel.setVideoSharpen(it) },
+                        valueRange = 0f..2f,
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text("Filtres vidéo", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Appliqués à toutes les lectures (ajustables aussi en cours de vidéo).",

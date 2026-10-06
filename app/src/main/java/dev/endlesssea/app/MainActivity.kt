@@ -264,7 +264,8 @@ class MainActivity : ComponentActivity() {
                         // sans conteneur ni voile translucide.
                     },
                     bottomBar = {
-                        val immersive = route?.startsWith("details/") == true
+                        val immersive = route?.startsWith("details/") == true ||
+                            route?.startsWith("localDetails/") == true
                         if (route != Screen.Settings.route && !immersive) {
                             Box(Modifier.navigationBarsPadding()) {
                                 EsBottomBar(
@@ -281,7 +282,8 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 ) { padding ->
-                    val immersive = route?.startsWith("details/") == true
+                    val immersive = route?.startsWith("details/") == true ||
+                            route?.startsWith("localDetails/") == true
                     val showFloating = route != Screen.Settings.route && !immersive
 
                     Box(Modifier.fillMaxSize()) {

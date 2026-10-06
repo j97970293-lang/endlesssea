@@ -47,6 +47,7 @@ class DownloadsViewModel @Inject constructor(
     private val dao: DownloadsDao,
     private val engine: DownloadEngine,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
 ) : ViewModel() {
 
     /** Dernier instantané brut (avant filtre/tri) pour re-appliquer la vue sans perdre de lignes. */
@@ -146,7 +147,12 @@ class DownloadsViewModel @Inject constructor(
             mediaId = task.mediaId, episodeId = task.episodeId ?: id,
             links = listOf(
                 dev.endlesssea.extensions.api.model.VideoLink(
-                    url = task.targetUri,
+                    // §emplacement : fichier retrouvé même si le dossier de
+                    // téléchargement a changé entre-temps.
+                    url = dev.endlesssea.app.local.DownloadLocator.resolve(
+                        context, task.targetUri, task.fileName,
+                        listOfNotNull(prefs.storageRoot.value) + prefs.storageHistory.value,
+                    ) ?: task.targetUri,
                     streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
                     quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
                     server = "Téléchargé",

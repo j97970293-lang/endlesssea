@@ -216,6 +216,10 @@ class SettingsViewModel @Inject constructor(
     val progressRounded: StateFlow<Boolean> = prefs.progressRounded
     val playerTheme: StateFlow<String> = prefs.playerTheme
     val videoEnhance: StateFlow<String> = prefs.videoEnhance
+    val videoScale: StateFlow<Float> = prefs.videoScale
+    val videoSharpen: StateFlow<Float> = prefs.videoSharpen
+    fun setVideoScale(v: Float) = prefs.setVideoScale(v)
+    fun setVideoSharpen(v: Float) = prefs.setVideoSharpen(v)
     // §fusion-filtres : les filtres vidéo vivent avec les autres réglages du lecteur
     val videoContrast: StateFlow<Float> = prefs.videoContrast
     val videoGamma: StateFlow<Float> = prefs.videoGamma

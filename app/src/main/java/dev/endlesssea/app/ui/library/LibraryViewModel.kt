@@ -171,7 +171,14 @@ class LibraryViewModel @Inject constructor(
     fun scanLocal() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
         // §stockage-public : le dossier de stockage (téléchargements + localanime,
         // arborescence Aniyomi) est TOUJOURS scanné, en plus des dossiers ajoutés.
-        val dirs = (prefs.localVideoDirs.value + listOfNotNull(prefs.storageRoot.value)).distinct()
+        val dirs = (
+            prefs.localVideoDirs.value +
+                listOfNotNull(prefs.storageRoot.value) +
+                // §emplacement : les dossiers de téléchargement PRÉCÉDENTS restent
+                // scannés, sinon changer d'emplacement faisait « disparaître »
+                // tout ce qui avait déjà été téléchargé.
+                prefs.storageHistory.value
+            ).distinct()
         _uiState.value = _uiState.value.copy(
             localScanning = true, localScanLabel = "Analyse en cours…",
         )
@@ -205,6 +212,8 @@ class LibraryViewModel @Inject constructor(
                 )
             }
         _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false, localScanLabel = "")
+        // §fiche-locale : partagé avec l'écran de fiche d'un dossier
+        dev.endlesssea.app.local.LocalLibraryCache.publish(files)
 
         durationJob?.cancel()
         durationJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -270,9 +279,23 @@ class LibraryViewModel @Inject constructor(
         parentUri: String, coverUri: String?,
         introStartSec: Int? = null, introEndSec: Int? = null, outroStartSec: Int? = null,
     ) {
-        _uiState.value.localFiles.filter { it.parentUri == parentUri }.forEach { f ->
+        // §fiche-locale : la fiche d'un dossier possède son propre ViewModel, dont
+        // la liste n'est pas encore scannée — on retombe alors sur le cache partagé.
+        val target = _uiState.value.localFiles.filter { it.parentUri == parentUri }
+            .ifEmpty { dev.endlesssea.app.local.LocalLibraryCache.folder(parentUri) }
+        target.forEach { f ->
             saveLocalMeta(f.uri, f.customTitle, coverUri, introStartSec, introEndSec, outroStartSec)
         }
+        // le cache reflète immédiatement les nouveaux repères
+        dev.endlesssea.app.local.LocalLibraryCache.publish(
+            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { f ->
+                if (f.parentUri != parentUri) f else f.copy(
+                    customCoverUri = coverUri ?: f.customCoverUri,
+                    introStartSec = introStartSec, introEndSec = introEndSec,
+                    outroStartSec = outroStartSec,
+                )
+            },
+        )
     }
 
     /** §catégories-perso : catégories créées par l'utilisateur. */

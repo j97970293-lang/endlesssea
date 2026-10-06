@@ -249,7 +249,19 @@ fun EsNavGraph(nav: NavHostController) {
             )
         }
         composable(Screen.Library.route) {
-            LibraryScreen(onMediaClick = { openDetails(nav, it) })
+            LibraryScreen(
+                onMediaClick = { openDetails(nav, it) },
+                // §fiche-locale : un dossier local s'ouvre comme une fiche de source
+                onLocalFolderClick = { folderUri ->
+                    nav.navigate("localDetails/" + Uri.encode(folderUri))
+                },
+            )
+        }
+        composable("localDetails/{folder}") { entry ->
+            dev.endlesssea.app.ui.local.LocalDetailsScreen(
+                folderUri = Uri.decode(entry.arguments?.getString("folder").orEmpty()),
+                onBack = { nav.popBackStack() },
+            )
         }
         composable(Screen.Downloads.route) { DownloadsScreen() }
         composable(Screen.Extensions.route) {

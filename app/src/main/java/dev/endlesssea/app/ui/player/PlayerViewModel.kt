@@ -62,6 +62,10 @@ data class PlayerUiState(
     val filterTemp: Float = 0f,
     /** §amelioration-video : "none" | "net" | "eclat" | "doux" | "cinema" | "nuit". */
     val enhance: String = "none",
+    /** §upscale : facteur d'agrandissement (1 = natif, 1.5, 2). */
+    val videoScale: Float = 1f,
+    /** §upscale : intensité du renforcement de contours (0..2). */
+    val videoSharpen: Float = 0.6f,
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -112,12 +116,43 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.videoPresetsJson.collect { _uiState.value = _uiState.value.copy(savedPresets = parsePresets(it)) }
         }
+        // §application-immediate : TOUT réglage d'image (y compris changé depuis
+        // la page Réglages pendant la lecture) reconstruit la chaîne d'effets
+        // sur-le-champ — plus besoin de quitter puis rouvrir la vidéo.
+        viewModelScope.launch {
+            prefs.videoScale.collect { v ->
+                _uiState.value = _uiState.value.copy(videoScale = v); rebuildEffects()
+            }
+        }
+        viewModelScope.launch {
+            prefs.videoSharpen.collect { v ->
+                _uiState.value = _uiState.value.copy(videoSharpen = v); rebuildEffects()
+            }
+        }
+        viewModelScope.launch {
+            prefs.videoEnhance.collect { v ->
+                _uiState.value = _uiState.value.copy(enhance = v); rebuildEffects()
+            }
+        }
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                prefs.videoContrast, prefs.videoGamma, prefs.videoSharp, prefs.videoTemp,
+            ) { c, g, sh, t -> listOf(c, g, sh, t) }.collect { v ->
+                _uiState.value = _uiState.value.copy(
+                    filterContrast = v[0], filterGamma = v[1],
+                    filterSharp = v[2], filterTemp = v[3],
+                )
+                rebuildEffects()
+            }
+        }
         _uiState.value = _uiState.value.copy(
             filterContrast = prefs.videoContrast.value,
             filterGamma = prefs.videoGamma.value,
             filterSharp = prefs.videoSharp.value,
             filterTemp = prefs.videoTemp.value,
             enhance = prefs.videoEnhance.value,
+            videoScale = prefs.videoScale.value,
+            videoSharpen = prefs.videoSharpen.value,
         )
         applyFilter(
             prefs.videoBrightness.value, prefs.videoSaturation.value, prefs.videoHue.value,
@@ -165,6 +200,20 @@ class PlayerViewModel @Inject constructor(
     }
 
     /** §amelioration-video : profils d'amélioration d'image légers (sans surcoût GPU notable). */
+    /** §upscale : facteur d'agrandissement choisi par l'utilisateur. */
+    fun setVideoScale(v: Float) {
+        _uiState.value = _uiState.value.copy(videoScale = v)
+        prefs.setVideoScale(v)
+        rebuildEffects()
+    }
+
+    /** §upscale : intensité du renforcement de contours. */
+    fun setVideoSharpen(v: Float) {
+        _uiState.value = _uiState.value.copy(videoSharpen = v)
+        prefs.setVideoSharpen(v)
+        rebuildEffects()
+    }
+
     fun setEnhance(mode: String) {
         _uiState.value = _uiState.value.copy(enhance = mode)
         prefs.setVideoEnhance(mode)
@@ -179,49 +228,46 @@ class PlayerViewModel @Inject constructor(
     private fun rebuildEffects() {
         val st = _uiState.value
         val effects = mutableListOf<androidx.media3.common.Effect>()
-        // 1) profil d'amélioration
+
+        // 0) §upscale : AGRANDISSEMENT réel de l'image avant tout le reste.
+        //    On raisonne en ÉCHELLE (x1.5, x2) et pas en « 720p/1080p » :
+        //    le gain dépend de la définition de la source, pas d'une cible fixe.
+        //    L'agrandissement seul ne se voit pas (l'écran redescend l'image) :
+        //    c'est le passage de netteté APRÈS l'agrandissement qui produit le
+        //    rendu « HD », exactement comme un upscaler anime.
+        val scale = st.videoScale.coerceIn(1f, 2f)
+        if (scale > 1.01f) {
+            runCatching {
+                effects += androidx.media3.effect.ScaleAndRotateTransformation.Builder()
+                    .setScale(scale, scale)
+                    .build()
+            }
+        }
+        // Netteté utilisateur : appliquée dès qu'elle est > 0, quel que soit le profil.
+        val sharpen = when {
+            st.videoSharpen > 0.01f -> st.videoSharpen
+            scale > 1.01f -> 0.6f
+            else -> 0f
+        }
+        if (sharpen > 0.01f) {
+            runCatching { effects += dev.endlesssea.player.SharpenEffect(sharpen) }
+        }
+
+        // 1) profil d'amélioration (style d'image, sans notion de définition)
         when (st.enhance) {
-            // §anime-4k : netteté GPU (unsharp mask 5 échantillons) — l'esprit
-            // d'Anime4K sans ses multiples passes qui font ramer un téléphone.
-            // §upscale : on AGRANDIT vraiment l'image (480p → 720p/1080p) avant
-            // d'appliquer la netteté — c'est l'ordre qui compte : agrandir puis
-            // renforcer les contours donne le rendu « anime HD », l'inverse
-            // ne fait que grossir les pixels.
-            "720p" -> {
-                runCatching {
-                    effects += androidx.media3.effect.Presentation.createForHeight(720)
-                }
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.35f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(6f).build()
-            }
-            "1080p" -> {
-                runCatching {
-                    effects += androidx.media3.effect.Presentation.createForHeight(1080)
-                }
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.45f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(8f).build()
-            }
             "anime" -> {
-                runCatching {
-                    effects += androidx.media3.effect.Presentation.createForHeight(720)
-                }
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.30f) }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.55f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(8f).build()
             }
             "anime_fort" -> {
-                runCatching {
-                    effects += androidx.media3.effect.Presentation.createForHeight(1080)
-                }
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.45f) }
-                runCatching { effects += androidx.media3.effect.Contrast(0.06f) }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.95f) }
+                runCatching { effects += androidx.media3.effect.Contrast(0.08f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(10f).build()
+                    .adjustSaturation(12f).build()
             }
             "net" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.18f) }
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.35f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(4f).build()
             }
@@ -231,8 +277,6 @@ class PlayerViewModel @Inject constructor(
                     .adjustSaturation(18f).build()
             }
             "doux" -> {
-                // « anti-grain » : on baisse légèrement le contraste et la saturation,
-                // ce qui noie le bruit de compression sans flouter l'image.
                 runCatching { effects += androidx.media3.effect.Contrast(-0.08f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
                     .adjustSaturation(-6f).adjustLightness(2f).build()
@@ -250,6 +294,15 @@ class PlayerViewModel @Inject constructor(
                 runCatching { effects += androidx.media3.effect.Contrast(-0.05f) }
             }
         }
+        // §rendu : les effets GPU n'existent QUE sur une TextureView. En mode
+        // « Surface », l'utilisateur ne voyait aucune différence quoi qu'il règle.
+        if (effects.isNotEmpty() && prefs.videoRender.value != "texture") {
+            prefs.setVideoRender("texture")
+            _uiState.value = _uiState.value.copy(
+                toast = "Rendu passé en « Texture » pour appliquer l'amélioration",
+            )
+        }
+
         // 2) réglages fins de l'utilisateur
         if (st.filterContrast != 1f) {
             runCatching {

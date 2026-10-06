@@ -120,11 +120,15 @@ fun EndlessSeaTheme(
     else androidx.compose.material3.Typography().withFamily(family)
     // §lisibilite : fine ombre portée sur tous les textes — indispensable
     // au-dessus des affiches et des fonds clairs (« des choses qu'on ne voit pas »).
+    // §lisibilite : le halo prend la couleur OPPOSÉE au texte — noir derrière un
+    // texte clair, blanc derrière un texte sombre — pour que chaque mot ressorte,
+    // y compris sur une affiche ou dans la barre de navigation.
+    val haloDark = tinted.onSurface.luminance() > 0.5f
     val typography = if (!textOutline) base else base.withShadow(
         androidx.compose.ui.graphics.Shadow(
-            color = Color.Black.copy(alpha = 0.55f),
+            color = (if (haloDark) Color.Black else Color.White).copy(alpha = 0.85f),
             offset = androidx.compose.ui.geometry.Offset(0f, 1f),
-            blurRadius = 3f,
+            blurRadius = 5f,
         ),
     )
     MaterialTheme(colorScheme = tinted, typography = typography, content = content)

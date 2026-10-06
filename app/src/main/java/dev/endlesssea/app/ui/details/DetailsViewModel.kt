@@ -201,12 +201,18 @@ class DetailsViewModel @Inject constructor(
 
     /** §deplacer-téléchargement : lecture d'un fichier local (SAF supporté). */
     fun playDeviceFile(f: DeviceFileUi, onReady: () -> Unit) {
+        // §emplacement : si le dossier de téléchargement a changé, on retrouve
+        // le fichier par son nom dans les emplacements connus.
+        val roots = listOfNotNull(prefs.storageRoot.value) + prefs.storageHistory.value
+        val playable = dev.endlesssea.app.local.DownloadLocator.resolve(
+            context, f.targetUri, f.label.substringBefore(" · "), roots,
+        ) ?: f.targetUri
         dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
             title = f.label.substringBefore(" · "),
             mediaId = mediaId, episodeId = f.id,
             links = listOf(
                 dev.endlesssea.extensions.api.model.VideoLink(
-                    url = f.targetUri,
+                    url = playable,
                     streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
                     quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
                     server = "Sur l'appareil",
@@ -215,7 +221,7 @@ class DetailsViewModel @Inject constructor(
             startIndex = 0,
             // §auto-intro-telechargements : si des marqueurs ont été réglés pour
             // ce fichier, le saut automatique fonctionne aussi hors ligne.
-            markers = prefs.localFileMeta(f.targetUri).let { m ->
+            markers = prefs.localFileMeta(playable).let { m ->
                 dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
                     introStartSec = m.introStartSec,
                     introEndSec = m.introEndSec,

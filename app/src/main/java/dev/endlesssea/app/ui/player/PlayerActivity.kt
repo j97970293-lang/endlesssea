@@ -955,14 +955,40 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         )
                     }
                 }
-                Text("Amélioration de l'image", style = MaterialTheme.typography.labelMedium)
+                // §upscale : on parle d'ÉCHELLE (x1.5, x2), jamais de « 720p/1080p »
+                Text(
+                    "Agrandissement de l'image : x%.2f".format(state.videoScale),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(1f to "Natif", 1.25f to "x1.25", 1.5f to "x1.5", 2f to "x2")
+                        .forEach { (value, label) ->
+                            FilterChip(
+                                selected = kotlin.math.abs(state.videoScale - value) < 0.01f,
+                                onClick = { viewModel.setVideoScale(value) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
+                            )
+                        }
+                }
+                Text(
+                    "Renforcement des contours : %d %%".format((state.videoSharpen * 100).toInt()),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Slider(
+                    value = state.videoSharpen,
+                    onValueChange = { viewModel.setVideoSharpen(it) },
+                    valueRange = 0f..2f,
+                )
+                Text("Style d'image", style = MaterialTheme.typography.labelMedium)
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     listOf(
-                        "none" to "Aucune", "720p" to "720p", "1080p" to "1080p",
-                        "anime" to "Anime HD", "anime_fort" to "Anime HD+",
+                        "none" to "Aucun", "anime" to "Anime", "anime_fort" to "Anime fort",
                         "net" to "Netteté", "eclat" to "Éclat", "doux" to "Anti-grain",
                         "cinema" to "Cinéma", "nuit" to "Nuit",
                     ).forEach { (key, label) ->
@@ -1310,10 +1336,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         listOf(
-                            "none" to "Aucune", "720p" to "Upscale 720p",
-                            "1080p" to "Upscale 1080p",
-                            "anime" to "Anime HD (720p + netteté)",
-                            "anime_fort" to "Anime HD+ (1080p)", "net" to "Netteté douce",
+                            "none" to "Aucun", "anime" to "Anime",
+                            "anime_fort" to "Anime fort", "net" to "Netteté douce",
                             "eclat" to "Éclat", "doux" to "Anti-grain",
                             "cinema" to "Cinéma", "nuit" to "Nuit",
                         ).forEach { (key, label) ->

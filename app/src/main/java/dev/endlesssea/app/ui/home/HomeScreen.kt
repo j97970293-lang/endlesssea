@@ -390,27 +390,13 @@ fun MediaRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(items, key = { it.id }) { item ->
-                Card(
-                    modifier = Modifier.width(120.dp).clickable { onMediaClick(item.id) },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
-                    Column {
-                        AsyncImage(
-                            model = item.posterUrl,
-                            contentDescription = item.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(160.dp)
-                                .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
-                        )
-                        Text(
-                            item.title,
-                            modifier = Modifier.padding(8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                // §styles-interface : l'accueil utilise la MÊME carte que le reste
+                // de l'application — le style choisi dans Réglages s'y applique
+                // donc aussi (c'était la seule liste à dessiner sa propre carte).
+                dev.endlesssea.app.ui.components.MediaCard(
+                    item = item,
+                    onClick = { onMediaClick(item.id) },
+                )
             }
         }
     }
