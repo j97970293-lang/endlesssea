@@ -89,6 +89,13 @@ class DetailsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DetailsUiState())
 
     /** §glisser-serveurs : ordre de priorité persistant des serveurs. */
+    /** §progression-immersive : épisodes terminés / total (carte « Watching progress »). */
+    val watchedCount = MutableStateFlow(0)
+    val resumeEpisodeId = MutableStateFlow<String?>(null)
+
+    /** §use-poster-color : teinte émotionnelle extraite de l'affiche (Réglages → Thème). */
+    val usePosterColor = prefs.usePosterColor
+
     val serverOrder = prefs.serverOrder
     fun saveServerOrder(order: List<String>) = prefs.setServerOrder(order)
     val uiState: StateFlow<DetailsUiState> = _uiState
@@ -119,6 +126,11 @@ class DetailsViewModel @Inject constructor(
             }
         }
         refreshDeviceFiles()
+        // §progression-immersive : compteur d'épisodes terminés (carte « Watching progress »)
+        viewModelScope.launch {
+            watchedCount.value = runCatching { historyDao.watchedCount(mediaId) }.getOrDefault(0)
+            resumeEpisodeId.value = runCatching { historyDao.resumeForMedia(mediaId)?.episodeId }.getOrNull()
+        }
         val remote = runCatching {
             val ext = registry.instance(extensionId)
             ext.load(mediaKey)

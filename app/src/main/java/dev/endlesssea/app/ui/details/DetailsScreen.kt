@@ -2,6 +2,11 @@ package dev.endlesssea.app.ui.details
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.horizontalScroll
@@ -129,60 +134,142 @@ fun DetailsScreen(
             .ifEmpty { state.episodes }
     }
 
+    // ---- §use-poster-color : halo émotionnel teinté par l'affiche (Réglages → Thème)
+    val usePosterColor by viewModel.usePosterColor.collectAsState()
+    var posterGlowExtract by remember { mutableStateOf<Color?>(null) }
+    LaunchedEffect(state.details?.posterUrl, usePosterColor) {
+        posterGlowExtract = if (usePosterColor) extractPosterColor(context, state.details?.posterUrl) else null
+    }
+    val posterGlow = posterGlowExtract ?: MaterialTheme.colorScheme.primary
+
     Box(Modifier.fillMaxSize()) {
+        // ---- §fiche-immersive : toile de fond émotionnelle dédiée à la fiche —
+        // affiche floutée + halos d'accent + fondu vers le fond. L'app n'affiche ici
+        // AUCUNE barre : l'écran détail est un environnement indépendant plein écran.
+        run {
+            val bg = MaterialTheme.colorScheme.background
+            val blurOk = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(410.dp),
+            ) {
+                (state.details?.bannerUrl ?: state.details?.posterUrl)?.let { img ->
+                    AsyncImage(
+                        model = img,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(340.dp)
+                            .then(if (blurOk) Modifier.blur(30.dp) else Modifier)
+                            .graphicsLayer(alpha = 0.88f),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+                // halos accent (« bloom »)
+                androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(340.dp)) {
+                    drawCircle(
+                        posterGlow.copy(alpha = 0.30f),
+                        radius = size.width * 0.34f,
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.80f, size.height * 0.30f),
+                    )
+                    drawCircle(
+                        posterGlow.copy(alpha = 0.16f),
+                        radius = size.width * 0.30f,
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.12f, size.height * 0.72f),
+                    )
+                }
+                // fondu vers le fond d'écran
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(410.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    bg.copy(alpha = 0.18f),
+                                    bg.copy(alpha = 0.70f),
+                                    bg.copy(alpha = 0.97f),
+                                    bg,
+                                ),
+                            ),
+                        ),
+                )
+            }
+        }
         LazyColumn(
             contentPadding = PaddingValues(bottom = 110.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // ---- Bandeau + affiche + méta
+            // ---- §fiche-immersive : rangée flottante (retour + actions affiche) —
+            // l'app n'affiche AUCUNE barre sur la fiche ; elle gère ses propres boutons.
             item {
-                Box(Modifier.fillMaxWidth().height(240.dp)) {
-                    AsyncImage(
-                        model = state.details?.bannerUrl ?: state.details?.posterUrl,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color.Black.copy(alpha = 0.25f),
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                                    MaterialTheme.colorScheme.background,
-                                ),
-                            ),
-                        ),
-                    )
-                    IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ImmersiveCircleButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, "Retour", tint = Color.White)
                     }
+                    Spacer(Modifier.weight(1f))
+                    (state.details?.posterUrl ?: state.details?.bannerUrl)?.let { img ->
+                        val title = state.details?.title ?: "EndlessSea"
+                        ImmersiveCircleButton(onClick = { sharePoster(context, title, img) }) {
+                            Icon(Icons.Filled.Share, "Partager l'affiche", tint = Color.White)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    state.details?.url?.takeIf { it.startsWith("http") }?.let { url ->
+                        ImmersiveCircleButton(onClick = { openExternal(context, url) }) {
+                            Icon(Icons.Filled.Public, "Ouvrir dans le navigateur", tint = Color.White)
+                        }
+                    }
                 }
-                // Affiche + titre + méta (chevauche le bas du bandeau, haut d'écran plus haut)
+            }
+
+            // ---- Affiche + métadonnées (façon capture : titre à droite de l'affiche,
+            // pilules de type/année/épisodes, pas de vide noir)
+            item {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .offset(y = (-68).dp),
+                        .padding(top = 6.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
-                        AsyncImage(
-                            model = state.details?.posterUrl,
-                            contentDescription = state.details?.title,
-                            modifier = Modifier.size(width = 112.dp, height = 168.dp),
-                            contentScale = ContentScale.Crop,
-                        )
+                    Box {
+                        // halo de couleur derrière l'affiche (« bloom »)
+                        androidx.compose.foundation.Canvas(
+                            Modifier
+                                .size(width = 138.dp, height = 198.dp),
+                        ) {
+                            drawCircle(
+                                color = posterGlow.copy(alpha = 0.34f),
+                                radius = size.minDimension * 0.52f,
+                                center = center,
+                            )
+                        }
+                        GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
+                            AsyncImage(
+                                model = state.details?.posterUrl,
+                                contentDescription = state.details?.title,
+                                modifier = Modifier.size(width = 118.dp, height = 176.dp),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
                     }
                     Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f).padding(top = 8.dp)) {
-                        Text(
-                            state.details?.title ?: "Chargement de la fiche…",
+                    Column(Modifier.weight(1f).padding(top = 2.dp)) {
+                        dev.endlesssea.app.ui.components.ExpandableText(
+                            text = state.details?.title ?: "Chargement de la fiche…",
                             style = MaterialTheme.typography.titleLarge,
-                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                            maxLines = 3,
+                            dialogTitle = "Titre complet",
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOfNotNull(
                                 state.details?.rating?.let { "⭐ %.1f".format(it) },
@@ -191,6 +278,48 @@ fun DetailsScreen(
                                 state.details?.episodeCount?.let { "$it ép." }
                                     ?: if (state.episodes.isNotEmpty()) "${state.episodes.size} ép." else null,
                             ).forEach { MetaPill(it) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        // Statut de suivi rapide (lecture bibliothèque)
+                        if (state.inLibrary) {
+                            MetaPill("📚 ${dev.endlesssea.app.ui.details.watchStatusLabel(state.libraryStatus)}")
+                        }
+                    }
+                }
+            }
+
+            // ---- §progression-immersive : « Watching progress » à ligne ondulée
+            run {
+                val totalEp = state.details?.episodeCount ?: state.episodes.size
+                if (totalEp > 0) {
+                    item {
+                        GlassCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            cornerRadius = 20.dp,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        ) {
+                            val watched by viewModel.watchedCount.collectAsState()
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Progression de visionnage",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    "$watched / $totalEp",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            WavyProgress(
+                                progress = (watched.toFloat() / totalEp.coerceAtLeast(1)).coerceIn(0f, 1f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(22.dp)
+                                    .padding(top = 8.dp),
+                            )
                         }
                     }
                 }
@@ -784,6 +913,87 @@ fun DetailsScreen(
         LaunchedEffect(episode.id) {
             if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
         }
+    }
+}
+
+/** Bouton rond semi-transparent façon « vitrail » (rangée flottante de la fiche). */
+@Composable
+private fun ImmersiveCircleButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(Color.Black.copy(alpha = 0.34f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** §progression-immersive : barre de progression ondulée (réf. Anymex). */
+@Composable
+private fun WavyProgress(progress: Float, modifier: Modifier = Modifier) {
+    val primary = MaterialTheme.colorScheme.primary
+    androidx.compose.foundation.Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f) return@Canvas
+        val mid = h / 2f
+        val amp = h * 0.24f
+        val cycles = 6f
+        fun wave(upto: Float): androidx.compose.ui.graphics.Path {
+            val p = androidx.compose.ui.graphics.Path()
+            p.moveTo(0f, mid)
+            var x = 0f
+            val limit = (w * upto.coerceIn(0f, 1f))
+            while (x <= limit) {
+                val y = mid + amp * kotlin.math.sin((x / w) * cycles * 2f * Math.PI.toFloat())
+                p.lineTo(x, y)
+                x += 6f
+            }
+            return p
+        }
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = 6f,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+        drawPath(wave(1f), color = primary.copy(alpha = 0.22f), style = stroke)
+        if (progress > 0f) drawPath(wave(progress), color = primary, style = stroke)
+    }
+}
+
+/** §use-poster-color : couleur moyenne d'une affiche (échantillonnage 48 px, disque réseau Coil). */
+private suspend fun extractPosterColor(
+    context: android.content.Context,
+    url: String?,
+): Color? {
+    if (url.isNullOrBlank()) return null
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val req = coil.request.ImageRequest.Builder(context)
+                .data(url)
+                .size(48)
+                .allowHardware(false)
+                .build()
+            val drawable = coil.ImageLoader(context).execute(req).drawable
+            val bmp = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return@runCatching null
+            var r = 0L; var g = 0L; var b = 0L; var n = 0
+            val step = (bmp.width / 16).coerceAtLeast(1)
+            val stepY = (bmp.height / 16).coerceAtLeast(1)
+            var x = 0
+            while (x < bmp.width) {
+                var y = 0
+                while (y < bmp.height) {
+                    val c = bmp.getPixel(x, y)
+                    r += android.graphics.Color.red(c)
+                    g += android.graphics.Color.green(c)
+                    b += android.graphics.Color.blue(c)
+                    n += 1
+                    y += stepY
+                }
+                x += step
+            }
+            if (n == 0) null else Color(Math.min(255, (r / n).toInt()), Math.min(255, (g / n).toInt()), Math.min(255, (b / n).toInt()))
+        }.getOrNull()
     }
 }
 

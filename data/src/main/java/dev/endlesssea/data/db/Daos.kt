@@ -52,6 +52,10 @@ interface WatchHistoryDao {
     /** "Continue watching": started, not finished (spec §10). */
     @Query("SELECT * FROM watch_history WHERE watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT :limit")
     fun observeContinueWatching(limit: Int = 12): Flow<List<WatchHistoryEntity>>
+    /** Progression de fiche : épisodes terminés d'un média (§fiche-immersive). */
+    @Query("SELECT COUNT(*) FROM watch_history WHERE mediaId = :mediaId AND watched = 1")
+    suspend fun watchedCount(mediaId: String): Int
+
     /** Reprendre sur une fiche : dernier épisode commencé non terminé de ce média. */
     @Query("SELECT * FROM watch_history WHERE mediaId = :mediaId AND watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT 1")
     suspend fun resumeForMedia(mediaId: String): WatchHistoryEntity?

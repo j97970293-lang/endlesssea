@@ -134,6 +134,23 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     private val _barMargin = MutableStateFlow(p.getInt("bar_margin", 16))
     val barMargin: StateFlow<Int> = _barMargin
 
+    // ---- §theme-extra : teinte de l'affiche sur la fiche + lueur « bloom » + grain + immersif
+    private val _usePosterColor = MutableStateFlow(p.getBoolean("use_poster_color", true))
+    val usePosterColor: StateFlow<Boolean> = _usePosterColor
+    fun setUsePosterColor(v: Boolean) { _usePosterColor.value = v; p.edit().putBoolean("use_poster_color", v).apply() }
+
+    private val _bloom = MutableStateFlow(p.getBoolean("bloom_enabled", true))
+    val bloom: StateFlow<Boolean> = _bloom
+    fun setBloom(v: Boolean) { _bloom.value = v; p.edit().putBoolean("bloom_enabled", v).apply() }
+
+    private val _grain = MutableStateFlow(p.getBoolean("grain_enabled", false))
+    val grain: StateFlow<Boolean> = _grain
+    fun setGrain(v: Boolean) { _grain.value = v; p.edit().putBoolean("grain_enabled", v).apply() }
+
+    private val _immersiveMode = MutableStateFlow(p.getBoolean("immersive_mode", false))
+    val immersiveMode: StateFlow<Boolean> = _immersiveMode
+    fun setImmersiveMode(v: Boolean) { _immersiveMode.value = v; p.edit().putBoolean("immersive_mode", v).apply() }
+
     // ---- §barre-dynamique : « pill » = onglet sélectionné avec libellé, autres icônes seules
     private val _navBarStyle = MutableStateFlow(p.getString("nav_bar_style", "dynamic") ?: "dynamic")
     val navBarStyle: StateFlow<String> = _navBarStyle
