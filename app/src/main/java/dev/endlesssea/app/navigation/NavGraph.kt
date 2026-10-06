@@ -156,9 +156,71 @@ fun EsNavGraph(nav: NavHostController) {
     // L'id composite « ext:url » peut contenir des caractères spéciaux → encodage
     fun openDetails(nav: NavHostController, id: String) = nav.navigate("details/${Uri.encode(id)}")
 
-    NavHost(navController = nav, startDestination = Screen.Home.route) {
+    // §animations : transitions douces entre tous les écrans (fondu + léger glissé)
+    val enterAnim = androidx.compose.animation.fadeIn(
+        androidx.compose.animation.core.tween(220),
+    ) + androidx.compose.animation.slideInHorizontally(
+        androidx.compose.animation.core.tween(260),
+    ) { it / 14 }
+    val exitAnim = androidx.compose.animation.fadeOut(
+        androidx.compose.animation.core.tween(180),
+    ) + androidx.compose.animation.slideOutHorizontally(
+        androidx.compose.animation.core.tween(220),
+    ) { -it / 14 }
+    val popEnterAnim = androidx.compose.animation.fadeIn(
+        androidx.compose.animation.core.tween(220),
+    ) + androidx.compose.animation.slideInHorizontally(
+        androidx.compose.animation.core.tween(260),
+    ) { -it / 14 }
+    val popExitAnim = androidx.compose.animation.fadeOut(
+        androidx.compose.animation.core.tween(180),
+    ) + androidx.compose.animation.slideOutHorizontally(
+        androidx.compose.animation.core.tween(220),
+    ) { it / 14 }
+
+    NavHost(
+        navController = nav,
+        startDestination = Screen.Home.route,
+        enterTransition = { enterAnim },
+        exitTransition = { exitAnim },
+        popEnterTransition = { popEnterAnim },
+        popExitTransition = { popExitAnim },
+    ) {
         composable(Screen.Home.route) {
-            HomeScreen(onMediaClick = { openDetails(nav, it) })
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            HomeScreen(
+                onMediaClick = { id ->
+                    // §historique-local : une carte locale relance directement la vidéo
+                    if (id.startsWith("local:")) {
+                        dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
+                        val uri = id.removePrefix("local:")
+                        dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(emptyList(), 0)
+                        dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
+                            title = android.net.Uri.decode(uri.substringAfterLast("/")),
+                            mediaId = null, episodeId = uri,
+                            links = listOf(
+                                dev.endlesssea.extensions.api.model.VideoLink(
+                                    url = uri,
+                                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+                                    server = "Fichier local",
+                                ),
+                            ),
+                            startIndex = 0,
+                        )
+                        ctx.startActivity(
+                            android.content.Intent(
+                                ctx, dev.endlesssea.app.ui.player.PlayerActivity::class.java,
+                            ),
+                        )
+                    } else {
+                        openDetails(nav, id)
+                    }
+                },
+                onSeeAll = { pkg, category ->
+                    nav.navigate("seeAll/${Uri.encode(pkg)}/${Uri.encode(category)}")
+                },
+            )
         }
         composable(Screen.Explore.route) {
             ExploreScreen(

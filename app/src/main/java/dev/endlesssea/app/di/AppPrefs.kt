@@ -604,6 +604,52 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         _videoSharp.value = sharp; _videoTemp.value = temp
     }
 
+    /** §historique-local : les vidéos locales apparaissent dans « Reprendre la lecture ». */
+    private val _localInHistory = MutableStateFlow(p.getBoolean("local_in_history", true))
+    val localInHistory: StateFlow<Boolean> = _localInHistory
+    fun setLocalInHistory(v: Boolean) {
+        p.edit().putBoolean("local_in_history", v).apply(); _localInHistory.value = v
+    }
+
+    /** §fichiers-caches : inclure les fichiers/dossiers commençant par « . ». */
+    private val _showHiddenFiles = MutableStateFlow(p.getBoolean("show_hidden_files", false))
+    val showHiddenFiles: StateFlow<Boolean> = _showHiddenFiles
+    fun setShowHiddenFiles(v: Boolean) {
+        p.edit().putBoolean("show_hidden_files", v).apply(); _showHiddenFiles.value = v
+    }
+
+    /** §affichage-dossiers : "folders" (par dossier) ou "flat" (tous les fichiers). */
+    private val _localFolderView = MutableStateFlow(p.getString("local_folder_view", "folders") ?: "folders")
+    val localFolderView: StateFlow<String> = _localFolderView
+    fun setLocalFolderView(v: String) {
+        val safe = if (v == "flat") "flat" else "folders"
+        p.edit().putString("local_folder_view", safe).apply(); _localFolderView.value = safe
+    }
+
+    /** §reprise-fiche : proposer de reprendre la lecture en ouvrant une fiche. */
+    private val _resumePrompt = MutableStateFlow(p.getBoolean("resume_prompt", true))
+    val resumePrompt: StateFlow<Boolean> = _resumePrompt
+    fun setResumePrompt(v: Boolean) {
+        p.edit().putBoolean("resume_prompt", v).apply(); _resumePrompt.value = v
+    }
+
+    /** §fond-flou : flou appliqué à l'image d'arrière-plan (0..25 dp). */
+    private val _bgBlur = MutableStateFlow(p.getInt("bg_blur", 0))
+    val bgBlur: StateFlow<Int> = _bgBlur
+    fun setBgBlur(v: Int) {
+        val safe = v.coerceIn(0, 25)
+        p.edit().putInt("bg_blur", safe).apply(); _bgBlur.value = safe
+    }
+
+    /** §langues-extensions : langues retenues pour les sources (vide = toutes). */
+    private val _extLanguages = MutableStateFlow(loadJsonStringList("ext_languages").toSet())
+    val extLanguages: StateFlow<Set<String>> = _extLanguages
+    fun toggleExtLanguage(code: String) {
+        val next = if (code in _extLanguages.value) _extLanguages.value - code else _extLanguages.value + code
+        p.edit().putString("ext_languages", "[\"" + next.joinToString("\",\"") + "\"]").apply()
+        _extLanguages.value = next
+    }
+
     private fun loadJsonStringList(key: String): List<String> =
         p.getString(key, null)?.let { json ->
             Regex("\"([^\"]*)\"").findAll(json).map { it.groupValues[1] }.toList()

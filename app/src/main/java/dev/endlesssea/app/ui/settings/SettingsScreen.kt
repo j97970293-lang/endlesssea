@@ -228,7 +228,10 @@ fun SettingsScreen(
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Text("Thème", style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         listOf(
                             AppPrefs.THEME_SYSTEM to "Système",
                             AppPrefs.THEME_LIGHT to "Clair",
@@ -238,7 +241,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = state.themeMode == mode,
                                 onClick = { viewModel.setThemeMode(mode) },
-                                label = { Text(label) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -304,24 +307,25 @@ fun SettingsScreen(
                         onValueChange = { viewModel.setGlassScrim(it.toInt()) },
                         valueRange = 0f..100f,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Style des cartes", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("detail" to "Détaillé", "poster" to "Poster seul", "minimal" to "Minimal")
-                            .forEach { (key, label) ->
-                                FilterChip(
-                                    selected = state.cardStyle == key,
-                                    onClick = { viewModel.setCardStyle(key) },
-                                    label = { Text(label) },
-                                )
-                            }
-                    }
+                    // §fusion-reglages : le style des cartes vit UNIQUEMENT dans
+                    // la page « Interface » (il y était en double).
                 }
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("Image d'arrière-plan", style = MaterialTheme.typography.bodyLarge)
+                    // §fond-flou : flou de l'image de fond (Android 12+)
+                    val blurNow = viewModel.bgBlur.collectAsState().value
+                    Text(
+                        "Flou : ${blurNow} dp" + if (blurNow == 0) " (net)" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Slider(
+                        value = blurNow.toFloat(),
+                        onValueChange = { viewModel.setBgBlur(it.toInt()) },
+                        valueRange = 0f..25f,
+                    )
                     Text(
                         if (state.bgImageUri != null) "Personnalisée — dessinée derrière toute l'application"
                         else "Aucune — fond uni du thème",
@@ -329,7 +333,10 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         androidx.compose.material3.OutlinedButton(onClick = { bgImagePicker.launch("image/*") }) {
                             Text("Choisir…")
                         }
@@ -359,53 +366,8 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    // §couleurs : fusion accent/verre (une seule couleur pour tout)
-                    val accentGlassLink = viewModel.accentGlassLink.collectAsState().value
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Fusion avec la couleur d'accent",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                "La teinte du thème colore aussi le verre (accueil, barres, partout).",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        androidx.compose.material3.Switch(
-                            checked = accentGlassLink,
-                            onCheckedChange = { viewModel.setAccentGlassLink(it) },
-                        )
-                    }
-                    if (!accentGlassLink) {
-                        Text(
-                            "Teinte « verre » indépendante (16 couleurs profondes) :",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FilterChip(
-                            selected = state.glassVariant == "auto",
-                            onClick = { viewModel.setGlassVariant("auto") },
-                            label = { Text("Auto") },
-                        )
-                        AppPrefs.GLASS_VARIANTS.keys.forEach { name ->
-                            FilterChip(
-                                selected = state.glassVariant == name,
-                                onClick = { viewModel.setGlassVariant(name) },
-                                label = { Text(AppPrefs.GLASS_VARIANT_LABELS[name] ?: name) },
-                            )
-                        }
-                    }
+                    // §couleurs-uniques : plus de « teinte de verre » séparée — la
+                    // couleur d'accent ci-dessus teinte TOUT (verre compris).
                 }
             }
             item {
@@ -445,13 +407,13 @@ fun SettingsScreen(
                         FilterChip(
                             selected = state.logoTint == "original",
                             onClick = { viewModel.setLogoTint("original") },
-                            label = { Text("Thème (auto)") },
+                            label = { Text("Thème (auto)", maxLines = 1, softWrap = false) },
                         )
                         AppPrefs.ACCENTS.keys.forEach { name ->
                             FilterChip(
                                 selected = state.logoTint == name,
                                 onClick = { viewModel.setLogoTint(name) },
-                                label = { Text(name.replaceFirstChar { it.uppercase() }) },
+                                label = { Text(name.replaceFirstChar { it.uppercase() }, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -477,7 +439,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = state.fontId == key,
                                 onClick = { viewModel.setFontId(key) },
-                                label = { Text(label) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -532,7 +494,7 @@ fun SettingsScreen(
                 item {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                         // ---- §anymex-theme : les réglages de la capture Theme (AnyMEX)
-                        Text("Thème AnyMEX", style = MaterialTheme.typography.bodyLarge)
+                        Text("Options de thème", style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(4.dp))
                         val amoledOn = state.themeMode == dev.endlesssea.app.di.AppPrefs.THEME_AMOLED
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -685,12 +647,15 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         listOf(5, 10, 15, 30, 85).forEach { sec ->
                             FilterChip(
                                 selected = state.skipSeconds == sec,
                                 onClick = { viewModel.setSkipSeconds(sec) },
-                                label = { Text("$sec s") },
+                                label = { Text("$sec s", maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -733,17 +698,61 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     val orient = viewModel.playerOrientation.collectAsState().value
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         FilterChip(
                             selected = orient != "portrait",
                             onClick = { viewModel.setPlayerOrientation("landscape") },
-                            label = { Text("Paysage (défaut)") },
+                            label = { Text("Paysage (défaut)", maxLines = 1, softWrap = false) },
                         )
                         FilterChip(
                             selected = orient == "portrait",
                             onClick = { viewModel.setPlayerOrientation("portrait") },
-                            label = { Text("Portrait") },
+                            label = { Text("Portrait", maxLines = 1, softWrap = false) },
                         )
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §reprise-fiche / §historique-local / §fichiers-caches
+                    val resumeOn = viewModel.resumePrompt.collectAsState().value
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Proposer de reprendre", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "À l'ouverture d'une fiche déjà commencée, une boîte propose de reprendre.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = resumeOn, onCheckedChange = { viewModel.setResumePrompt(it) })
+                    }
+                    val localHist = viewModel.localInHistory.collectAsState().value
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Fichiers locaux dans l'historique", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Les vidéos du téléphone apparaissent dans « Reprendre la lecture ».",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = localHist, onCheckedChange = { viewModel.setLocalInHistory(it) })
+                    }
+                    val hidden = viewModel.showHiddenFiles.collectAsState().value
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Afficher les fichiers cachés", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Inclut les fichiers et dossiers commençant par un point.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = hidden, onCheckedChange = { viewModel.setShowHiddenFiles(it) })
                     }
                 }
             }
@@ -760,46 +769,55 @@ fun SettingsScreen(
                     Spacer(Modifier.height(6.dp))
                     val progPos = viewModel.progressPosition.collectAsState().value
                     Text("Barre de progression", style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         FilterChip(
                             selected = progPos != "top",
                             onClick = { viewModel.setProgressPosition("bottom") },
-                            label = { Text("En bas") },
+                            label = { Text("En bas", maxLines = 1, softWrap = false) },
                         )
                         FilterChip(
                             selected = progPos == "top",
                             onClick = { viewModel.setProgressPosition("top") },
-                            label = { Text("En haut") },
+                            label = { Text("En haut", maxLines = 1, softWrap = false) },
                         )
                     }
                     Spacer(Modifier.height(6.dp))
                     val toolsPos = viewModel.toolsPosition.collectAsState().value
                     Text("Outils (verrou, vitesse, filtres…)", style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         FilterChip(
                             selected = toolsPos == "top",
                             onClick = { viewModel.setToolsPosition("top") },
-                            label = { Text("En haut") },
+                            label = { Text("En haut", maxLines = 1, softWrap = false) },
                         )
                         FilterChip(
                             selected = toolsPos != "top",
                             onClick = { viewModel.setToolsPosition("bottom") },
-                            label = { Text("En bas") },
+                            label = { Text("En bas", maxLines = 1, softWrap = false) },
                         )
                     }
                     Spacer(Modifier.height(6.dp))
                     val megaSide = viewModel.megaSkipSide.collectAsState().value
                     Text("Pastille de grand saut", style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         FilterChip(
                             selected = megaSide != "left",
                             onClick = { viewModel.setMegaSkipSide("right") },
-                            label = { Text("À droite") },
+                            label = { Text("À droite", maxLines = 1, softWrap = false) },
                         )
                         FilterChip(
                             selected = megaSide == "left",
                             onClick = { viewModel.setMegaSkipSide("left") },
-                            label = { Text("À gauche") },
+                            label = { Text("À gauche", maxLines = 1, softWrap = false) },
                         )
                     }
                 }
@@ -844,7 +862,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = cur == key,
                                 onClick = { viewModel.setPlayerTheme(key) },
-                                label = { Text(v.second) },
+                                label = { Text(v.second, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -868,13 +886,15 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         listOf(
-                            "none" to "Aucune", "net" to "Netteté", "eclat" to "Éclat",
-                            "doux" to "Anti-grain", "cinema" to "Cinéma", "nuit" to "Nuit",
+                            "none" to "Aucune", "anime" to "Anime (netteté GPU)",
+                            "anime_fort" to "Anime fort", "net" to "Netteté douce",
+                            "eclat" to "Éclat", "doux" to "Anti-grain",
+                            "cinema" to "Cinéma", "nuit" to "Nuit",
                         ).forEach { (key, label) ->
                             FilterChip(
                                 selected = enh == key,
                                 onClick = { viewModel.setVideoEnhance(key) },
-                                label = { Text(label) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -893,16 +913,19 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     val render = viewModel.videoRender.collectAsState().value
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         FilterChip(
                             selected = render != "surface",
                             onClick = { viewModel.setVideoRender("texture") },
-                            label = { Text("Texture (filtres)") },
+                            label = { Text("Texture (filtres)", maxLines = 1, softWrap = false) },
                         )
                         FilterChip(
                             selected = render == "surface",
                             onClick = { viewModel.setVideoRender("surface") },
-                            label = { Text("Surface (perf)") },
+                            label = { Text("Surface (perf)", maxLines = 1, softWrap = false) },
                         )
                     }
                 }
@@ -926,13 +949,16 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         listOf("auto" to "Auto", "vf" to "VF", "vostfr" to "VOSTFR", "vo" to "VO")
                             .forEach { (key, label) ->
                                 FilterChip(
                                     selected = state.preferredAudioLang == key,
                                     onClick = { viewModel.setPreferredAudioLang(key) },
-                                    label = { Text(label) },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
                                 )
                             }
                     }
@@ -954,10 +980,8 @@ fun SettingsScreen(
 
             // -------------------------------------- RÉGLAGES PAR EXTENSION
             }
-            if (openCategoryFull == null && matchesQuery(settingsQuery, "Sources — réglages par extension", "Options déclarées par chaque source installée")) item {
-                SettingCategory(Icons.Filled.Extension, "Sources — réglages par extension",
-                    "Options déclarées par chaque source installée", expanded = "sources" in openCategories) { toggleCategory("sources") }
-            }
+            // §fusion-reglages : les réglages par source sont désormais DANS la
+            // page Extensions (plus de doublon ici).
             if ("sources" in openCategories) {
             item {
                 if (state.extWithSettings.isEmpty()) {
@@ -1011,13 +1035,16 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         listOf("system" to "Système", "cloudflare" to "Cloudflare (1.1.1.1)", "google" to "Google (8.8.8.8)")
                             .forEach { (key, label) ->
                                 FilterChip(
                                     selected = state.dnsMode == key,
                                     onClick = { viewModel.setDnsMode(key) },
-                                    label = { Text(label) },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
                                 )
                             }
                     }
@@ -1071,7 +1098,10 @@ fun SettingsScreen(
                 }
                 val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         TextButton(onClick = { diagTick.value++ }) { Text("Rafraîchir") }
                         TextButton(
                             onClick = {
@@ -1184,22 +1214,28 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Segments par fichier", style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         segments.forEach { n ->
                             FilterChip(
                                 selected = state.partsPerTask == n,
                                 onClick = { viewModel.setPartsPerTask(n) },
-                                label = { Text("$n") },
+                                label = { Text("$n", maxLines = 1, softWrap = false) },
                             )
                         }
                     }
                     Text("Tâches simultanées", style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         tasks.forEach { n ->
                             FilterChip(
                                 selected = state.parallelTasks == n,
                                 onClick = { viewModel.setParallelTasks(n) },
-                                label = { Text("$n") },
+                                label = { Text("$n", maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -1247,7 +1283,7 @@ fun SettingsScreen(
                                         FilterChip(
                                             selected = entry.value == opt,
                                             onClick = { viewModel.saveExtSetting(editing.pkg, entry.key, opt) },
-                                            label = { Text(opt) },
+                                            label = { Text(opt, maxLines = 1, softWrap = false) },
                                         )
                                     }
                                 }
@@ -1257,7 +1293,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = text,
                                 onValueChange = { text = it },
-                                label = { Text(entry.title) },
+                                label = { Text(entry.title, maxLines = 1, softWrap = false) },
                                 supportingText = entry.summary?.let { { Text(it) } },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
@@ -1311,12 +1347,15 @@ fun SettingsScreen(
             confirmButton = { TextButton(onClick = { showSpeedDialog = false }) { Text("Fermer") } },
             title = { Text("Vitesse de lecture par défaut") },
             text = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                     listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { s ->
                         FilterChip(
                             selected = state.defaultSpeed == s,
                             onClick = { viewModel.setDefaultSpeed(s) },
-                            label = { Text("${s}×") },
+                            label = { Text("${s}×", maxLines = 1, softWrap = false) },
                         )
                     }
                 }

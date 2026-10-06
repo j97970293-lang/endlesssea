@@ -102,7 +102,7 @@ fun SearchScreen(
             androidx.compose.material3.FilterChip(
                 selected = resultsOnly,
                 onClick = { viewModel.setResultsOnly(!resultsOnly) },
-                label = { Text("Résultats seuls") },
+                label = { Text("Résultats seuls", maxLines = 1, softWrap = false) },
             )
         }
         if (showSourcePicker) {
@@ -143,7 +143,7 @@ fun SearchScreen(
                 androidx.compose.material3.FilterChip(
                     selected = key in state.selTypes,
                     onClick = { viewModel.toggleType(key) },
-                    label = { Text(label) },
+                    label = { Text(label, maxLines = 1, softWrap = false) },
                 )
             }
             Text(
@@ -155,7 +155,7 @@ fun SearchScreen(
                 androidx.compose.material3.FilterChip(
                     selected = key in state.selLangs,
                     onClick = { viewModel.toggleLang(key) },
-                    label = { Text(label) },
+                    label = { Text(label, maxLines = 1, softWrap = false) },
                 )
             }
         }

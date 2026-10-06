@@ -202,9 +202,21 @@ class DetailsViewModel @Inject constructor(
                 ),
             ),
             startIndex = 0,
+            // §auto-intro-telechargements : si des marqueurs ont été réglés pour
+            // ce fichier, le saut automatique fonctionne aussi hors ligne.
+            markers = prefs.localFileMeta(f.targetUri).let { m ->
+                dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
+                    introStartSec = m.introStartSec,
+                    introEndSec = m.introEndSec,
+                    outroStartSec = m.outroStartSec,
+                )
+            },
         )
         onReady()
     }
+
+    /** §reprise-fiche : proposer la reprise en ouvrant la fiche. */
+    val resumePrompt: StateFlow<Boolean> = prefs.resumePrompt
 
     private fun formatBytes(b: Long): String = when {
         b >= 1L shl 30 -> "%.1f Go".format(b.toDouble() / (1L shl 30))
@@ -304,7 +316,7 @@ class DetailsViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 kotlinx.coroutines.withTimeoutOrNull(90_000) {
                     registry.instance(extensionId)
-                        .loadLinksFlow(LinkRequest(episode = episode, mediaId = mediaId))
+                        .linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
                         .collect { link ->
                             collected += link
                             // Publication immédiate : la feuille serveurs se remplit en direct.
@@ -375,7 +387,7 @@ class DetailsViewModel @Inject constructor(
                     val out = mutableListOf<VideoLink>()
                     runCatching {
                         registry.instance(extensionId)
-                            .loadLinksFlow(LinkRequest(episode = ep, mediaId = mediaId))
+                            .linksFlowCompat(LinkRequest(episode = ep, mediaId = mediaId))
                             .collect { out += it }
                     }
                     orderByLangPref(out)

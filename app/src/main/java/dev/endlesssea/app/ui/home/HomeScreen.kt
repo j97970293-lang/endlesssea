@@ -62,6 +62,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun HomeScreen(
     onMediaClick: (String) -> Unit,
+    /** §tout-voir : (source, catégorie) → page complète du catalogue. */
+    onSeeAll: (String, String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -124,9 +126,14 @@ fun HomeScreen(
             }
         }
 
+        // §reprendre : masquée s'il n'y a rien (plus de rangée vide)
         if (state.continueWatching.isNotEmpty()) {
             item {
-                MediaRow(title = "Reprendre la lecture", items = state.continueWatching, onMediaClick = onMediaClick)
+                MediaRow(
+                    title = "Reprendre la lecture",
+                    items = state.continueWatching,
+                    onMediaClick = onMediaClick,
+                )
             }
         }
 
@@ -143,6 +150,7 @@ fun HomeScreen(
                 MediaRow(
                     title = row.title, items = row.items, onMediaClick = onMediaClick,
                     iconUrl = row.iconUrl,
+                    onSeeAll = { onSeeAll(row.sourcePkg, row.category) },
                 )
             }
         }
@@ -160,12 +168,9 @@ fun HomeScreen(
                 MediaRow(title = "Ajoutés récemment", items = state.recent, onMediaClick = onMediaClick)
             }
         }
-        if (state.favorites.isNotEmpty()) {
-            item {
-                MediaRow(title = "Favoris", items = state.favorites, onMediaClick = onMediaClick)
-            }
-        }
-        }
+        // §accueil-favoris : la rangée « Favoris » a été retirée de l'accueil
+        // (demande utilisateur) — elle reste dans la bibliothèque.
+    }
 
             if (providerSheetOpen) {
                 androidx.compose.material3.ModalBottomSheet(

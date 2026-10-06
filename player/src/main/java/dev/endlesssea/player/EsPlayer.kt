@@ -115,6 +115,27 @@ class EsPlayer(
         player.prepare()
     }
 
+    /**
+     * §sous-titres-externes : attache une piste (fichier local ou URL) à la
+     * lecture en cours, sans perdre la position.
+     */
+    fun addExternalSubtitle(uri: String, label: String) {
+        val current = player.currentMediaItem ?: return
+        val pos = player.currentPosition
+        val subs = current.localConfiguration?.subtitleConfigurations.orEmpty() +
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(uri))
+                .setMimeType(
+                    if (uri.endsWith(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP,
+                )
+                .setLabel(label)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+        val item = current.buildUpon().setSubtitleConfigurations(subs).build()
+        player.setMediaItem(item, pos)
+        player.prepare()
+        player.play()
+    }
+
     /** Sets extension headers (Referer/UA/cookies) on the shared OkHttpDataSource. */
     fun prepareWithHeaders(headers: Map<String, String>) {
         httpFactory.setDefaultRequestProperties(headers)

@@ -67,6 +67,11 @@ object EsImages {
 
     private fun build(appContext: Context): ImageLoader {
         return ImageLoader.Builder(appContext)
+            // §vignettes-locales : une image de la vidéo sert d'affiche, comme
+            // dans un gestionnaire de fichiers (content:// → frame décodée).
+            .components {
+                add(coil.decode.VideoFrameDecoder.Factory())
+            }
             .diskCache {
                 // 「Piège」Coil 2.x : DiskCache.Builder.build() fait
                 // checkNotNull(directory) { "directory == null" }. Sans
@@ -157,6 +162,9 @@ object EsImages {
         val lower = u.lowercase()
         return when {
             lower.startsWith("http://") || lower.startsWith("https://") -> u
+            // §vignettes-locales : les URI de contenu (SAF / MediaStore) sont
+            // décodées localement par VideoFrameDecoder — aucun risque réseau.
+            lower.startsWith("content://") || lower.startsWith("file://") -> u
             else -> null
         }
     }

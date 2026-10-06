@@ -23,6 +23,8 @@ data class HomeRowUi(
     val sourcePkg: String = "",
     val sourceName: String = "",
     val iconUrl: String? = null,
+    /** §tout-voir : clé de catégorie à rouvrir en page complète. */
+    val category: String = "main",
 )
 
 data class HomeUiState(
@@ -50,6 +52,7 @@ class HomeViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val historyDao: WatchHistoryDao,
     private val registry: ExtensionRegistry,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -75,9 +78,23 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             historyDao.observeContinueWatching(12).collect { history ->
                 val items = history.mapNotNull { h ->
-                    mediaDao.byId(h.mediaId)?.let { media ->
-                        val pct = if (h.durationMs > 0) (h.positionMs * 100 / h.durationMs).toInt() else 0
-                        media.toUi().copy(subtitle = "Reprise à $pct %")
+                    val pct = if (h.durationMs > 0) (h.positionMs * 100 / h.durationMs).toInt() else 0
+                    val media = mediaDao.byId(h.mediaId)
+                    when {
+                        media != null -> media.toUi().copy(subtitle = "Reprise à $pct %")
+                        // §historique-local : un fichier local (pas de fiche en base)
+                        // apparaît quand même, sauf si l'utilisateur l'exclut.
+                        h.episodeId.startsWith("content://") && prefs.localInHistory.value -> {
+                            val meta = prefs.localFileMeta(h.episodeId)
+                            SearchItemUi(
+                                id = "local:" + h.episodeId,
+                                title = meta.title
+                                    ?: android.net.Uri.decode(h.episodeId.substringAfterLast("/")),
+                                posterUrl = meta.coverUri,
+                                subtitle = "Fichier local — reprise à $pct %",
+                            )
+                        }
+                        else -> null
                     }
                 }
                 _uiState.value = _uiState.value.copy(continueWatching = items)
@@ -131,6 +148,7 @@ class HomeViewModel @Inject constructor(
                                         sourcePkg = ext.info.id,
                                         sourceName = ext.info.name,
                                         iconUrl = ext.info.iconUrl,
+                                        category = actualKey,
                                     )
                                 }
                             }
@@ -212,6 +230,7 @@ class HomeViewModel @Inject constructor(
                                     sourcePkg = ext.info.id,
                                     sourceName = ext.info.name,
                                     iconUrl = ext.info.iconUrl,
+                                    category = key,
                                 )
                             }
                         }

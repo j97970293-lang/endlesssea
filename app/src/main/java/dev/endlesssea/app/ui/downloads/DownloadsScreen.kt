@@ -87,7 +87,7 @@ fun DownloadsScreen(
                 FilterChip(
                     selected = state.filter == f,
                     onClick = { viewModel.setFilter(f) },
-                    label = { Text(f.label) },
+                    label = { Text(f.label, maxLines = 1, softWrap = false) },
                 )
             }
         }
@@ -108,7 +108,7 @@ fun DownloadsScreen(
                 FilterChip(
                     selected = state.sort == s,
                     onClick = { viewModel.setSort(s) },
-                    label = { Text(s.label) },
+                    label = { Text(s.label, maxLines = 1, softWrap = false) },
                 )
             }
             Text(

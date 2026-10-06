@@ -44,6 +44,7 @@ class ExtensionsViewModel @Inject constructor(
     private val loader: ExtensionLoader,
     private val registry: dev.endlesssea.extensions.loader.ExtensionRegistry,
     private val extSettingsStore: dev.endlesssea.app.data.ExtensionSettingsStore,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
 ) : ViewModel() {
 
     companion object {
@@ -51,6 +52,10 @@ class ExtensionsViewModel @Inject constructor(
         const val DEMO_REPO_URL =
             "https://raw.githubusercontent.com/j97970293-lang/endlesssea/main/demo-repo/index.json"
     }
+
+    /** §langues-extensions : filtre de langue des sources (vide = toutes). */
+    val languages: StateFlow<Set<String>> = prefs.extLanguages
+    fun toggleLanguage(code: String) = prefs.toggleExtLanguage(code)
 
     private val _uiState = MutableStateFlow(ExtensionsUiState())
     val uiState: StateFlow<ExtensionsUiState> = _uiState

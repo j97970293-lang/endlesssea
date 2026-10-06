@@ -48,6 +48,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.launch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -148,6 +152,20 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val audioTracks by viewModel.engine.availableAudio.collectAsState()
 
     val context = LocalContext.current
+    val playerScope = androidx.compose.runtime.rememberCoroutineScope()
+    // §sous-titres : ouverture d'un .srt/.vtt depuis le téléphone
+    val subFilePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.engine.addExternalSubtitle(uri.toString(), "Fichier local")
+        }
+    }
     var textureView by remember { mutableStateOf<android.view.TextureView?>(null) }
     var videoSize by remember { mutableStateOf(VideoSize(0, 0)) }
     var showCcDialog by remember { mutableStateOf(false) }
@@ -155,9 +173,19 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var showFilterDialog by remember { mutableStateOf(false) }
     /** §sheet-plus : panneau « Plus » (minuterie de veille + filtres vidéo). */
     var showMoreSheet by remember { mutableStateOf(false) }
+    // §sous-titres : recherche en ligne + ouverture d'un fichier local
+    var showSubSearch by remember { mutableStateOf(false) }
+    var subQuery by remember { mutableStateOf("") }
+    var subLoading by remember { mutableStateOf(false) }
+    var subResults by remember {
+        androidx.compose.runtime.mutableStateOf<List<OnlineSubtitle>>(emptyList())
+    }
     var brightness by remember { mutableStateOf(1f) }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
-    var zoomFit by remember { mutableStateOf(true) } // true = contenir, false = remplir
+    // §fit : 0 = contenir · 1 = remplir (zoom) · 2 = étirer (déforme)
+    var zoomMode by remember { mutableIntStateOf(0) }
+    /** §double-appui-continu : date du dernier saut par appui. */
+    var lastSkipAt by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
 
@@ -176,6 +204,29 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val playerThemeName by viewModel.playerTheme.collectAsState()
     val themeArgb = dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES[playerThemeName]?.first ?: 0L
     val accentColor = if (themeArgb == 0L) MaterialTheme.colorScheme.primary else Color(themeArgb)
+    // §theme-lecteur : chaque habillage change VRAIMENT la mise en page —
+    // épaisseur et forme de la barre, voile du bas, taille du bouton central.
+    val skinSquare = playerThemeName in setOf("netflix", "youtube", "mpv", "vlc")
+    val skinThickness = when (playerThemeName) {
+        "netflix" -> 6
+        "crunchyroll" -> 8
+        "youtube" -> 4
+        "prime", "disney" -> 5
+        "mpv", "vlc" -> 3
+        else -> progressThickness
+    }
+    val skinScrim = when (playerThemeName) {
+        "netflix", "prime", "disney" -> 0.78f
+        "crunchyroll", "spotify", "aniyomi" -> 0.60f
+        "mpv", "vlc" -> 0.30f
+        else -> 0.55f
+    }
+    val skinPlaySize = when (playerThemeName) {
+        "netflix", "prime", "disney" -> 92
+        "youtube" -> 74
+        "mpv", "vlc" -> 64
+        else -> 78
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
@@ -209,18 +260,26 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         }
 
         // Zoom (contenir ↔ remplir) appliqué par matrice sur la TextureView
-        LaunchedEffect(zoomFit, videoSize) {
+        LaunchedEffect(zoomMode, videoSize) {
             val tv = textureView ?: return@LaunchedEffect
             val w = tv.width.takeIf { it > 0 } ?: return@LaunchedEffect
             val h = tv.height.takeIf { it > 0 } ?: return@LaunchedEffect
             val vw = videoSize.width.takeIf { it > 0 } ?: return@LaunchedEffect
             val vh = videoSize.height.takeIf { it > 0 } ?: return@LaunchedEffect
             val m = android.graphics.Matrix()
-            if (!zoomFit) {
-                val scale = maxOf(w / vw.toFloat(), h / vh.toFloat())
-                val scaleFit = minOf(w / vw.toFloat(), h / vh.toFloat())
-                val factor = if (scaleFit > 0f) scale / scaleFit else 1f
-                m.setScale(factor, factor, w / 2f, h / 2f)
+            val scaleCover = maxOf(w / vw.toFloat(), h / vh.toFloat())
+            val scaleFit = minOf(w / vw.toFloat(), h / vh.toFloat())
+            when (zoomMode) {
+                1 -> {
+                    val factor = if (scaleFit > 0f) scaleCover / scaleFit else 1f
+                    m.setScale(factor, factor, w / 2f, h / 2f)
+                }
+                2 -> {
+                    // étirer : on force le remplissage, quitte à déformer
+                    val fx = if (scaleFit > 0f) (w / vw.toFloat()) / scaleFit else 1f
+                    val fy = if (scaleFit > 0f) (h / vh.toFloat()) / scaleFit else 1f
+                    m.setScale(fx, fy, w / 2f, h / 2f)
+                }
             }
             tv.setTransform(m)
         }
@@ -248,13 +307,30 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 .fillMaxSize()
                 .pointerInput(state.skipSeconds, state.locked) {
                     detectTapGestures(
-                        onTap = { if (!state.locked) viewModel.toggleControls() },
+                        onTap = { offset ->
+                            if (state.locked) return@detectTapGestures
+                            // §double-appui-continu : tant qu'on reste dans la
+                            // fenêtre de 900 ms après un saut, chaque appui
+                            // enchaîne un nouveau saut (comportement YouTube) au
+                            // lieu d'afficher/masquer les contrôles.
+                            val now = android.os.SystemClock.uptimeMillis()
+                            if (now - lastSkipAt < 900) {
+                                lastSkipAt = now
+                                val half = size.width / 2
+                                viewModel.jumpBy(
+                                    if (offset.x < half) -state.skipSeconds else state.skipSeconds,
+                                )
+                            } else {
+                                viewModel.toggleControls()
+                            }
+                        },
                         onDoubleTap = { offset ->
                             if (!state.locked) {
                                 val half = size.width / 2
                                 val delta = if (offset.x < half) -state.skipSeconds else state.skipSeconds
                                 // §double-message : jumpBy publie déjà state.skipFlash,
                                 // inutile d'afficher un second bandeau par-dessus.
+                                lastSkipAt = android.os.SystemClock.uptimeMillis()
                                 viewModel.jumpBy(delta)
                             }
                         },
@@ -541,8 +617,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 // la pastille mégaskip (Réglages → Lecteur → Disposition).
                 val dur = state.durationMs.coerceAtLeast(1)
                 val progress = (slidingPos ?: (state.positionMs.toFloat() / dur)).coerceIn(0f, 1f)
-                val barH = progressThickness.dp
-                val barShape = if (progressRounded) RoundedCornerShape(50) else RoundedCornerShape(0.dp)
+                val barH = skinThickness.dp
+                val barShape = if (progressRounded && !skinSquare) RoundedCornerShape(50)
+                else RoundedCornerShape(1.dp)
 
                 // ---- Transport central : précédent · lecture · suivant
                 Row(
@@ -563,12 +640,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     }
                     IconButton(
                         onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
-                        modifier = Modifier.size(78.dp),
+                        modifier = Modifier.size(skinPlaySize.dp),
                     ) {
                         Icon(
                             if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             "Lecture/Pause", tint = Color.White,
-                            modifier = Modifier.size(70.dp),
+                            modifier = Modifier.size((skinPlaySize - 8).dp),
                         )
                     }
                     IconButton(
@@ -587,11 +664,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 // ---- Mégaskip : une seule pastille, vers l'avant, côté réglable
                 Box(
                     Modifier
-                        .align(if (megaSide == "left") Alignment.CenterStart else Alignment.CenterEnd)
+                        // §megaskip-bas : juste au-dessus de la barre de progression
+                        .align(if (megaSide == "left") Alignment.BottomStart else Alignment.BottomEnd)
                         .padding(
                             start = if (megaSide == "left") 20.dp else 0.dp,
                             end = if (megaSide == "left") 0.dp else 20.dp,
-                            top = 120.dp,
+                            bottom = if (progressPos == "top") 24.dp else 96.dp,
                         )
                         .clip(RoundedCornerShape(26.dp))
                         .background(accentColor)
@@ -628,7 +706,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             thumb = {
                                 Box(
                                     Modifier
-                                        .size((progressThickness + 8).dp)
+                                        .size((skinThickness + 8).dp)
                                         .clip(RoundedCornerShape(50))
                                         .background(accentColor),
                                 )
@@ -685,10 +763,29 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         }) {
                             Icon(Icons.Filled.ScreenRotation, "Orientation", tint = Color.White)
                         }
-                        IconButton(onClick = { zoomFit = !zoomFit }) {
+                        // §fit : contenir → remplir → étirer (libellé visible)
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { zoomMode = (zoomMode + 1) % 3 }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Icon(
-                                Icons.Filled.ZoomIn, "Zoom",
-                                tint = if (zoomFit) Color.White else accentColor,
+                                Icons.Filled.ZoomIn, "Cadrage",
+                                tint = if (zoomMode == 0) Color.White else accentColor,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                when (zoomMode) {
+                                    0 -> "Contenir"
+                                    1 -> "Remplir"
+                                    else -> "Étirer"
+                                },
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
                             )
                         }
                         Text(
@@ -732,7 +829,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         .fillMaxWidth()
                         .background(
                             androidx.compose.ui.graphics.Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                                listOf(Color.Transparent, Color.Black.copy(alpha = skinScrim)),
                             ),
                         )
                         .padding(vertical = 8.dp),
@@ -778,7 +875,105 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(10.dp))
 
-                // ---- ⏲ Minuterie de veille
+                // §reglages-rapides : les MÊMES préférences que Réglages → Lecteur,
+                // accessibles sans quitter la vidéo (elles sont synchronisées).
+                Text(
+                    "Réglages du lecteur",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("Disposition", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(
+                        selected = progressPos != "top",
+                        onClick = { viewModel.setProgressPosition("bottom") },
+                        label = { Text("Barre en bas", maxLines = 1, softWrap = false) },
+                    )
+                    FilterChip(
+                        selected = progressPos == "top",
+                        onClick = { viewModel.setProgressPosition("top") },
+                        label = { Text("Barre en haut", maxLines = 1, softWrap = false) },
+                    )
+                    FilterChip(
+                        selected = toolsPos == "top",
+                        onClick = { viewModel.setToolsPosition(if (toolsPos == "top") "bottom" else "top") },
+                        label = { Text("Outils en haut", maxLines = 1, softWrap = false) },
+                    )
+                    FilterChip(
+                        selected = megaSide == "left",
+                        onClick = { viewModel.setMegaSkipSide(if (megaSide == "left") "right" else "left") },
+                        label = { Text("Saut à gauche", maxLines = 1, softWrap = false) },
+                    )
+                    FilterChip(
+                        selected = progressRounded,
+                        onClick = { viewModel.setProgressRounded(!progressRounded) },
+                        label = { Text("Bouts arrondis", maxLines = 1, softWrap = false) },
+                    )
+                }
+                Text("Épaisseur de la barre : $progressThickness dp",
+                    style = MaterialTheme.typography.labelMedium)
+                Slider(
+                    value = progressThickness.toFloat(),
+                    onValueChange = { viewModel.setProgressThickness(it.toInt()) },
+                    valueRange = 2f..14f,
+                )
+                Text("Thème du lecteur", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES.forEach { (key, v) ->
+                        FilterChip(
+                            selected = playerThemeName == key,
+                            onClick = { viewModel.setPlayerTheme(key) },
+                            label = { Text(v.second, maxLines = 1, softWrap = false) },
+                        )
+                    }
+                }
+                Text("Amélioration de l'image", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(
+                        "none" to "Aucune", "anime" to "Anime", "anime_fort" to "Anime fort",
+                        "net" to "Netteté", "eclat" to "Éclat", "doux" to "Anti-grain",
+                        "cinema" to "Cinéma", "nuit" to "Nuit",
+                    ).forEach { (key, label) ->
+                        FilterChip(
+                            selected = state.enhance == key,
+                            onClick = { viewModel.setEnhance(key) },
+                            label = { Text(label, maxLines = 1, softWrap = false) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+
+                // §sous-titres-en-ligne / fichier local
+                Text(
+                    "Sous-titres",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = {
+                        showMoreSheet = false
+                        showSubSearch = true
+                    }) { Text("Chercher en ligne") }
+                    TextButton(onClick = {
+                        showMoreSheet = false
+                        subFilePicker.launch(arrayOf("*/*"))
+                    }) { Text("Ouvrir un fichier .srt") }
+                }
+                Spacer(Modifier.height(14.dp))
+
+                // ---- Minuterie de veille
                 Text(
                     "Minuterie de veille",
                     style = MaterialTheme.typography.labelLarge,
@@ -803,7 +998,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         FilterChip(
                             selected = sel,
                             onClick = { viewModel.scheduleSleep(min) },
-                            label = { Text(label) },
+                            label = { Text(label, maxLines = 1, softWrap = false) },
                         )
                     }
                 }
@@ -830,7 +1025,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         FilterChip(
                             selected = sel,
                             onClick = { viewModel.applyPreset(preset) },
-                            label = { Text(preset.name) },
+                            label = { Text(preset.name, maxLines = 1, softWrap = false) },
                         )
                     }
                 }
@@ -869,6 +1064,75 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 )
             }
         }
+    }
+
+    // ---- §sous-titres-en-ligne : recherche OpenSubtitles + téléchargement
+    if (showSubSearch) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            if (subQuery.isBlank()) subQuery = state.title
+        }
+        AlertDialog(
+            onDismissRequest = { showSubSearch = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    subLoading = true
+                    playerScope.launch {
+                        subResults = OnlineSubtitles.search(subQuery)
+                        subLoading = false
+                    }
+                }) { Text("Chercher") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSubSearch = false }) { Text("Fermer") }
+            },
+            title = { Text("Sous-titres en ligne") },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = subQuery,
+                        onValueChange = { subQuery = it },
+                        label = { Text("Titre du film / de l'épisode") },
+                        singleLine = true,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (subLoading) {
+                        CircularProgressIndicator()
+                    } else if (subResults.isEmpty()) {
+                        Text(
+                            "Aucun résultat pour l'instant — lancez une recherche.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Column(
+                            Modifier.heightIn(max = 320.dp)
+                                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                        ) {
+                            subResults.forEach { sub ->
+                                Column(
+                                    Modifier.fillMaxWidth().clickable {
+                                        showSubSearch = false
+                                        playerScope.launch {
+                                            val path = OnlineSubtitles.download(context, sub)
+                                            if (path != null) {
+                                                viewModel.engine.addExternalSubtitle(path, sub.lang)
+                                            }
+                                        }
+                                    }.padding(vertical = 8.dp),
+                                ) {
+                                    Text(sub.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                                    Text(
+                                        sub.lang,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        )
     }
 
     // ---- Boîte « Filtres vidéo » : préréglages + réglage fin + sauvegarde
@@ -1023,13 +1287,15 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         listOf(
-                            "none" to "Aucune", "net" to "Netteté", "eclat" to "Éclat",
-                            "doux" to "Anti-grain", "cinema" to "Cinéma", "nuit" to "Nuit",
+                            "none" to "Aucune", "anime" to "Anime (netteté GPU)",
+                            "anime_fort" to "Anime fort", "net" to "Netteté douce",
+                            "eclat" to "Éclat", "doux" to "Anti-grain",
+                            "cinema" to "Cinéma", "nuit" to "Nuit",
                         ).forEach { (key, label) ->
                             FilterChip(
                                 selected = state.enhance == key,
                                 onClick = { viewModel.setEnhance(key) },
-                                label = { Text(label) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -1042,7 +1308,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     OutlinedTextField(
                         value = presetName,
                         onValueChange = { presetName = it },
-                        label = { Text("Nom du nouveau préréglage") },
+                        label = { Text("Nom du nouveau préréglage", maxLines = 1, softWrap = false) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

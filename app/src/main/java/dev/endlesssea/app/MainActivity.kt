@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale as androidxScale
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -112,11 +114,9 @@ class MainActivity : ComponentActivity() {
             ) {
                 // §couleurs : « fusion accent/verre » — si liées, l'accent teinte aussi le verre ;
                 // sinon la variante Glass saturée choisie s'applique (beaucoup de couleurs).
-                val tint: Long? = when {
-                    accentGlassLink -> AppPrefs.ACCENTS[accentName]
-                    glassVariant == "auto" -> null
-                    else -> AppPrefs.GLASS_VARIANTS[glassVariant]
-                }
+                // §couleurs-uniques : une seule couleur pilote tout (le sélecteur
+                // de « teinte de verre » a été supprimé) — c'est l'accent.
+                val tint: Long? = AppPrefs.ACCENTS[accentName]
                 dev.endlesssea.app.ui.components.UiTuning.update(
                     glassOverlay, glassScrim, cardStyle,
                     tintArgb = tint, liquid = liquidGlass,
@@ -229,11 +229,20 @@ class MainActivity : ComponentActivity() {
                     if (grain) {
                         dev.endlesssea.app.ui.components.GrainOverlay()
                     }
+                    val bgBlur by prefs.bgBlur.collectAsState()
                     bgImage?.let { uri ->
                         coil.compose.AsyncImage(
                             model = uri,
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
+                            // §fond-flou : flou réglable sur l'image d'arrière-plan
+                            modifier = Modifier.fillMaxSize()
+                                .then(
+                                    if (bgBlur > 0) {
+                                        dev.endlesssea.app.ui.components.blurModifier(bgBlur.dp)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         )
                         androidx.compose.foundation.layout.Box(
@@ -251,42 +260,27 @@ class MainActivity : ComponentActivity() {
                         // et ses boutons — aucune barre de l'app (capture utilisateur : barre barrée).
                         val immersive = route?.startsWith("details/") == true
                         if (route != Screen.Settings.route && !immersive) {
-                        CenterAlignedTopAppBar(
+                        // §entete-logo : barre du haut minimale et STABLE — le logo,
+                        // rond et discret, est aussi le menu (Paramètres / Extensions),
+                        // avec une petite animation d'entrée.
+                        var logoMenu by androidx.compose.runtime.remember {
+                            androidx.compose.runtime.mutableStateOf(false)
+                        }
+                        var logoIn by androidx.compose.runtime.remember {
+                            androidx.compose.runtime.mutableStateOf(false)
+                        }
+                        androidx.compose.runtime.LaunchedEffect(Unit) { logoIn = true }
+                        val logoScale by androidx.compose.animation.core.animateFloatAsState(
+                            targetValue = if (logoIn) 1f else 0.6f,
+                            animationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = 0.55f,
+                                stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+                            ),
+                            label = "logoIn",
+                        )
+                        androidx.compose.material3.TopAppBar(
                             modifier = Modifier.statusBarsPadding(),
-                            // §anymex-ui / capture « Endless Sea barré » : plus de titre
-                            // d'application en haut — seul l'en-tête classique le réaffiche.
-                            // §logo-en-haut : plus de titre ni de message d'accueil —
-                            // le logo de l'application, discret, tient lieu d'en-tête.
                             title = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    androidx.compose.foundation.Image(
-                                        painter = androidx.compose.ui.res.painterResource(
-                                            dev.endlesssea.app.R.drawable.logo_sea,
-                                        ),
-                                        contentDescription = "EndlessSea",
-                                        modifier = Modifier.size(30.dp),
-                                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
-                                            MaterialTheme.colorScheme.primary,
-                                            androidx.compose.ui.graphics.BlendMode.Modulate,
-                                        ),
-                                    )
-                                    if (legacyHeader) {
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(title, style = MaterialTheme.typography.titleMedium)
-                                    }
-                                }
-                            },
-                            actions = {
-                                // §fournisseur-en-haut : le sélecteur de source remplace
-                                // l'icône Extensions (déplacée dans les Réglages).
-                                // §recherche-barre : loupe qui cherche dans la source choisie
-                                if (route == Screen.Home.route || route == Screen.Explore.route) {
-                                    val src by dev.endlesssea.app.ui.home.HomeUiBus
-                                        .currentProviderId.collectAsState()
-                                    IconButton(onClick = { nav.navigate("search/" + android.net.Uri.encode(src)) }) {
-                                        Icon(Icons.Filled.Search, contentDescription = "Rechercher")
-                                    }
-                                }
                                 if (route == Screen.Home.route) {
                                     val provider by dev.endlesssea.app.ui.home.HomeUiBus
                                         .currentProvider.collectAsState()
@@ -296,20 +290,63 @@ class MainActivity : ComponentActivity() {
                                         Text(
                                             provider,
                                             maxLines = 1,
+                                            softWrap = false,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = 180.dp),
+                                            modifier = Modifier.widthIn(max = 200.dp),
                                         )
-                                        Icon(
-                                            Icons.Filled.KeyboardArrowDown,
-                                            contentDescription = null,
+                                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+                                    }
+                                }
+                            },
+                            navigationIcon = {
+                                Box {
+                                    IconButton(onClick = { logoMenu = true }) {
+                                        androidx.compose.foundation.Image(
+                                            painter = androidx.compose.ui.res.painterResource(
+                                                dev.endlesssea.app.R.drawable.logo_sea,
+                                            ),
+                                            contentDescription = "Menu EndlessSea",
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .androidxScale(logoScale)
+                                                .clip(androidx.compose.foundation.shape.CircleShape),
+                                        )
+                                    }
+                                    androidx.compose.material3.DropdownMenu(
+                                        expanded = logoMenu,
+                                        onDismissRequest = { logoMenu = false },
+                                    ) {
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text("Paramètres") },
+                                            leadingIcon = { Icon(Icons.Filled.Settings, null) },
+                                            onClick = {
+                                                logoMenu = false
+                                                nav.navigate(Screen.Settings.route)
+                                            },
+                                        )
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text("Extensions") },
+                                            leadingIcon = { Icon(Icons.Filled.Extension, null) },
+                                            onClick = {
+                                                logoMenu = false
+                                                nav.navigate(Screen.Extensions.route)
+                                            },
                                         )
                                     }
                                 }
-                                IconButton(onClick = { nav.navigate(Screen.Settings.route) }) {
-                                    Icon(Icons.Filled.Settings, contentDescription = "Paramètres")
+                            },
+                            actions = {
+                                // §recherche-barre : une seule loupe, et seulement là
+                                // où il n'y a pas déjà un champ de recherche (Explorer).
+                                if (route == Screen.Home.route) {
+                                    val src by dev.endlesssea.app.ui.home.HomeUiBus
+                                        .currentProviderId.collectAsState()
+                                    IconButton(onClick = { nav.navigate("search/" + android.net.Uri.encode(src)) }) {
+                                        Icon(Icons.Filled.Search, contentDescription = "Rechercher")
+                                    }
                                 }
                             },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
                                 containerColor = Color.Transparent,
                                 titleContentColor = MaterialTheme.colorScheme.onSurface,
                                 actionIconContentColor = MaterialTheme.colorScheme.onSurface,

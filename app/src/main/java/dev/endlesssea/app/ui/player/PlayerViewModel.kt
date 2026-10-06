@@ -181,10 +181,23 @@ class PlayerViewModel @Inject constructor(
         val effects = mutableListOf<androidx.media3.common.Effect>()
         // 1) profil d'amélioration
         when (st.enhance) {
-            "net" -> {
-                runCatching { effects += androidx.media3.effect.Contrast(0.12f) }
+            // §anime-4k : netteté GPU (unsharp mask 5 échantillons) — l'esprit
+            // d'Anime4K sans ses multiples passes qui font ramer un téléphone.
+            "anime" -> {
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.85f) }
                 effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(6f).build()
+                    .adjustSaturation(8f).build()
+            }
+            "anime_fort" -> {
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(1.4f) }
+                runCatching { effects += androidx.media3.effect.Contrast(0.08f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(12f).build()
+            }
+            "net" -> {
+                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.45f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(4f).build()
             }
             "eclat" -> {
                 runCatching { effects += androidx.media3.effect.Contrast(0.22f) }
@@ -227,10 +240,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
         if (st.filterSharp > 0f) {
-            // Netteté perçue : contraste local approximé par un contraste global doux
-            runCatching {
-                effects += androidx.media3.effect.Contrast((st.filterSharp * 0.25f).coerceIn(0f, 0.5f))
-            }
+            runCatching { effects += dev.endlesssea.player.SharpenEffect(st.filterSharp * 1.5f) }
         }
         // 3) le triplet classique (luminosité / saturation / teinte), toujours en dernier
         val lightness = st.filterBrightness + (st.filterGamma - 1f) * 20f

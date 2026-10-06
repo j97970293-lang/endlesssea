@@ -60,7 +60,6 @@ fun ExploreScreen(
             onValueChange = { exploreQuery = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             placeholder = { Text("Rechercher dans " + (selectedPkg?.let { pkg -> state.extensions.firstOrNull { it.first == pkg }?.second } ?: "toutes les sources") + "…") },
-            leadingIcon = { Icon(Icons.Filled.Search, null) },
             trailingIcon = {
                 IconButton(onClick = { if (exploreQuery.isNotBlank()) onSearch(exploreQuery, selectedPkg ?: "ALL") }) {
                     Icon(Icons.Filled.Search, "Lancer la recherche")
@@ -86,13 +85,13 @@ fun ExploreScreen(
             FilterChip(
                 selected = selectedPkg == null,
                 onClick = { selectedPkg = null },
-                label = { Text("Toutes") },
+                label = { Text("Toutes", maxLines = 1, softWrap = false) },
             )
             state.extensions.forEach { (pkg, name) ->
                 FilterChip(
                     selected = selectedPkg == pkg,
                     onClick = { selectedPkg = if (selectedPkg == pkg) null else pkg },
-                    label = { Text(name) },
+                    label = { Text(name, maxLines = 1, softWrap = false) },
                 )
             }
         }

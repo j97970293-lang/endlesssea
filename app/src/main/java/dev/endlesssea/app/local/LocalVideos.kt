@@ -51,6 +51,7 @@ object LocalVideos {
     suspend fun scanAsync(
         context: Context,
         treeUriString: String,
+        includeHidden: Boolean = false,
     ): List<LocalVideoFile> = coroutineScope {
         val tree = Uri.parse(treeUriString)
         val rootId = runCatching {
@@ -81,6 +82,8 @@ object LocalVideos {
                         if (out.size >= MAX_FILES_PER_ROOT) break
                         val id = c.getString(0) ?: continue
                         val name = c.getString(1) ?: continue
+                        // §fichiers-caches : ignorés sauf si l'utilisateur les demande
+                        if (!includeHidden && name.startsWith(".")) continue
                         val mime = c.getString(2) ?: ""
                         val size = if (c.isNull(3)) 0L else c.getLong(3)
                         if (mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {

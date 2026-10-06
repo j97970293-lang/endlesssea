@@ -171,7 +171,11 @@ class LibraryViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(localScanning = true)
         val known = _uiState.value.localFiles.associate { it.uri to it.durationMs }
         val files = dirs
-            .flatMap { dev.endlesssea.app.local.LocalVideos.scanAsync(context, it) }
+            .flatMap {
+                dev.endlesssea.app.local.LocalVideos.scanAsync(
+                    context, it, includeHidden = prefs.showHiddenFiles.value,
+                )
+            }
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
@@ -262,6 +266,14 @@ class LibraryViewModel @Inject constructor(
     fun addCategory(name: String) = prefs.addCustomCategory(name)
     fun removeCategory(name: String) = prefs.removeCustomCategory(name)
     fun categoryItems(name: String): List<String> = prefs.categoryItems(name)
+
+    /** §affichage-dossiers : "folders" ou "flat". */
+    val localFolderView: StateFlow<String> = prefs.localFolderView
+    fun setLocalFolderView(v: String) { prefs.setLocalFolderView(v); }
+
+    /** §fichiers-caches */
+    val showHiddenFiles: StateFlow<Boolean> = prefs.showHiddenFiles
+    fun setShowHiddenFiles(v: Boolean) { prefs.setShowHiddenFiles(v); scanLocal() }
 
     /** §bibliotheque-locale-fusion : afficher les vidéos locales dans la grille. */
     val mergeLocal: StateFlow<Boolean> = prefs.mergeLocalLibrary

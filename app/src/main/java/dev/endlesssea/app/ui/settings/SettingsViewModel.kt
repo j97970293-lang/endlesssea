@@ -226,6 +226,16 @@ class SettingsViewModel @Inject constructor(
     fun setVideoEnhance(v: String) = prefs.setVideoEnhance(v)
     fun setBorderStrength(v: Int) = prefs.setBorderStrength(v)
 
+    // §fond-flou / §historique-local / §fichiers-caches / §reprise-fiche
+    val bgBlur: StateFlow<Int> = prefs.bgBlur
+    fun setBgBlur(v: Int) = prefs.setBgBlur(v)
+    val localInHistory: StateFlow<Boolean> = prefs.localInHistory
+    fun setLocalInHistory(v: Boolean) = prefs.setLocalInHistory(v)
+    val showHiddenFiles: StateFlow<Boolean> = prefs.showHiddenFiles
+    fun setShowHiddenFiles(v: Boolean) = prefs.setShowHiddenFiles(v)
+    val resumePrompt: StateFlow<Boolean> = prefs.resumePrompt
+    fun setResumePrompt(v: Boolean) = prefs.setResumePrompt(v)
+
     /** §rendu-vidéo : TextureView (filtres) ou SurfaceView (perf/HDR). */
     val videoRender: StateFlow<String> = prefs.videoRender
     fun setVideoRender(v: String) { prefs.setVideoRender(v) }

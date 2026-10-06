@@ -15,8 +15,8 @@ android {
         applicationId = "dev.endlesssea.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 17
-        versionName = "0.17.0"
+        versionCode = 18
+        versionName = "0.18.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -95,6 +95,7 @@ dependencies {
     ksp(libs.dagger.hilt.compiler)
 
     implementation(libs.io.coil)
+    implementation(libs.io.coil.video)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // HLS/DASH + Media3 session for background local playback

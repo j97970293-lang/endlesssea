@@ -787,6 +787,33 @@ fun DetailsScreen(
     }
 
     // ---- §fiche-serveurs : au clic sur un épisode, choix du serveur avant lecture
+    // §reprise-fiche : proposition automatique de reprendre où on s'était arrêté
+    val resumePromptOn by viewModel.resumePrompt.collectAsState()
+    var resumeAsked by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showResumeDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(state.resumeLabel, resumePromptOn) {
+        if (resumePromptOn && !resumeAsked && state.resumeLabel != null) {
+            resumeAsked = true
+            showResumeDialog = true
+        }
+    }
+    if (showResumeDialog && state.resumeLabel != null) {
+        AlertDialog(
+            onDismissRequest = { showResumeDialog = false },
+            confirmButton = {
+                Button(onClick = {
+                    showResumeDialog = false
+                    viewModel.playResume(onReady = launchPlayer())
+                }) { Text("Reprendre") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResumeDialog = false }) { Text("Plus tard") }
+            },
+            title = { Text("Reprendre la lecture ?") },
+            text = { Text(state.resumeLabel ?: "") },
+        )
+    }
+
     playSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
         ModalBottomSheet(onDismissRequest = { playSheetEpisode = null }) {
@@ -1204,7 +1231,7 @@ private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
+        label = { Text(label, maxLines = 1, softWrap = false) },
         shape = RoundedCornerShape(28.dp),
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,

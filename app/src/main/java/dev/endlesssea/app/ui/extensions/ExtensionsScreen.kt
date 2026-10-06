@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -67,6 +68,7 @@ fun ExtensionsScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
+    val selectedLangs by viewModel.languages.collectAsState()
     var addDialog by remember { mutableStateOf(false) }
     var repoUrl by remember { mutableStateOf("") }
 
@@ -181,7 +183,12 @@ fun ExtensionsScreen(
             // --------------------------------------- Extensions disponibles (dépôts)
             if (state.repoEntries.isNotEmpty()) {
                 item { Text("Disponibles en ligne", style = MaterialTheme.typography.titleMedium) }
-            items(state.repoEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
+            val shownEntries = state.repoEntries.filter { e ->
+                selectedLangs.isEmpty() ||
+                    e.entry.languages.isEmpty() ||
+                    e.entry.languages.any { l -> l.lowercase() in selectedLangs }
+            }
+            items(shownEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
                 val upToDate = e.installedVersion >= e.entry.version
                 GlassCard(contentPadding = PaddingValues(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -216,6 +223,34 @@ fun ExtensionsScreen(
 
             // --------------------------------------------- Extensions installées
             item { Text("Extensions installées", style = MaterialTheme.typography.titleMedium) }
+            item {
+                // §langues-extensions : ne garder que certaines langues de sources
+                val langs = remember(state.repoEntries) {
+                    state.repoEntries.flatMap { it.entry.languages }.map { it.lowercase() }
+                        .distinct().sorted()
+                }
+                if (langs.isNotEmpty()) {
+                    Column {
+                        Text(
+                            "Langues des sources",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(
+                            Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            langs.forEach { l ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = selectedLangs.isEmpty() || l in selectedLangs,
+                                    onClick = { viewModel.toggleLanguage(l) },
+                                    label = { Text(l.uppercase(), maxLines = 1, softWrap = false) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (state.extensions.isEmpty()) {
                 item {
                     Text(
@@ -237,6 +272,30 @@ fun ExtensionsScreen(
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("${ext.name} · v${ext.versionName}", style = MaterialTheme.typography.bodyLarge)
+                                // §metadonnees-extensions : tout ce que le dépôt déclare
+                                val meta = state.repoEntries.firstOrNull { it.entry.id == ext.pkg }?.entry
+                                Text(
+                                    listOfNotNull(
+                                        meta?.author?.name?.takeIf { it.isNotBlank() }?.let { "par $it" },
+                                        meta?.languages?.takeIf { it.isNotEmpty() }
+                                            ?.joinToString("/") { l -> l.uppercase() },
+                                        meta?.types?.takeIf { it.isNotEmpty() }
+                                            ?.joinToString(", ") { t -> t.lowercase() },
+                                        "API " + (meta?.apiVersion?.toString() ?: "1"),
+                                        if (meta?.nsfw == true) "18+" else null,
+                                    ).joinToString(" · ").ifBlank { "Aucune métadonnée publiée" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                meta?.description?.values?.firstOrNull()?.takeIf { it.isNotBlank() }?.let { d ->
+                                    Text(
+                                        d,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
                                 Text(
                                     "Permissions : ${ext.permissions.ifEmpty { "aucune" }}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -305,7 +364,7 @@ fun ExtensionsScreen(
                                         androidx.compose.material3.FilterChip(
                                             selected = entry.value == opt,
                                             onClick = { viewModel.saveExtSetting(editing.pkg, entry.key, opt) },
-                                            label = { Text(opt) },
+                                            label = { Text(opt, maxLines = 1, softWrap = false) },
                                         )
                                     }
                                 }
@@ -317,7 +376,7 @@ fun ExtensionsScreen(
                             OutlinedTextField(
                                 value = text,
                                 onValueChange = { text = it },
-                                label = { Text(entry.title) },
+                                label = { Text(entry.title, maxLines = 1, softWrap = false) },
                                 supportingText = entry.summary?.let { { Text(it) } },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),

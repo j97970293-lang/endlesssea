@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.ui.components.MediaCard
 import dev.endlesssea.app.ui.search.SearchItemUi
@@ -78,7 +79,8 @@ fun LibraryScreen(
             SearchItemUi(
                 id = "local:" + f.uri,
                 title = f.displayName,
-                posterUrl = f.customCoverUri,
+                // §vignettes-locales : à défaut d'affiche, la vidéo elle-même
+                posterUrl = f.customCoverUri ?: f.uri,
                 subtitle = "Fichier local",
             )
         }
@@ -126,7 +128,7 @@ fun LibraryScreen(
             }
             androidx.compose.material3.AssistChip(
                 onClick = { newCategoryName = ""; showNewCategory = true },
-                label = { Text("＋ Catégorie") },
+                label = { Text("＋ Catégorie", maxLines = 1, softWrap = false) },
             )
         }
 
@@ -183,18 +185,18 @@ fun LibraryScreen(
             androidx.compose.material3.FilterChip(
                 selected = !state.onDeviceOnly,
                 onClick = { viewModel.setOnDeviceOnly(false) },
-                label = { Text("Tous") },
+                label = { Text("Tous", maxLines = 1, softWrap = false) },
             )
             androidx.compose.material3.FilterChip(
                 selected = state.onDeviceOnly,
                 onClick = { viewModel.setOnDeviceOnly(true) },
-                label = { Text("Sur l'appareil") },
+                label = { Text("Sur l'appareil", maxLines = 1, softWrap = false) },
             )
             // §bibliotheque-locale-fusion : mêler les vidéos locales aux titres suivis
             androidx.compose.material3.FilterChip(
                 selected = mergeLocal,
                 onClick = { viewModel.setMergeLocal(!mergeLocal) },
-                label = { Text("Fichiers locaux") },
+                label = { Text("Fichiers locaux", maxLines = 1, softWrap = false) },
             )
             // Watchlist §29 : filtre par statut de suivi
             listOf(
@@ -206,7 +208,7 @@ fun LibraryScreen(
                 androidx.compose.material3.FilterChip(
                     selected = state.filterStatus == st,
                     onClick = { viewModel.setFilterStatus(if (state.filterStatus == st) "ALL" else st) },
-                    label = { Text(label) },
+                    label = { Text(label, maxLines = 1, softWrap = false) },
                 )
             }
         }
@@ -291,7 +293,7 @@ fun LibraryScreen(
                         )
                         androidx.compose.material3.OutlinedTextField(
                             value = editedTitle, onValueChange = { editedTitle = it },
-                            label = { Text("Titre affiché") }, singleLine = true,
+                            label = { Text("Titre affiché", maxLines = 1, softWrap = false) }, singleLine = true,
                         )
                         androidx.compose.material3.OutlinedTextField(
                             value = editedCover, onValueChange = { editedCover = it },
@@ -334,8 +336,15 @@ private fun LocalFilesPanel(
     val folders = remember(state.localFiles) {
         state.localFiles.groupBy { it.parentUri }.toList().sortedBy { it.second.first().folderName.lowercase() }
     }
-    val visibleFiles = remember(state.localFiles, openFolder) {
-        if (openFolder == null) emptyList() else state.localFiles.filter { it.parentUri == openFolder }
+    // §affichage-dossiers : « par dossier » (défaut) ou « tous les fichiers »
+    val folderView by viewModel.localFolderView.collectAsState()
+    val hiddenOn by viewModel.showHiddenFiles.collectAsState()
+    val visibleFiles = remember(state.localFiles, openFolder, folderView) {
+        when {
+            folderView == "flat" -> state.localFiles
+            openFolder == null -> emptyList()
+            else -> state.localFiles.filter { it.parentUri == openFolder }
+        }
     }
 
     // Choix d'un dossier SAF (persistance longue durée incluse)
@@ -360,7 +369,7 @@ private fun LocalFilesPanel(
         ) {
             androidx.compose.material3.AssistChip(
                 onClick = { dirPicker.launch(null) },
-                label = { Text("Ajouter un dossier") },
+                label = { Text("Ajouter un dossier", maxLines = 1, softWrap = false) },
             )
             viewModel.dirs.collectAsState().value.forEach { dir ->
                 androidx.compose.material3.AssistChip(
@@ -373,7 +382,7 @@ private fun LocalFilesPanel(
             }
             androidx.compose.material3.AssistChip(
                 onClick = { viewModel.scanLocal() },
-                label = { Text("Scanner") },
+                label = { Text("Scanner", maxLines = 1, softWrap = false) },
             )
         }
         Text(
@@ -413,8 +422,31 @@ private fun LocalFilesPanel(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
             ) {
+                // §affichage-dossiers : barre d'options du panneau local
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        androidx.compose.material3.FilterChip(
+                            selected = folderView != "flat",
+                            onClick = { viewModel.setLocalFolderView("folders") },
+                            label = { Text("Par dossier", maxLines = 1, softWrap = false) },
+                        )
+                        androidx.compose.material3.FilterChip(
+                            selected = folderView == "flat",
+                            onClick = { viewModel.setLocalFolderView("flat") },
+                            label = { Text("Tous les fichiers", maxLines = 1, softWrap = false) },
+                        )
+                        androidx.compose.material3.FilterChip(
+                            selected = hiddenOn,
+                            onClick = { viewModel.setShowHiddenFiles(!hiddenOn) },
+                            label = { Text("Fichiers cachés", maxLines = 1, softWrap = false) },
+                        )
+                    }
+                }
                 // ---- Niveau 1 : les dossiers (une carte par dossier)
-                if (openFolder == null) {
+                if (openFolder == null && folderView != "flat") {
                     items(folders, key = { it.first }) { (parent, files) ->
                         dev.endlesssea.app.ui.components.GlassCard(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
@@ -474,6 +506,17 @@ private fun LocalFilesPanel(
                                     contentDescription = null,
                                     modifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp),
                                     placeholderModifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp),
+                                )
+                            } else if (true) {
+                                // §vignettes-locales : image extraite de la vidéo
+                                coil.compose.AsyncImage(
+                                    model = coil.request.ImageRequest.Builder(
+                                        androidx.compose.ui.platform.LocalContext.current,
+                                    ).data(video.uri).crossfade(true).build(),
+                                    contentDescription = null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
                                 )
                             } else {
                                 androidx.compose.material3.Icon(
@@ -654,7 +697,7 @@ private fun LocalFilesPanel(
                         )
                         androidx.compose.material3.OutlinedTextField(
                             value = title, onValueChange = { title = it },
-                            label = { Text("Titre affiché") }, singleLine = true,
+                            label = { Text("Titre affiché", maxLines = 1, softWrap = false) }, singleLine = true,
                         )
                         androidx.compose.material3.OutlinedTextField(
                             value = cover, onValueChange = { cover = it },

@@ -112,14 +112,16 @@ fun GlassCard(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(cornerRadius)
+    // §multiplicateurs : le réglage « rayon » de la page Interface agit vraiment
+    val radiusMult = UiTuning.radius.collectAsState().value
+    val shape = RoundedCornerShape(cornerRadius * radiusMult.coerceIn(0.2f, 3f))
     val tintArgb = UiTuning.glassTint.collectAsState().value
     // §bordures : « trop de bordures » — la force du liseré est réglable et, à 0,
     // la carte n'en dessine plus du tout (verre franc, sans cadre dans le cadre).
     val strength = UiTuning.borders.collectAsState().value / 100f
     val edge = (tintArgb?.let { Color(it) } ?: Color.White).copy(alpha = 0.55f * strength)
     Surface(
-        modifier = modifier.glass(cornerRadius),
+        modifier = modifier.glass(cornerRadius * radiusMult.coerceIn(0.2f, 3f)),
         shape = shape,
         color = Color.Transparent,
         border = if (strength <= 0.01f) null else BorderStroke(1.dp, edge),
@@ -133,3 +135,7 @@ fun GlassCard(
 /** Floutage sécurisé : inopérant avant Android 12 (RenderEffect). */
 fun Modifier.blurIfSupported(radius: Dp): Modifier =
     if (Build.VERSION.SDK_INT >= 31) this.blur(radius) else this
+
+/** §fond-flou : flou utilisable comme Modifier (inopérant avant Android 12). */
+fun blurModifier(radius: Dp): Modifier =
+    if (Build.VERSION.SDK_INT >= 31) Modifier.blur(radius) else Modifier
