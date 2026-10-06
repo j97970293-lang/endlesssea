@@ -3,6 +3,10 @@ package dev.endlesssea.app.local
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 /**
@@ -47,13 +51,13 @@ object LocalVideos {
     suspend fun scanAsync(
         context: Context,
         treeUriString: String,
-    ): List<LocalVideoFile> = kotlinx.coroutines.coroutineScope {
+    ): List<LocalVideoFile> = coroutineScope {
         val tree = Uri.parse(treeUriString)
         val rootId = runCatching {
             android.provider.DocumentsContract.getTreeDocumentId(tree)
         }.getOrNull() ?: return@coroutineScope emptyList()
         val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
-        val gate = kotlinx.coroutines.sync.Semaphore(8)
+        val gate = Semaphore(8)
 
         suspend fun walk(docId: String, depth: Int): Unit {
             if (depth > MAX_DEPTH || out.size >= MAX_FILES_PER_ROOT) return
@@ -97,12 +101,11 @@ object LocalVideos {
                 }
             }
             // sous-dossiers en parallèle (8 curseurs max simultanés)
-            kotlinx.coroutines.coroutineScope {
-                subDirs.map { sub ->
-                    kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-                        gate.withPermit { walk(sub, depth + 1) }
-                    }
-                }.forEach { it.await() }
+            coroutineScope {
+                val jobs = subDirs.map { sub ->
+                    async(Dispatchers.IO) { gate.withPermit { walk(sub, depth + 1) } }
+                }
+                jobs.forEach { it.await() }
             }
         }
 
