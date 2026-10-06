@@ -81,10 +81,24 @@ class MainActivity : ComponentActivity() {
                 }
                 onDispose { }
             }
+            // §anymex-ui : réglages de la page « Interface »
+            val glowMult by prefs.glowMultiplier.collectAsState()
+            val radiusMult by prefs.radiusMultiplier.collectAsState()
+            val blurMult by prefs.blurMultiplier.collectAsState()
+            val cardRoundness by prefs.cardRoundness.collectAsState()
+            val cardAnim by prefs.cardAnimation.collectAsState()
+            val carouselStyle by prefs.carouselStyle.collectAsState()
+            val historyCardStyle by prefs.historyCardStyle.collectAsState()
+            val animationsOn by prefs.enableAnimation.collectAsState()
+            val navBarLayout by prefs.navBarLayout.collectAsState()
+            val translucentNav by prefs.translucentNav.collectAsState()
+            val legacyHeader by prefs.legacyHeader.collectAsState()
             val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
             androidx.compose.runtime.LaunchedEffect(
                 glassOverlay, glassScrim, cardStyle, preferredAudioLang,
                 glassVariant, liquidGlass, accentGlassLink, accentName, bloom,
+                glowMult, radiusMult, blurMult, cardRoundness, cardAnim,
+                carouselStyle, historyCardStyle, animationsOn,
             ) {
                 // §couleurs : « fusion accent/verre » — si liées, l'accent teinte aussi le verre ;
                 // sinon la variante Glass saturée choisie s'applique (beaucoup de couleurs).
@@ -98,6 +112,12 @@ class MainActivity : ComponentActivity() {
                     tintArgb = tint, liquid = liquidGlass,
                 )
                 dev.endlesssea.app.ui.components.UiTuning.updateBloom(bloom)
+                dev.endlesssea.app.ui.components.UiTuning.updateStyles(
+                    glow = glowMult, radius = radiusMult, blur = blurMult,
+                    roundness = cardRoundness, cardAnimation = cardAnim,
+                    carouselStyle = carouselStyle, historyCardStyle = historyCardStyle,
+                )
+                dev.endlesssea.app.ui.components.UiTuning.updateAnimations(animationsOn)
                 dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
             val pendingUpdate = androidx.compose.runtime.remember {
@@ -222,7 +242,9 @@ class MainActivity : ComponentActivity() {
                         if (route != Screen.Settings.route && !immersive) {
                         CenterAlignedTopAppBar(
                             modifier = Modifier.statusBarsPadding(),
-                            title = { Text(title) },
+                            // §anymex-ui / capture « Endless Sea barré » : plus de titre
+                            // d'application en haut — seul l'en-tête classique le réaffiche.
+                            title = { if (legacyHeader) Text(title) },
                             actions = {
                                 IconButton(onClick = { nav.navigate(Screen.Extensions.route) }) {
                                     Icon(Icons.Filled.Extension, contentDescription = "Extensions")
@@ -244,8 +266,12 @@ class MainActivity : ComponentActivity() {
                         if (route != Screen.Settings.route && !immersive) {
                             Box(Modifier.navigationBarsPadding()) {
                                 EsBottomBar(
-                                    nav, currentRoute = route, tabs = barTabs,
+                                    nav, currentRoute = route,
+                                    // §anymex-ui : disposition « moderne » = pas d'onglet
+                                    // Recherche dédié (la recherche vit dans Explorer).
+                                    tabs = if (navBarLayout == "modern") barTabs - "search" else barTabs,
                                     order = tabOrder, marginDp = barMargin,
+                                    translucent = translucentNav,
                                     // §barre-dynamique : pilule avec libellé par défaut (réf. Anymex)
                                     style = prefs.navBarStyle.collectAsState().value,
                                 )

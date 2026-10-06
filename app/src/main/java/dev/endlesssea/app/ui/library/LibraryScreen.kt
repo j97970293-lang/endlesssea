@@ -61,20 +61,32 @@ fun LibraryScreen(
 
     Column(Modifier.fillMaxSize()) {
         // §onglets-scrollés : 7 catégories sans cassure verticale (bug « Fa vo ris »)
-        ScrollableTabRow(
-            selectedTabIndex = tab,
-            edgePadding = 8.dp,
-            divider = {},
+        // §onglets-compacts (capture utilisateur « Fa vo ris ») : des pastilles
+        // qui défilent horizontalement, texte sur UNE ligne, jamais cassé
+        // lettre par lettre comme le faisait le Tab à largeur contrainte.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             LIBRARY_TABS.forEachIndexed { i, (label, key) ->
-                Tab(
+                androidx.compose.material3.FilterChip(
                     selected = tab == i,
                     onClick = {
                         tab = i
                         if (key == "LOCAL") viewModel.setLocalMode(true)
                         else { viewModel.setLocalMode(false); viewModel.onCategory(key) }
                     },
-                    text = { Text(label) },
+                    label = {
+                        Text(
+                            label,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+                        )
+                    },
                 )
             }
         }

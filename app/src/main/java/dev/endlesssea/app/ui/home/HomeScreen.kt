@@ -68,6 +68,8 @@ fun HomeScreen(
     // ni ModalBottomSheet (erreur « @Composable invocations can only happen
     // from the context of a @Composable function »).
     var providerSheetOpen by remember { mutableStateOf(false) }
+    val carouselStyle by dev.endlesssea.app.ui.components.UiTuning.carouselStyle.collectAsState()
+    val animationsOn by dev.endlesssea.app.ui.components.UiTuning.animations.collectAsState()
 
     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
 
@@ -78,9 +80,14 @@ fun HomeScreen(
     ) {
         item {
             if (state.featured.isNotEmpty()) {
+                // §anymex-ui : « Carousel Style » — bannière pleine largeur (classic)
+                // ou rangée d'affiches verticales (portrait).
+                if (carouselStyle == "portrait") {
+                    PortraitCarousel(items = state.featured, onClick = onMediaClick)
+                } else
                 FeaturedBanner(
                     items = state.featured,
-                    autoScroll = state.bannerAutoScroll,
+                    autoScroll = state.bannerAutoScroll && animationsOn,
                     onClick = onMediaClick,
                     onPlay = { onMediaClick(it) },          // « Lire » ouvre la fiche → épisodes + lecteur
                     onAdd = { viewModel.onAddToLibrary(it) },
@@ -497,6 +504,23 @@ private fun ProviderRow(
                 Text("✓", color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.titleMedium)
             }
+        }
+    }
+}
+
+
+/**
+ * §anymex-ui — carrousel « Portrait » : les titres à la une défilent en cartes
+ * d'affiches verticales au lieu d'une bannière pleine largeur.
+ */
+@Composable
+private fun PortraitCarousel(items: List<SearchItemUi>, onClick: (String) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+    ) {
+        items(items, key = { it.id }) { item ->
+            dev.endlesssea.app.ui.components.MediaCard(item = item, onClick = { onClick(item.id) })
         }
     }
 }

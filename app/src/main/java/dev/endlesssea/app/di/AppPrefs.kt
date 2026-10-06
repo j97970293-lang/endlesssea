@@ -82,6 +82,18 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "neige" to 0xFFD9E1F2,
         )
         const val DEFAULT_ACCENT = "lavande"
+
+        /** §anymex-ui : styles de carte média (capture « Card Style »). */
+        val CARD_STYLES = listOf("saikou", "exotic", "minimal_exotic", "modern")
+
+        /** Anciennes valeurs (0.12-) → style AnyMEX équivalent. */
+        fun migrateCardStyle(v: String?): String = when (v) {
+            null, "detail" -> "saikou"
+            "poster" -> "modern"
+            "minimal" -> "minimal_exotic"
+            in CARD_STYLES -> v!!
+            else -> "saikou"
+        }
     }
 
     private val p = context.getSharedPreferences("endless_sea_prefs", Context.MODE_PRIVATE)
@@ -205,9 +217,12 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     fun setGlassScrim(v: Int) { val c = v.coerceIn(0, 100); p.edit().putInt("glass_scrim", c).apply(); _glassScrim.value = c }
 
     // ---------------------------------------------------------------- cartes
-    private val _cardStyle = MutableStateFlow(p.getString("card_style", "detail") ?: "detail")
+    private val _cardStyle = MutableStateFlow(migrateCardStyle(p.getString("card_style", "saikou")))
     val cardStyle: StateFlow<String> = _cardStyle
-    fun setCardStyle(v: String) { val c = if (v in setOf("detail", "poster", "minimal")) v else "detail"; p.edit().putString("card_style", c).apply(); _cardStyle.value = c }
+    fun setCardStyle(v: String) {
+        val c = if (v in CARD_STYLES) v else "saikou"
+        p.edit().putString("card_style", c).apply(); _cardStyle.value = c
+    }
 
     // ---------------------------------------------------------------- lecteur avancé
     private val _skipSeconds = MutableStateFlow(p.getInt("skip_sec", 10))
@@ -406,6 +421,81 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         _dnsMode.value = m
         dev.endlesssea.core.net.EsNet.dnsMode = m
     }
+
+    // ------------------------------------------------ §anymex-ui : styles & mise en page
+    // Chaque réglage visuel de la page « Interface » (capture AnyMEX) est persisté ici
+    // et republié dans UiTuning par MainActivity, pour que les composants « verre »,
+    // les cartes et la barre de navigation le lisent sans injection Hilt.
+
+    /** Style des cartes d'historique : "regular" | "frosted" | "bootiful". */
+    private val _historyCardStyle = MutableStateFlow(p.getString("history_card_style", "bootiful") ?: "bootiful")
+    val historyCardStyle: StateFlow<String> = _historyCardStyle
+    fun setHistoryCardStyle(v: String) {
+        val c = if (v in setOf("regular", "frosted", "bootiful")) v else "bootiful"
+        p.edit().putString("history_card_style", c).apply(); _historyCardStyle.value = c
+    }
+
+    /** Carrousel d'accueil : "classic" (bannière pleine largeur) | "portrait" (affiches verticales). */
+    private val _carouselStyle = MutableStateFlow(p.getString("carousel_style", "classic") ?: "classic")
+    val carouselStyle: StateFlow<String> = _carouselStyle
+    fun setCarouselStyle(v: String) {
+        val c = if (v in setOf("classic", "portrait")) v else "classic"
+        p.edit().putString("carousel_style", c).apply(); _carouselStyle.value = c
+    }
+
+    /** Disposition de la barre : "legacy" (mes onglets) | "modern" (Accueil/Explorer/Biblio/Stats). */
+    private val _navBarLayout = MutableStateFlow(p.getString("nav_bar_layout", "legacy") ?: "legacy")
+    val navBarLayout: StateFlow<String> = _navBarLayout
+    fun setNavBarLayout(v: String) {
+        val c = if (v in setOf("legacy", "modern")) v else "legacy"
+        p.edit().putString("nav_bar_layout", c).apply(); _navBarLayout.value = c
+    }
+
+    private fun mult(key: String, def: Float) = MutableStateFlow(p.getFloat(key, def).coerceIn(0f, 5f))
+    private fun saveMult(key: String, flow: MutableStateFlow<Float>, v: Float) {
+        val c = (Math.round(v * 10f) / 10f).coerceIn(0f, 5f)
+        p.edit().putFloat(key, c).apply(); flow.value = c
+    }
+
+    /** Intensité du halo lumineux des éléments (0..5, défaut 1). */
+    private val _glowMultiplier = mult("glow_mult", 1f)
+    val glowMultiplier: StateFlow<Float> = _glowMultiplier
+    fun setGlowMultiplier(v: Float) = saveMult("glow_mult", _glowMultiplier, v)
+
+    /** Rayon des coins des éléments d'interface (0..5, défaut 1). */
+    private val _radiusMultiplier = mult("radius_mult", 1f)
+    val radiusMultiplier: StateFlow<Float> = _radiusMultiplier
+    fun setRadiusMultiplier(v: Float) = saveMult("radius_mult", _radiusMultiplier, v)
+
+    /** Intensité du flou des halos (0..5, défaut 1). */
+    private val _blurMultiplier = mult("blur_mult", 1f)
+    val blurMultiplier: StateFlow<Float> = _blurMultiplier
+    fun setBlurMultiplier(v: Float) = saveMult("blur_mult", _blurMultiplier, v)
+
+    /** Arrondi de toutes les cartes média (0..5, défaut 1). */
+    private val _cardRoundness = mult("card_roundness", 1f)
+    val cardRoundness: StateFlow<Float> = _cardRoundness
+    fun setCardRoundness(v: Float) = saveMult("card_roundness", _cardRoundness, v)
+
+    /** Animation d'appui sur les cartes média. */
+    private val _cardAnimation = MutableStateFlow(p.getBoolean("card_animation", true))
+    val cardAnimation: StateFlow<Boolean> = _cardAnimation
+    fun setCardAnimation(v: Boolean) { p.edit().putBoolean("card_animation", v).apply(); _cardAnimation.value = v }
+
+    /** Animations des carrousels (défilement auto et transitions). */
+    private val _enableAnimation = MutableStateFlow(p.getBoolean("enable_animation", true))
+    val enableAnimation: StateFlow<Boolean> = _enableAnimation
+    fun setEnableAnimation(v: Boolean) { p.edit().putBoolean("enable_animation", v).apply(); _enableAnimation.value = v }
+
+    /** Barre de navigation translucide (sinon opaque, meilleure lisibilité). */
+    private val _translucentNav = MutableStateFlow(p.getBoolean("translucent_nav", true))
+    val translucentNav: StateFlow<Boolean> = _translucentNav
+    fun setTranslucentNav(v: Boolean) { p.edit().putBoolean("translucent_nav", v).apply(); _translucentNav.value = v }
+
+    /** En-tête classique (titre simple) au lieu de l'en-tête immersif des écrans d'accueil. */
+    private val _legacyHeader = MutableStateFlow(p.getBoolean("legacy_header", false))
+    val legacyHeader: StateFlow<Boolean> = _legacyHeader
+    fun setLegacyHeader(v: Boolean) { p.edit().putBoolean("legacy_header", v).apply(); _legacyHeader.value = v }
 
     init {
         // Synchronise le résolveur réseau global dès la création des préférences.

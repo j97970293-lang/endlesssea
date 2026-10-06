@@ -68,6 +68,8 @@ fun EsBottomBar(
     marginDp: Int = 16,
     /** §barre-dynamique : "dynamic" = pilule (icône+libellé sélectionné) · "classic" = icônes seules. */
     style: String = "dynamic",
+    /** §anymex-ui : barre translucide (verre) ou fond plein pour un maximum de lisibilité. */
+    translucent: Boolean = true,
 ) {
     val byRoute = allTabScreens.associateBy { it.route }
     val shown = order.mapNotNull { byRoute[it] }.filter { it.route in tabs }.ifEmpty { listOf(Screen.Home) }
@@ -78,9 +80,12 @@ fun EsBottomBar(
         horizontalArrangement = Arrangement.Center,
     ) {
         Row(
-            modifier = Modifier
-                .glass(cornerRadius = 30.dp)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+            modifier = (
+                if (translucent) Modifier.glass(cornerRadius = 30.dp)
+                else Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(30.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ).padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
             shown.forEach { screen ->
                 val selected = currentRoute == screen.route

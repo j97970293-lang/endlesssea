@@ -104,6 +104,32 @@ class SettingsViewModel @Inject constructor(
     fun setGrain(v: Boolean) = prefs.setGrain(v)
     val navBarStyle = prefs.navBarStyle
     fun setNavBarStyle(v: String) = prefs.setNavBarStyle(v)
+
+    // ------------------------------------------------ §anymex-ui : page « Interface »
+    val navBarStyle: kotlinx.coroutines.flow.StateFlow<String> = prefs.navBarStyle
+    val navBarLayout: kotlinx.coroutines.flow.StateFlow<String> = prefs.navBarLayout
+    fun setNavBarLayout(v: String) = prefs.setNavBarLayout(v)
+    val historyCardStyle: kotlinx.coroutines.flow.StateFlow<String> = prefs.historyCardStyle
+    fun setHistoryCardStyle(v: String) = prefs.setHistoryCardStyle(v)
+    val carouselStyle: kotlinx.coroutines.flow.StateFlow<String> = prefs.carouselStyle
+    fun setCarouselStyle(v: String) = prefs.setCarouselStyle(v)
+    val glowMultiplier: kotlinx.coroutines.flow.StateFlow<Float> = prefs.glowMultiplier
+    fun setGlowMultiplier(v: Float) = prefs.setGlowMultiplier(v)
+    val radiusMultiplier: kotlinx.coroutines.flow.StateFlow<Float> = prefs.radiusMultiplier
+    fun setRadiusMultiplier(v: Float) = prefs.setRadiusMultiplier(v)
+    val blurMultiplier: kotlinx.coroutines.flow.StateFlow<Float> = prefs.blurMultiplier
+    fun setBlurMultiplier(v: Float) = prefs.setBlurMultiplier(v)
+    val cardRoundness: kotlinx.coroutines.flow.StateFlow<Float> = prefs.cardRoundness
+    fun setCardRoundness(v: Float) = prefs.setCardRoundness(v)
+    val cardAnimation: kotlinx.coroutines.flow.StateFlow<Boolean> = prefs.cardAnimation
+    fun setCardAnimation(v: Boolean) = prefs.setCardAnimation(v)
+    val enableAnimation: kotlinx.coroutines.flow.StateFlow<Boolean> = prefs.enableAnimation
+    fun setEnableAnimation(v: Boolean) = prefs.setEnableAnimation(v)
+    val translucentNav: kotlinx.coroutines.flow.StateFlow<Boolean> = prefs.translucentNav
+    fun setTranslucentNav(v: Boolean) = prefs.setTranslucentNav(v)
+    val legacyHeader: kotlinx.coroutines.flow.StateFlow<Boolean> = prefs.legacyHeader
+    fun setLegacyHeader(v: Boolean) = prefs.setLegacyHeader(v)
+    val immersiveModeFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = prefs.immersiveMode
     val immersiveMode = prefs.immersiveMode
     fun setImmersiveMode(v: Boolean) = prefs.setImmersiveMode(v)
 

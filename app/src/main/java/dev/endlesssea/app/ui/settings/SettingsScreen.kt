@@ -172,9 +172,18 @@ fun SettingsScreen(
             if (openCategoryFull == null) {
                 item { GroupTitle("Apparence & interface") }
             }
+            // §anymex-ui : deux entrées distinctes comme AnyMEX — « Interface » (mise
+            // en page, styles de cartes, multiplicateurs) et « Thème » (couleurs, verre).
             item {
-                SettingCategory("🎨", "Interface & thème",
-                    "Verre liquide, thème AMOLED, accent, police, barre", expanded = "interface" in openCategories) { toggleCategory("interface") }
+                SettingCategory("🪟", "Interface",
+                    "Styles de cartes, carrousel, barre, arrondis et halos", expanded = "ui" in openCategories) { toggleCategory("ui") }
+            }
+            if ("ui" in openCategories) {
+                item { UiSettingsSection(viewModel, state) }
+            }
+            item {
+                SettingCategory("🎨", "Thème",
+                    "Verre liquide, AMOLED, accent, police, fond d'écran", expanded = "interface" in openCategories) { toggleCategory("interface") }
             }
             if ("interface" in openCategories) {
             item {
