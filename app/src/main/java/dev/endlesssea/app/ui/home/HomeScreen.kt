@@ -56,12 +56,20 @@ import kotlinx.coroutines.delay
  * Accueil (spec §10) : grande bannière horizontale auto/manuelle + rangées
  * « Ajouts récents », « Reprendre », « Téléchargements en cours », « Favoris ».
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) // ModalBottomSheet
 @Composable
 fun HomeScreen(
     onMediaClick: (String) -> Unit,
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    // §fournisseurs : état et feuille modale hissés hors de la LazyColumn —
+    // LazyListScope n'est pas @Composable, on ne peut y appeler ni remember
+    // ni ModalBottomSheet (erreur « @Composable invocations can only happen
+    // from the context of a @Composable function »).
+    var providerSheetOpen by remember { mutableStateOf(false) }
+
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -95,7 +103,6 @@ fun HomeScreen(
 
         // ---- §fournisseurs (capture AnyMEX) : Choose Provider en feuille —
         // catalogue « à la une » par extension + trackers gratuits annoncés honnêtement.
-        var providerSheetOpen by remember { mutableStateOf(false) }
         if (state.extensionCount > 0) {
             item(key = "providerBtn") {
                 androidx.compose.material3.OutlinedButton(
@@ -114,56 +121,6 @@ fun HomeScreen(
             }
         }
 
-        if (providerSheetOpen) {
-            androidx.compose.material3.ModalBottomSheet(
-                onDismissRequest = { providerSheetOpen = false },
-            ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                    Text("Choisir le fournisseur", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "Quelle source alimente l'accueil « à la une » ?",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(12.dp))
-
-                    ProviderRow(
-                        title = "Toutes mes sources",
-                        subtitle = "Les catalogues de chaque extension fusionnés",
-                        selected = state.sourceFilter == "ALL",
-                        enabled = true,
-                    ) { viewModel.setSourceFilter("ALL"); providerSheetOpen = false }
-
-                    state.sources.forEach { (pkg, name, iconUrl) ->
-                        ProviderRow(
-                            title = name,
-                            subtitle = "Catalogue de l'extension $name",
-                            iconUrl = iconUrl,
-                            selected = state.sourceFilter == pkg,
-                            enabled = true,
-                        ) { viewModel.setSourceFilter(pkg); providerSheetOpen = false }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "Trackers & métadonnées (gratuits)",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    listOf(
-                        "AniList" to "Suivi anime & manga (gratuit)",
-                        "MyAnimeList" to "La plus grande base anime & manga",
-                        "Simkl" to "Suivi films & séries",
-                    ).forEach { (t, sub) ->
-                        ProviderRow(
-                            title = t, subtitle = "$sub · bientôt dans Endless Sea",
-                            selected = false, enabled = false,
-                        ) {}
-                    }
-                    Spacer(Modifier.height(28.dp))
-                }
-            }
-        }
 
         // ---- Rangées en ligne des extensions (la vraie vie de l'accueil)
         // §accueil-multi : filtrer l'accueil sur UNE extension ou tout voir.
@@ -228,6 +185,58 @@ fun HomeScreen(
                 MediaRow(title = "Favoris", items = state.favorites, onMediaClick = onMediaClick)
             }
         }
+        }
+
+            if (providerSheetOpen) {
+                androidx.compose.material3.ModalBottomSheet(
+                    onDismissRequest = { providerSheetOpen = false },
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                        Text("Choisir le fournisseur", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "Quelle source alimente l'accueil « à la une » ?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        ProviderRow(
+                            title = "Toutes mes sources",
+                            subtitle = "Les catalogues de chaque extension fusionnés",
+                            selected = state.sourceFilter == "ALL",
+                            enabled = true,
+                        ) { viewModel.setSourceFilter("ALL"); providerSheetOpen = false }
+
+                        state.sources.forEach { (pkg, name, iconUrl) ->
+                            ProviderRow(
+                                title = name,
+                                subtitle = "Catalogue de l'extension $name",
+                                iconUrl = iconUrl,
+                                selected = state.sourceFilter == pkg,
+                                enabled = true,
+                            ) { viewModel.setSourceFilter(pkg); providerSheetOpen = false }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Trackers & métadonnées (gratuits)",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        listOf(
+                            "AniList" to "Suivi anime & manga (gratuit)",
+                            "MyAnimeList" to "La plus grande base anime & manga",
+                            "Simkl" to "Suivi films & séries",
+                        ).forEach { (t, sub) ->
+                            ProviderRow(
+                                title = t, subtitle = "$sub · bientôt dans Endless Sea",
+                                selected = false, enabled = false,
+                            ) {}
+                        }
+                        Spacer(Modifier.height(28.dp))
+                    }
+                }
+            }
     }
 }
 

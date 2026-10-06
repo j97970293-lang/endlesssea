@@ -575,7 +575,6 @@ fun SettingsScreen(
             // ------------------------------------------------------- STOCKAGE
             }
             // --------------------------------------------------- TÉLÉCHARGEMENT
-            }
             if (openCategoryFull == null) {
                 item { GroupTitle("Média & lecture") }
             }
@@ -598,6 +597,7 @@ fun SettingsScreen(
                     subtitle = "${state.partsPerTask} segments par fichier · ${state.parallelTasks} tâche(s) simultanée(s)",
                     onClick = { showNumbersDialog = true },
                 )
+            }
                 item {
                     SettingRow(
                         title = "Emplacement des téléchargements",
