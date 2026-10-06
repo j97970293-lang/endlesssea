@@ -78,6 +78,59 @@ fun SearchScreen(
             singleLine = true,
         )
 
+        // §recherche-sources : cases pour désactiver des sources + mode « résultats seuls »
+        val excluded by viewModel.searchExcluded.collectAsState()
+        val resultsOnly by viewModel.resultsOnly.collectAsState()
+        var showSourcePicker by androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            androidx.compose.material3.AssistChip(
+                onClick = { showSourcePicker = true },
+                label = {
+                    Text(
+                        if (excluded.isEmpty()) "Sources : toutes"
+                        else "Sources : ${excluded.size} désactivée(s)",
+                    )
+                },
+            )
+            androidx.compose.material3.FilterChip(
+                selected = resultsOnly,
+                onClick = { viewModel.setResultsOnly(!resultsOnly) },
+                label = { Text("Résultats seuls") },
+            )
+        }
+        if (showSourcePicker) {
+            val sources = androidx.compose.runtime.remember { viewModel.availableSources() }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showSourcePicker = false },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { showSourcePicker = false }) {
+                        Text("Fermer")
+                    }
+                },
+                title = { Text("Sources interrogées") },
+                text = {
+                    Column {
+                        if (sources.isEmpty()) Text("Aucune extension activée.")
+                        sources.forEach { (id, name) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.Checkbox(
+                                    checked = id !in excluded,
+                                    onCheckedChange = { viewModel.toggleSearchSource(id) },
+                                )
+                                Text(name)
+                            }
+                        }
+                    }
+                },
+            )
+        }
+
         // ---- Filtres transmis aux extensions (FilterSet : type + langue)
         androidx.compose.foundation.layout.Row(
             Modifier
@@ -130,9 +183,10 @@ fun SearchScreen(
         ) {
             // §recherche-groupée : un en-tête PAR extension — on sait toujours
             // quelle source a renvoyé quelle vignette.
-            val groups = state.results.groupBy { it.sourceName.ifBlank { "Source" } }
+            val groups = if (resultsOnly) mapOf("" to state.results)
+            else state.results.groupBy { it.sourceName.ifBlank { "Source" } }
             groups.forEach { (srcName, rows) ->
-                item(key = "hdr:$srcName", span = { GridItemSpan(maxLineSpan) }) {
+                if (srcName.isNotBlank()) item(key = "hdr:$srcName", span = { GridItemSpan(maxLineSpan) }) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),

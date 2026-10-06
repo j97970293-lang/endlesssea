@@ -79,31 +79,31 @@ fun UiSettingsSection(viewModel: SettingsViewModel, state: SettingsUiState) {
         Section("Commun")
         GroupCard {
             SwitchRow(
-                "✨", "Animations",
+                "", "Animations",
                 "Carrousels animés et transitions fluides",
                 enableAnimation, viewModel::setEnableAnimation,
             )
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             SwitchRow(
-                "🫧", "Barre translucide",
+                "", "Barre translucide",
                 "La barre de navigation laisse voir le contenu",
                 translucentNav, viewModel::setTranslucentNav,
             )
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             SwitchRow(
-                "📰", "En-tête classique",
+                "", "En-tête classique",
                 "Titre simple en haut des écrans d'accueil",
                 legacyHeader, viewModel::setLegacyHeader,
             )
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             SwitchRow(
-                "⛶", "Mode immersif",
+                "", "Mode immersif",
                 "Masque les barres système (statut et navigation)",
                 immersive, viewModel::setImmersiveMode,
             )
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             SwitchRow(
-                "🎞", "Animation des cartes",
+                "", "Animation des cartes",
                 "Léger effet d'enfoncement à l'appui",
                 cardAnimation, viewModel::setCardAnimation,
             )
@@ -112,19 +112,19 @@ fun UiSettingsSection(viewModel: SettingsViewModel, state: SettingsUiState) {
         // ------------------------------------------- MISE EN PAGE & STYLES
         Section("Mise en page & styles")
         GroupCard {
-            NavRow("🃏", "Style des cartes", CARD_STYLE_LABELS[cardStyle] ?: "Saikou") { dialog = "card" }
+            NavRow("", "Style des cartes", CARD_STYLE_LABELS[cardStyle] ?: "Saikou") { dialog = "card" }
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            NavRow("🕘", "Cartes d'historique", HISTORY_LABELS[historyStyle] ?: "Bootiful") { dialog = "history" }
+            NavRow("", "Cartes d'historique", HISTORY_LABELS[historyStyle] ?: "Bootiful") { dialog = "history" }
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            NavRow("🎠", "Carrousel d'accueil", CAROUSEL_LABELS[carouselStyle] ?: "Classique") { dialog = "carousel" }
+            NavRow("", "Carrousel d'accueil", CAROUSEL_LABELS[carouselStyle] ?: "Classique") { dialog = "carousel" }
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             NavRow(
-                "🧭", "Disposition de la barre",
+                "", "Disposition de la barre",
                 if (navLayout == "modern") "Moderne (Explorer + Bibliothèque)" else "Classique (mes onglets)",
             ) { dialog = "navLayout" }
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             NavRow(
-                "🔘", "Style de la barre",
+                "", "Style de la barre",
                 if (navStyle == "dynamic") "Pilule dynamique" else "Classique",
             ) { dialog = "navStyle" }
         }
@@ -132,17 +132,38 @@ fun UiSettingsSection(viewModel: SettingsViewModel, state: SettingsUiState) {
         // ------------------------------------------------------------ EXTRAS
         Section("Extras")
         GroupCard {
-            SliderRow("💡", "Multiplicateur de halo", "Intensité de la lueur des éléments", glow, viewModel::setGlowMultiplier)
+            SliderRow("", "Multiplicateur de halo", "Intensité de la lueur des éléments", glow, viewModel::setGlowMultiplier)
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            SliderRow("⬜", "Multiplicateur de rayon", "Arrondi des éléments d'interface", radius, viewModel::setRadiusMultiplier)
+            SliderRow("", "Multiplicateur de rayon", "Arrondi des éléments d'interface", radius, viewModel::setRadiusMultiplier)
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            SliderRow("🌫", "Multiplicateur de flou", "Diffusion des halos lumineux", blur, viewModel::setBlurMultiplier)
+            SliderRow("", "Multiplicateur de flou", "Diffusion des halos lumineux", blur, viewModel::setBlurMultiplier)
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            SliderRow("🧊", "Arrondi des cartes", "Coins de toutes les cartes média", roundness, viewModel::setCardRoundness)
+            SliderRow("", "Arrondi des cartes", "Coins de toutes les cartes média", roundness, viewModel::setCardRoundness)
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+            // §bordures : « trop de bordures, et des bordures à l'intérieur »
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                val borders by viewModel.borderStrength.collectAsState()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Liserés des cartes", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "0 % = aucune bordure (verre franc, plus de cadre dans le cadre)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text("$borders %", style = MaterialTheme.typography.labelLarge)
+                }
+                Slider(
+                    value = borders.toFloat(),
+                    onValueChange = { viewModel.setBorderStrength(it.toInt()) },
+                    valueRange = 0f..100f,
+                )
+            }
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("📏  Marge de la barre", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text("Marge de la barre", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                     Badge("${state.barMargin}")
                 }
                 Slider(
@@ -494,13 +515,13 @@ private fun NavPreview(style: String) {
             Modifier.clip(RoundedCornerShape(24.dp)).background(accent).padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("🏠", style = MaterialTheme.typography.labelLarge)
+            Text("", style = MaterialTheme.typography.labelLarge)
             if (style == "dynamic") {
                 Spacer(Modifier.width(6.dp))
                 Text("Accueil", style = MaterialTheme.typography.labelLarge, color = Color.Black)
             }
         }
-        listOf("🧭", "🔍", "📚").forEach {
+        listOf("", "", "").forEach {
             Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) { Text(it) }
         }
     }

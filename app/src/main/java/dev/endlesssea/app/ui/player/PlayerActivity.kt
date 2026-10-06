@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Lock
@@ -46,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -165,6 +167,16 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         })
     }
 
+    // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
+    val progressPos by viewModel.progressPosition.collectAsState()
+    val toolsPos by viewModel.toolsPosition.collectAsState()
+    val megaSide by viewModel.megaSkipSide.collectAsState()
+    val progressThickness by viewModel.progressThickness.collectAsState()
+    val progressRounded by viewModel.progressRounded.collectAsState()
+    val playerThemeName by viewModel.playerTheme.collectAsState()
+    val themeArgb = dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES[playerThemeName]?.first ?: 0L
+    val accentColor = if (themeArgb == 0L) MaterialTheme.colorScheme.primary else Color(themeArgb)
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
         val renderMode by viewModel.videoRender.collectAsState()
@@ -241,15 +253,16 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             if (!state.locked) {
                                 val half = size.width / 2
                                 val delta = if (offset.x < half) -state.skipSeconds else state.skipSeconds
+                                // §double-message : jumpBy publie déjà state.skipFlash,
+                                // inutile d'afficher un second bandeau par-dessus.
                                 viewModel.jumpBy(delta)
-                                flash(if (delta > 0) "⏩ +${delta}s" else "⏪ ${delta}s")
                             }
                         },
                         onLongPress = {
                             if (!state.locked) {
                                 exo.setPlaybackSpeed(2f)
                                 speedBoost = true
-                                gestureOverlay = "⚡ Vitesse ×2"
+                                gestureOverlay = "Vitesse ×2"
                             }
                         },
                         onPress = {
@@ -300,7 +313,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                         ((accX / size.width) * span).toLong()
                                     if (dur > 0) seekTarget = seekTarget.coerceIn(0L, dur)
                                     val d = (seekTarget - baseMs) / 1000
-                                    flash("⏩ %+ds · %s".format(d, formatTime(seekTarget)))
+                                    flash("%+d s · %s".format(d, formatTime(seekTarget)))
                                 }
                                 2 -> {
                                     val b = (baseBright - accY / size.height).coerceIn(0.01f, 1f)
@@ -309,7 +322,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                         lp.screenBrightness = b
                                         w.attributes = lp
                                     }
-                                    flash("☀ Luminosité ${(b * 100).toInt()} %")
+                                    flash("Luminosité ${(b * 100).toInt()} %")
                                 }
                                 3 -> {
                                     val v = (baseVol + (-accY / size.height) * maxVol)
@@ -317,7 +330,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                     audio.setStreamVolume(
                                         android.media.AudioManager.STREAM_MUSIC, v, 0,
                                     )
-                                    flash("🔊 Volume $v/$maxVol")
+                                    flash("Volume $v/$maxVol")
                                 }
                             }
                         },
@@ -447,7 +460,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                         )
                                     }
                                 }
-                                if (active) Text("✓", color = MaterialTheme.colorScheme.primary)
+                                if (active) {
+                                    Icon(
+                                        Icons.Filled.Check, null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             }
                         }
                     }
@@ -518,12 +536,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             }
 
             if (!state.locked) {
-                // §lecteur-modele : habillage façon mpv — AUCUN bandeau translucide.
-                // Transport au centre de l'image, ligne de temps fine tout en bas,
-                // outils sur une rangée d'icônes, mégaskip en pastille flottante
-                // (vers l'AVANT uniquement, comme demandé).
+                // §lecteur-modele / §placements : habillage façon mpv, SANS bandeau.
+                // L'utilisateur choisit où vivent la ligne de temps, les outils et
+                // la pastille mégaskip (Réglages → Lecteur → Disposition).
                 val dur = state.durationMs.coerceAtLeast(1)
                 val progress = (slidingPos ?: (state.positionMs.toFloat() / dur)).coerceIn(0f, 1f)
+                val barH = progressThickness.dp
+                val barShape = if (progressRounded) RoundedCornerShape(50) else RoundedCornerShape(0.dp)
 
                 // ---- Transport central : précédent · lecture · suivant
                 Row(
@@ -565,13 +584,17 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     }
                 }
 
-                // ---- Mégaskip : une seule pastille, vers l'avant
+                // ---- Mégaskip : une seule pastille, vers l'avant, côté réglable
                 Box(
                     Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 20.dp, top = 120.dp)
+                        .align(if (megaSide == "left") Alignment.CenterStart else Alignment.CenterEnd)
+                        .padding(
+                            start = if (megaSide == "left") 20.dp else 0.dp,
+                            end = if (megaSide == "left") 0.dp else 20.dp,
+                            top = 120.dp,
+                        )
                         .clip(RoundedCornerShape(26.dp))
-                        .background(MaterialTheme.colorScheme.primary)
+                        .background(accentColor)
                         .clickable { viewModel.megaJump(state.megaSkipSeconds) }
                         .padding(horizontal = 22.dp, vertical = 12.dp),
                 ) {
@@ -583,19 +606,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     )
                 }
 
-                // ---- Bas : ligne de temps fine, puis rangée d'outils
-                Column(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
-                            ),
-                        )
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                // ---- Ligne de temps (placement réglable)
+                val timeline: @Composable () -> Unit = {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
                             formatTime(slidingPos?.let { (it * dur).toLong() } ?: state.positionMs),
                             color = Color.White,
@@ -612,9 +628,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             thumb = {
                                 Box(
                                     Modifier
-                                        .size(14.dp)
+                                        .size((progressThickness + 8).dp)
                                         .clip(RoundedCornerShape(50))
-                                        .background(MaterialTheme.colorScheme.primary),
+                                        .background(accentColor),
                                 )
                             },
                             track = { sliderState ->
@@ -623,16 +639,16 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                 Box(
                                     Modifier
                                         .fillMaxWidth()
-                                        .height(3.dp)
-                                        .clip(RoundedCornerShape(50))
+                                        .height(barH)
+                                        .clip(barShape)
                                         .background(Color.White.copy(alpha = 0.30f)),
                                 ) {
                                     Box(
                                         Modifier
                                             .fillMaxWidth(frac.coerceIn(0f, 1f))
-                                            .height(3.dp)
-                                            .clip(RoundedCornerShape(50))
-                                            .background(MaterialTheme.colorScheme.primary),
+                                            .height(barH)
+                                            .clip(barShape)
+                                            .background(accentColor),
                                     )
                                 }
                             },
@@ -643,8 +659,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             style = MaterialTheme.typography.titleSmall,
                         )
                     }
+                }
+
+                // ---- Rangée d'outils (placement réglable)
+                val tools: @Composable () -> Unit = {
                     Row(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = { viewModel.toggleLock() }) {
@@ -668,7 +688,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         IconButton(onClick = { zoomFit = !zoomFit }) {
                             Icon(
                                 Icons.Filled.ZoomIn, "Zoom",
-                                tint = if (zoomFit) Color.White else MaterialTheme.colorScheme.primary,
+                                tint = if (zoomFit) Color.White else accentColor,
                             )
                         }
                         Text(
@@ -687,13 +707,38 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             Icon(
                                 Icons.Filled.Tune, "Filtres vidéo",
                                 tint = if (state.filterPresetName != "none" && state.filterPresetName != "Aucun")
-                                    MaterialTheme.colorScheme.primary else Color.White,
+                                    accentColor else Color.White,
                             )
                         }
                         IconButton(onClick = { showMoreSheet = true }) {
                             Icon(Icons.Filled.MoreVert, "Plus", tint = Color.White)
                         }
                     }
+                }
+
+                // Placement : ce qui va en haut (sous le titre) et ce qui va en bas.
+                Column(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(top = 58.dp),
+                ) {
+                    if (toolsPos == "top") tools()
+                    if (progressPos == "top") timeline()
+                }
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            ),
+                        )
+                        .padding(vertical = 8.dp),
+                ) {
+                    if (progressPos != "top") timeline()
+                    if (toolsPos != "top") tools()
                 }
             }
         }
@@ -914,6 +959,85 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         onValueChange = { viewModel.applyFilter(state.filterBrightness, state.filterSaturation, it, "perso") },
                         valueRange = -60f..60f,
                     )
+                    // §filtres-video : réglages avancés demandés (contraste, gamma,
+                    // netteté, température) — appliqués en direct, sans quitter.
+                    Text("Contraste ${"%.2f".format(state.filterContrast)}",
+                        style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = state.filterContrast,
+                        onValueChange = {
+                            viewModel.applyAdvanced(it, state.filterGamma, state.filterSharp, state.filterTemp)
+                        },
+                        valueRange = 0.5f..2f,
+                    )
+                    Text("Gamma ${"%.2f".format(state.filterGamma)}",
+                        style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = state.filterGamma,
+                        onValueChange = {
+                            viewModel.applyAdvanced(state.filterContrast, it, state.filterSharp, state.filterTemp)
+                        },
+                        valueRange = 0.5f..2f,
+                    )
+                    Text("Netteté ${(state.filterSharp * 100).toInt()} %",
+                        style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = state.filterSharp,
+                        onValueChange = {
+                            viewModel.applyAdvanced(state.filterContrast, state.filterGamma, it, state.filterTemp)
+                        },
+                        valueRange = 0f..1f,
+                    )
+                    Text(
+                        "Température " + when {
+                            state.filterTemp > 0.05f -> "chaude"
+                            state.filterTemp < -0.05f -> "froide"
+                            else -> "neutre"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Slider(
+                        value = state.filterTemp,
+                        onValueChange = {
+                            viewModel.applyAdvanced(state.filterContrast, state.filterGamma, state.filterSharp, it)
+                        },
+                        valueRange = -1f..1f,
+                    )
+                    Text(
+                        "Amélioration de l'image",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    Text(
+                        "Traitements légers (pas d'upscale IA : ça ramerait sur mobile) — " +
+                            "contraste local, éclat, lissage du grain, rendu cinéma ou mode nuit.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(
+                            "none" to "Aucune", "net" to "Netteté", "eclat" to "Éclat",
+                            "doux" to "Anti-grain", "cinema" to "Cinéma", "nuit" to "Nuit",
+                        ).forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.enhance == key,
+                                onClick = { viewModel.setEnhance(key) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    TextButton(onClick = {
+                        viewModel.applyAdvanced(1f, 1f, 0f, 0f)
+                        viewModel.setEnhance("none")
+                        viewModel.applyFilter(0f, 0f, 0f, "none")
+                    }) { Text("Tout réinitialiser") }
                     Spacer(Modifier.width(6.dp))
                     OutlinedTextField(
                         value = presetName,
@@ -928,7 +1052,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             presetName = ""
                         },
                         enabled = presetName.isNotBlank(),
-                    ) { Text("💾 Enregistrer le préréglage courant") }
+                    ) { Text("Enregistrer le préréglage courant") }
                 }
             },
         )
@@ -990,7 +1114,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun TextButtonBack(onBack: () -> Unit) {
-    TextButton(onClick = onBack) { Text("← Retour") }
+    TextButton(onClick = onBack) { Text("Retour") }
 }
 
 

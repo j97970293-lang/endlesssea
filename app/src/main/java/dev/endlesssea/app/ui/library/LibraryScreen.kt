@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Tab
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRow
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,7 +45,7 @@ val LIBRARY_TABS = listOf(
     "Séries" to "SERIES",
     "OVA" to "OVA",
     "ONA" to "ONA",
-    "🎬 Fichiers" to "LOCAL",
+    "Fichiers" to "LOCAL",
 )
 
 /**
@@ -64,11 +69,26 @@ fun LibraryScreen(
         androidx.compose.runtime.mutableStateOf("")
     }
     val tabs = remember(customCats) { LIBRARY_TABS + customCats.map { it to "CUSTOM:$it" } }
+    // §bibliotheque-locale-fusion : les fichiers locaux apparaissent dans la grille
+    // normale (même affichage que les titres suivis), activable d'un chip.
+    val mergeLocal by viewModel.mergeLocal.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(mergeLocal) { if (mergeLocal) viewModel.scanLocal() }
+    val localCards = remember(state.localFiles, mergeLocal) {
+        if (!mergeLocal) emptyList() else state.localFiles.map { f ->
+            SearchItemUi(
+                id = "local:" + f.uri,
+                title = f.displayName,
+                posterUrl = f.customCoverUri,
+                subtitle = "Fichier local",
+            )
+        }
+    }
     if (tab >= tabs.size) tab = 0
     /** §métadonnées-éditées : fiche en cours d'édition (appui long dans la grille). */
     var editMediaMeta by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<SearchItemUi?>(null)
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
         // §onglets-scrollés : 7 catégories sans cassure verticale (bug « Fa vo ris »)
@@ -168,14 +188,20 @@ fun LibraryScreen(
             androidx.compose.material3.FilterChip(
                 selected = state.onDeviceOnly,
                 onClick = { viewModel.setOnDeviceOnly(true) },
-                label = { Text("💾 Sur l'appareil") },
+                label = { Text("Sur l'appareil") },
+            )
+            // §bibliotheque-locale-fusion : mêler les vidéos locales aux titres suivis
+            androidx.compose.material3.FilterChip(
+                selected = mergeLocal,
+                onClick = { viewModel.setMergeLocal(!mergeLocal) },
+                label = { Text("Fichiers locaux") },
             )
             // Watchlist §29 : filtre par statut de suivi
             listOf(
-                "WISHLIST" to "📋 À regarder",
+                "WISHLIST" to "À regarder",
                 "WATCHING" to "▶ En cours",
-                "COMPLETED" to "✅ Terminés",
-                "DROPPED" to "✖ Abandonnés",
+                "COMPLETED" to "Terminés",
+                "DROPPED" to "Abandonnés",
             ).forEach { (st, label) ->
                 androidx.compose.material3.FilterChip(
                     selected = state.filterStatus == st,
@@ -184,15 +210,15 @@ fun LibraryScreen(
                 )
             }
         }
-        if (state.items.isEmpty()) {
+        val shownItems = state.items + localCards
+        if (shownItems.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("(っ˘̩╭╮˘̩)っ", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "« ${LIBRARY_TABS[tab].first} » est vide",
+                    "« ${tabs[tab].first} » est vide",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 10.dp),
                 )
@@ -211,10 +237,19 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(state.items, key = { it.id }) { item ->
+                items(shownItems, key = { it.id }) { item ->
                     MediaCard(
                         item = item,
-                        onClick = { onMediaClick(item.id) },
+                        onClick = {
+                            // les cartes locales lancent directement la lecture
+                            if (item.id.startsWith("local:")) {
+                                val uri = item.id.removePrefix("local:")
+                                val video = state.localFiles.firstOrNull { it.uri == uri }
+                                if (video != null) playLocal(context, state.localFiles, video)
+                            } else {
+                                onMediaClick(item.id)
+                            }
+                        },
                         onLongClick = { editMediaMeta = item },
                     )
                 }
@@ -325,25 +360,25 @@ private fun LocalFilesPanel(
         ) {
             androidx.compose.material3.AssistChip(
                 onClick = { dirPicker.launch(null) },
-                label = { Text("📁 Ajouter un dossier") },
+                label = { Text("Ajouter un dossier") },
             )
             viewModel.dirs.collectAsState().value.forEach { dir ->
                 androidx.compose.material3.AssistChip(
                     onClick = { viewModel.removeLocalDir(dir) },
                     label = {
-                        Text("✕ " + android.net.Uri.parse(dir).path
+                        Text("" + android.net.Uri.parse(dir).path
                             ?.substringAfterLast(':')?.substringAfterLast('/') ?: dir)
                     },
                 )
             }
             androidx.compose.material3.AssistChip(
                 onClick = { viewModel.scanLocal() },
-                label = { Text("↻ Scanner") },
+                label = { Text("Scanner") },
             )
         }
         Text(
             "Lecture hors-ligne des vidéos trouvées (y compris celles NON téléchargées via l'app). " +
-                "Touche une vidéo pour la lire, bouton ✎ pour renommer/choisir l'affiche.",
+                "Touche une vidéo pour la lire, bouton pour renommer/choisir l'affiche.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 8.dp),
@@ -359,10 +394,14 @@ private fun LocalFilesPanel(
                 Modifier.fillMaxSize().padding(32.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             ) {
-                Text("🎞", style = MaterialTheme.typography.headlineSmall)
+                androidx.compose.material3.Icon(
+                    androidx.compose.material.icons.Icons.Filled.VideoLibrary,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
                 Text(
                     if (state.localFiles.isEmpty() && viewModel.dirs.collectAsState().value.isEmpty())
-                        "Aucun dossier — ajoute-en un avec « 📁 Ajouter un dossier » (plusieurs possibles)."
+                        "Aucun dossier — ajoute-en un avec « Ajouter un dossier » (plusieurs possibles)."
                     else "Aucune vidéo trouvée dans les dossiers choisis.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -384,8 +423,12 @@ private fun LocalFilesPanel(
                                 Modifier.fillMaxWidth().clickable { openFolder = parent },
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             ) {
-                                Text("📂", style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(end = 12.dp))
+                                androidx.compose.material3.Icon(
+                                    androidx.compose.material.icons.Icons.Filled.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(end = 12.dp),
+                                )
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         files.first().folderName,
@@ -433,8 +476,12 @@ private fun LocalFilesPanel(
                                     placeholderModifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp),
                                 )
                             } else {
-                                Text("🎬", style = MaterialTheme.typography.headlineMedium,
-                                    modifier = Modifier.padding(end = 10.dp))
+                                androidx.compose.material3.Icon(
+                                    androidx.compose.material.icons.Icons.Filled.Movie,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(end = 10.dp),
+                                )
                             }
                             Column(Modifier.weight(1f)) {
                                 dev.endlesssea.app.ui.components.ExpandableText(
@@ -460,8 +507,11 @@ private fun LocalFilesPanel(
                             androidx.compose.material3.TextButton(onClick = { addToCat = video }) {
                                 Text("＋")
                             }
-                            androidx.compose.material3.TextButton(onClick = { editMeta = video }) {
-                                Text("✎")
+                            androidx.compose.material3.IconButton(onClick = { editMeta = video }) {
+                                androidx.compose.material3.Icon(
+                                    androidx.compose.material.icons.Icons.Filled.Edit,
+                                    contentDescription = "Métadonnées",
+                                )
                             }
                             androidx.compose.material3.Button(onClick = {
                                 // §épisode-suivant : toutes les vidéos du dossier
@@ -676,7 +726,7 @@ private fun CustomCategoryPanel(
         }
         if (files.isEmpty()) {
             Text(
-                "Catégorie vide — ouvre « 🎬 Fichiers », puis « ＋ » sur une vidéo pour la ranger ici.",
+                "Catégorie vide — ouvre « Fichiers », puis « ＋ » sur une vidéo pour la ranger ici.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -698,8 +748,12 @@ private fun CustomCategoryPanel(
                                 placeholderModifier = Modifier.padding(end = 10.dp).width(48.dp).height(72.dp),
                             )
                         } else {
-                            Text("🎬", style = MaterialTheme.typography.headlineMedium,
-                                modifier = Modifier.padding(end = 10.dp))
+                            androidx.compose.material3.Icon(
+                                androidx.compose.material.icons.Icons.Filled.Movie,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(end = 10.dp),
+                            )
                         }
                         Text(video.displayName, maxLines = 2, modifier = Modifier.weight(1f))
                         androidx.compose.material3.TextButton(
@@ -751,4 +805,41 @@ private fun CustomCategoryPanel(
             }
         }
     }
+}
+
+/** §lecture-locale : prépare la file (tout le lot affiché) puis ouvre le lecteur. */
+internal fun playLocal(
+    context: android.content.Context,
+    all: List<LocalVideoUi>,
+    video: LocalVideoUi,
+) {
+    fun link(f: LocalVideoUi) = dev.endlesssea.extensions.api.model.VideoLink(
+        url = f.uri,
+        streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+        quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+        server = "Fichier local",
+    )
+    dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
+    dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
+        all.map {
+            dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
+                title = it.displayName, episodeId = it.uri, links = listOf(link(it)),
+            )
+        },
+        all.indexOfFirst { it.uri == video.uri },
+    )
+    dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
+        title = video.displayName,
+        mediaId = null, episodeId = video.uri,
+        links = listOf(link(video)),
+        startIndex = 0,
+        markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
+            introStartSec = video.introStartSec,
+            introEndSec = video.introEndSec,
+            outroStartSec = video.outroStartSec,
+        ),
+    )
+    context.startActivity(
+        android.content.Intent(context, dev.endlesssea.app.ui.player.PlayerActivity::class.java),
+    )
 }

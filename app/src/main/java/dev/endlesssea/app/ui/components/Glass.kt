@@ -114,12 +114,15 @@ fun GlassCard(
 ) {
     val shape = RoundedCornerShape(cornerRadius)
     val tintArgb = UiTuning.glassTint.collectAsState().value
-    val edge = tintArgb?.let { Color(it).copy(alpha = 0.55f) } ?: Color.White.copy(alpha = 0.22f)
+    // §bordures : « trop de bordures » — la force du liseré est réglable et, à 0,
+    // la carte n'en dessine plus du tout (verre franc, sans cadre dans le cadre).
+    val strength = UiTuning.borders.collectAsState().value / 100f
+    val edge = (tintArgb?.let { Color(it) } ?: Color.White).copy(alpha = 0.55f * strength)
     Surface(
         modifier = modifier.glass(cornerRadius),
         shape = shape,
         color = Color.Transparent,
-        border = BorderStroke(1.dp, edge),
+        border = if (strength <= 0.01f) null else BorderStroke(1.dp, edge),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {

@@ -20,6 +20,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
@@ -415,7 +417,11 @@ private fun EmptyHome(onBrowseExtensions: () -> Unit) {
         Modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("🌊", style = MaterialTheme.typography.displayMedium)
+        Icon(
+            Icons.Filled.Extension, contentDescription = null,
+            modifier = Modifier.height(56.dp).width(56.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
         Spacer(Modifier.height(8.dp))
         Text("Aucune extension installée", style = MaterialTheme.typography.titleMedium)
         Text(
@@ -460,7 +466,13 @@ private fun ProviderRow(
                 androidx.compose.material3.Surface(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                ) { Text("🧩", Modifier.padding(8.dp), style = MaterialTheme.typography.titleMedium) }
+                ) {
+                    Icon(
+                        Icons.Filled.Extension, contentDescription = null,
+                        modifier = Modifier.padding(8.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -472,8 +484,7 @@ private fun ProviderRow(
                     maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
             if (selected) {
-                Text("✓", color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.titleMedium)
+                Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary)
             }
         }
     }

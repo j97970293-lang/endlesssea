@@ -290,7 +290,7 @@ fun DetailsScreen(
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOfNotNull(
-                                state.details?.rating?.let { "⭐ %.1f".format(it) },
+                                state.details?.rating?.let { "%.1f".format(it) },
                                 state.details?.type?.name?.lowercase()?.replaceFirstChar { it.uppercase() },
                                 state.details?.year?.toString(),
                                 state.details?.episodeCount?.let { "$it ép." }
@@ -300,7 +300,7 @@ fun DetailsScreen(
                         Spacer(Modifier.height(10.dp))
                         // Statut de suivi rapide (lecture bibliothèque)
                         if (state.inLibrary) {
-                            MetaPill("📚 ${dev.endlesssea.app.ui.details.watchStatusLabel(state.libraryStatus)}")
+                            MetaPill("${dev.endlesssea.app.ui.details.watchStatusLabel(state.libraryStatus)}")
                         }
                     }
                 }
@@ -405,18 +405,18 @@ fun DetailsScreen(
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                                 state.details?.url?.takeIf { it.startsWith("http") }?.let { url ->
                                     DropdownMenuItem(
-                                        text = { Text("🌐 Ouvrir dans le navigateur") },
+                                        text = { Text("Ouvrir dans le navigateur") },
                                         onClick = { moreMenu = false; openExternal(context, url) },
                                     )
                                 }
                                 (state.details?.posterUrl ?: state.details?.bannerUrl)?.let { img ->
                                     val title = state.details?.title ?: "EndlessSea"
                                     DropdownMenuItem(
-                                        text = { Text("🔗 Partager l'affiche") },
+                                        text = { Text("Partager l'affiche") },
                                         onClick = { moreMenu = false; sharePoster(context, title, img) },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("🖼 Télécharger l'affiche") },
+                                        text = { Text("Télécharger l'affiche") },
                                         onClick = { moreMenu = false; downloadPoster(context, title, img) },
                                     )
                                 }
@@ -542,7 +542,7 @@ fun DetailsScreen(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            if (studios.isNotEmpty()) MetaPill("🎬 ${studios.take(3).joinToString(", ")}")
+                            if (studios.isNotEmpty()) MetaPill("${studios.take(3).joinToString(", ")}")
                             state.details?.trailerUrl?.let { trailer ->
                                 Surface(
                                     onClick = { openExternal(context, trailer) },
@@ -616,7 +616,7 @@ fun DetailsScreen(
                     if (movieEpisodes.isNotEmpty()) {
                         item {
                             Text(
-                                "🎬  Film",
+                                "Film",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -636,7 +636,7 @@ fun DetailsScreen(
                     if (serieEpisodes.isNotEmpty() && movieEpisodes.isNotEmpty()) {
                         item {
                             Text(
-                                "📺  Série",
+                                "Série",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -657,7 +657,7 @@ fun DetailsScreen(
                 if (state.deviceFiles.isNotEmpty()) {
                     item {
                         Text(
-                            "📥 Sur l'appareil",
+                            "Sur l'appareil",
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
@@ -671,7 +671,7 @@ fun DetailsScreen(
                             ),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("💾", style = MaterialTheme.typography.titleLarge)
+                                Text("", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.width(10.dp))
                                 dev.endlesssea.app.ui.components.ExpandableText(
                                     text = f.label,
@@ -736,7 +736,7 @@ fun DetailsScreen(
                     batchPriority = active
                     batchSelectDialog = true
                     serverOrderDialog = false
-                }) { Text("Choisir les épisodes →") }
+                }) { Text("Choisir les épisodes") }
             },
             dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
             title = { Text("Serveurs & priorité") },
@@ -797,8 +797,31 @@ fun DetailsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 if (links.isEmpty()) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center) {
-                        CircularProgressIndicator()
+                    val searching = state.linksLoadingEpisode == episode.id
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (searching) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Recherche des serveurs…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            // §serveurs-bloques : plus de roue infinie — message clair + relance
+                            Text(
+                                state.message ?: "Aucun serveur trouvé pour cet épisode",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            androidx.compose.material3.Button(onClick = { viewModel.loadLinks(episode) }) {
+                                Text("Réessayer")
+                            }
+                        }
                     }
                 } else {
                     // Ordre des serveurs : priorité glissée dans les réglages, inconnus à la fin (alpha)
@@ -928,8 +951,31 @@ fun DetailsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 if (links.isEmpty()) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center) {
-                        CircularProgressIndicator()
+                    val searching = state.linksLoadingEpisode == episode.id
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (searching) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Recherche des serveurs…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            // §serveurs-bloques : plus de roue infinie — message clair + relance
+                            Text(
+                                state.message ?: "Aucun serveur trouvé pour cet épisode",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            androidx.compose.material3.Button(onClick = { viewModel.loadLinks(episode) }) {
+                                Text("Réessayer")
+                            }
+                        }
                     }
                 } else {
                     val grouped = links.groupBy { it.audioLang }.toList()

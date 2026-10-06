@@ -135,7 +135,14 @@ class EsPlayer(
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun applyVideoEffects(effects: List<androidx.media3.common.Effect>) {
-        player.setVideoEffects(effects)
+        runCatching { player.setVideoEffects(effects) }
+        // §filtres-video : ExoPlayer ne réinjecte la chaîne d'effets qu'à la frame
+        // suivante — en pause (ou sur certains décodeurs) l'image restait inchangée
+        // jusqu'à ce qu'on quitte la vidéo. Un micro-seek force le re-rendu.
+        runCatching {
+            val pos = player.currentPosition
+            if (player.duration > 0 || pos > 0) player.seekTo(pos)
+        }
     }
 
     override fun selectSubtitle(track: SubtitleTrack?) {

@@ -208,6 +208,24 @@ class SettingsViewModel @Inject constructor(
     fun setAutoSkipMarkers(v: Boolean) { prefs.setAutoSkipMarkers(v) }
     fun setPlayerOrientation(v: String) { prefs.setPlayerOrientation(v) }
 
+    // §placements-lecteur / §barre-progression / §theme-lecteur
+    val progressPosition: StateFlow<String> = prefs.progressPosition
+    val toolsPosition: StateFlow<String> = prefs.toolsPosition
+    val megaSkipSide: StateFlow<String> = prefs.megaSkipSide
+    val progressThickness: StateFlow<Int> = prefs.progressThickness
+    val progressRounded: StateFlow<Boolean> = prefs.progressRounded
+    val playerTheme: StateFlow<String> = prefs.playerTheme
+    val videoEnhance: StateFlow<String> = prefs.videoEnhance
+    val borderStrength: StateFlow<Int> = prefs.borderStrength
+    fun setProgressPosition(v: String) = prefs.setProgressPosition(v)
+    fun setToolsPosition(v: String) = prefs.setToolsPosition(v)
+    fun setMegaSkipSide(v: String) = prefs.setMegaSkipSide(v)
+    fun setProgressThickness(v: Int) = prefs.setProgressThickness(v)
+    fun setProgressRounded(v: Boolean) = prefs.setProgressRounded(v)
+    fun setPlayerTheme(v: String) = prefs.setPlayerTheme(v)
+    fun setVideoEnhance(v: String) = prefs.setVideoEnhance(v)
+    fun setBorderStrength(v: Int) = prefs.setBorderStrength(v)
+
     /** §rendu-vidéo : TextureView (filtres) ou SurfaceView (perf/HDR). */
     val videoRender: StateFlow<String> = prefs.videoRender
     fun setVideoRender(v: String) { prefs.setVideoRender(v) }

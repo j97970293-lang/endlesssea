@@ -3,7 +3,7 @@ package dev.endlesssea.app.local
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * §bibliothèque-locale — scanner de VIDÉOS dans des dossiers SAF choisis par
@@ -31,34 +31,82 @@ object LocalVideos {
     private const val MAX_DEPTH = 6
     private const val MAX_FILES_PER_ROOT = 2000
 
-    /** Liste toutes les vidéos d'un arbre SAF (récursion bornée). Jamais de throw. */
+    /**
+     * §scan-rapide : liste toutes les vidéos d'un arbre SAF.
+     *
+     * `DocumentFile.listFiles()` déclenche UNE requête par enfant (et une de plus
+     * par appel à `name`/`length()`), ce qui rendait le scan interminable sur une
+     * carte SD. Ici on interroge directement le ContentResolver : UN curseur par
+     * dossier qui ramène id + nom + type + taille d'un coup, et les sous-dossiers
+     * sont parcourus en parallèle (8 à la fois).
+     */
     fun scan(context: Context, treeUriString: String): List<LocalVideoFile> = runCatching {
-        val root = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
-        val out = mutableListOf<LocalVideoFile>()
-        fun walk(dir: DocumentFile, depth: Int) {
+        kotlinx.coroutines.runBlocking { scanAsync(context, treeUriString) }
+    }.getOrDefault(emptyList())
+
+    suspend fun scanAsync(
+        context: Context,
+        treeUriString: String,
+    ): List<LocalVideoFile> = kotlinx.coroutines.coroutineScope {
+        val tree = Uri.parse(treeUriString)
+        val rootId = runCatching {
+            android.provider.DocumentsContract.getTreeDocumentId(tree)
+        }.getOrNull() ?: return@coroutineScope emptyList()
+        val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
+        val gate = kotlinx.coroutines.sync.Semaphore(8)
+
+        suspend fun walk(docId: String, depth: Int) {
             if (depth > MAX_DEPTH || out.size >= MAX_FILES_PER_ROOT) return
-            val children = runCatching { dir.listFiles() }.getOrDefault(emptyArray())
-            for (f in children) {
-                if (out.size >= MAX_FILES_PER_ROOT) return
-                if (f.isDirectory) {
-                    walk(f, depth + 1)
-                } else {
-                    val name = f.name ?: continue
-                    val ext = name.substringAfterLast('.', "").lowercase()
-                    if (ext in VIDEO_EXT) {
-                        out += LocalVideoFile(
-                            uri = f.uri.toString(),
-                            displayName = name,
-                            sizeBytes = f.length(),
-                            parentUri = dir.uri.toString(),
-                        )
+            val children = android.provider.DocumentsContract
+                .buildChildDocumentsUriUsingTree(tree, docId)
+            val dirUri = android.provider.DocumentsContract
+                .buildDocumentUriUsingTree(tree, docId).toString()
+            val subDirs = mutableListOf<String>()
+            runCatching {
+                context.contentResolver.query(
+                    children,
+                    arrayOf(
+                        android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+                        android.provider.DocumentsContract.Document.COLUMN_SIZE,
+                    ),
+                    null, null, null,
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        if (out.size >= MAX_FILES_PER_ROOT) break
+                        val id = c.getString(0) ?: continue
+                        val name = c.getString(1) ?: continue
+                        val mime = c.getString(2) ?: ""
+                        val size = if (c.isNull(3)) 0L else c.getLong(3)
+                        if (mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
+                            subDirs += id
+                        } else {
+                            val ext = name.substringAfterLast('.', "").lowercase()
+                            if (ext in VIDEO_EXT || mime.startsWith("video/")) {
+                                out += LocalVideoFile(
+                                    uri = android.provider.DocumentsContract
+                                        .buildDocumentUriUsingTree(tree, id).toString(),
+                                    displayName = name,
+                                    sizeBytes = size,
+                                    parentUri = dirUri,
+                                )
+                            }
+                        }
                     }
                 }
             }
+            // sous-dossiers en parallèle (8 curseurs max simultanés)
+            subDirs.map { sub ->
+                kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                    gate.withPermit { walk(sub, depth + 1) }
+                }
+            }.forEach { it.await() }
         }
-        walk(root, 0)
-        out
-    }.getOrDefault(emptyList())
+
+        gate.withPermit { walk(rootId, 0) }
+        out.toList()
+    }
 
     /** Durée d'une vidéo via MediaMetadataRetriever (appel à la demande, hors thread UI). */
     fun durationMs(context: Context, uriString: String): Long? = runCatching {

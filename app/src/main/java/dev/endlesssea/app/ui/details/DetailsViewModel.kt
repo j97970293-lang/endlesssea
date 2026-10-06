@@ -297,26 +297,36 @@ class DetailsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(linksLoadingEpisode = episode.id)
 
         val collected = mutableListOf<VideoLink>()
-        runCatching {
+        // §serveurs-bloques : une source qui ne répond jamais laissait la feuille
+        // « serveurs » tourner à l'infini. Plafond dur à 90 s, et on garde ce qui
+        // est déjà arrivé. L'erreur éventuelle est remontée à l'écran.
+        val failure = runCatching {
             withContext(Dispatchers.IO) {
-                registry.instance(extensionId)
-                    .loadLinksFlow(LinkRequest(episode = episode, mediaId = mediaId))
-                    .collect { link ->
-                        collected += link
-                        // Publication immédiate : la feuille serveurs se remplit en direct.
-                        // Préférence VF/VOSTFR appliquée au fur et à mesure.
-                        val partial = orderByLangPref(collected.toList())
-                        _uiState.value = _uiState.value.copy(
-                            linksByEpisode = _uiState.value.linksByEpisode + (episode.id to partial),
-                        )
-                    }
+                kotlinx.coroutines.withTimeoutOrNull(90_000) {
+                    registry.instance(extensionId)
+                        .loadLinksFlow(LinkRequest(episode = episode, mediaId = mediaId))
+                        .collect { link ->
+                            collected += link
+                            // Publication immédiate : la feuille serveurs se remplit en direct.
+                            // Préférence VF/VOSTFR appliquée au fur et à mesure.
+                            val partial = orderByLangPref(collected.toList())
+                            _uiState.value = _uiState.value.copy(
+                                linksByEpisode = _uiState.value.linksByEpisode + (episode.id to partial),
+                            )
+                        }
+                }
             }
-        }
+        }.exceptionOrNull()
 
         if (collected.isEmpty()) {
             _uiState.value = _uiState.value.copy(
                 linksLoadingEpisode = null,
-                message = "Aucun lien trouvé pour cet épisode",
+                linksByEpisode = _uiState.value.linksByEpisode - episode.id,
+                message = when {
+                    failure != null -> "Lecture impossible : " +
+                        (failure.message?.take(120) ?: failure::class.java.simpleName)
+                    else -> "Cette source n'a renvoyé aucun serveur pour cet épisode"
+                },
             )
         } else {
             val ordered = orderByLangPref(collected.toList())

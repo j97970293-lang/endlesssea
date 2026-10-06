@@ -133,7 +133,7 @@ fun DownloadsScreen(
                         Text("(._.)", style = MaterialTheme.typography.headlineSmall)
                         Text(
                             if (state.totalCount == 0)
-                                "Aucun téléchargement. Depuis une fiche : « Télécharger » → serveur + qualité."
+                                "Aucun téléchargement. Depuis une fiche : « Télécharger » serveur + qualité."
                             else "Aucun élément dans ce filtre.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -38,6 +38,27 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "nuit"      to 0xFF25314EL,
             "peche"     to 0xFF8A4A2EL,
             "chartreuse" to 0xFF4E6116L,
+            // §couleurs-2 : seconde vague de teintes profondes
+            "indigo"    to 0xFF2E3A8C,
+            "violet"    to 0xFF5A2E8C,
+            "magenta"   to 0xFF7E2370,
+            "cerise"    to 0xFF8E2347,
+            "brique"    to 0xFF8A3A24,
+            "cuivre"    to 0xFF8A5A2B,
+            "olive"     to 0xFF4F5A1E,
+            "jade"      to 0xFF17604F,
+            "turquoise" to 0xFF12616B,
+            "ciel"      to 0xFF1C5A8C,
+            "acier"     to 0xFF36506B,
+            "graphite"  to 0xFF32373D,
+            "charbon"   to 0xFF24262B,
+            "sable"     to 0xFF6E5A36,
+            "cafe"      to 0xFF4A332A,
+            "menthe"    to 0xFF1F6B55,
+            "lagon"     to 0xFF0E6A86,
+            "orchidee"  to 0xFF6A3184,
+            "corail"    to 0xFF8C3A3A,
+            "safran"    to 0xFF8A6214,
         )
         val GLASS_VARIANT_LABELS = mapOf(
             "ocean" to "Océan", "emeraude" to "Émeraude", "rubis" to "Rubis",
@@ -46,6 +67,13 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "bordeaux" to "Bordeaux", "foret" to "Forêt", "miel" to "Miel",
             "prune" to "Prune", "nuit" to "Nuit", "peche" to "Pêche",
             "chartreuse" to "Chartreuse",
+            "indigo" to "Indigo", "violet" to "Violet", "magenta" to "Magenta",
+            "cerise" to "Cerise", "brique" to "Brique", "cuivre" to "Cuivre",
+            "olive" to "Olive", "jade" to "Jade", "turquoise" to "Turquoise",
+            "ciel" to "Ciel", "acier" to "Acier", "graphite" to "Graphite",
+            "charbon" to "Charbon", "sable" to "Sable", "cafe" to "Café",
+            "menthe" to "Menthe", "lagon" to "Lagon", "orchidee" to "Orchidée",
+            "corail" to "Corail", "safran" to "Safran",
         )
 
         // Thème : 0 = système, 1 = clair, 2 = sombre, 3 = AMOLED (noir pur)
@@ -81,8 +109,51 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "doré" to 0xFFE7C96F,
             "chocolat" to 0xFFDDB08C,
             "neige" to 0xFFD9E1F2,
+            // §couleurs-2 : palette étendue (toutes testées sur fond sombre)
+            "pervenche" to 0xFFA8B8FF,
+            "bleuet" to 0xFF8FB4FF,
+            "azur" to 0xFF79CBFF,
+            "glacier" to 0xFF9FE4F2,
+            "aigue" to 0xFF7FE6D2,
+            "jade" to 0xFF86E0B8,
+            "sauge" to 0xFFAEDBA6,
+            "tilleul" to 0xFFC9E79A,
+            "mangue" to 0xFFFFCD7A,
+            "abricot" to 0xFFFFC199,
+            "terracotta" to 0xFFE8A188,
+            "brique" to 0xFFE89B8F,
+            "cerise" to 0xFFFF9BA8,
+            "orchidee" to 0xFFE2A5FF,
+            "lilas" to 0xFFCDB4FF,
+            "mauve" to 0xFFD7A8E8,
+            "prune" to 0xFFC79BD8,
+            "perle" to 0xFFE8E2F2,
+            "argent" to 0xFFCFD6DF,
+            "etain" to 0xFFB9C2CC,
+            "sable" to 0xFFE4D2A8,
+            "moutarde" to 0xFFE0C06A,
+            "caramel" to 0xFFD9AE7E,
+            "cacao" to 0xFFC9A18A,
         )
         const val DEFAULT_ACCENT = "lavande"
+
+        /**
+         * §theme-lecteur : habillages prêts à l'emploi (nom → accent, fond de barre).
+         * "app" = suit le thème de l'application.
+         */
+        val PLAYER_THEMES = linkedMapOf(
+            "app" to Pair(0L, "Thème de l'application"),
+            "netflix" to Pair(0xFFE50914L, "Rouge Netflix"),
+            "crunchyroll" to Pair(0xFFF47521L, "Orange Crunchyroll"),
+            "prime" to Pair(0xFF00A8E1L, "Bleu Prime"),
+            "disney" to Pair(0xFF49A6FFL, "Bleu Disney"),
+            "youtube" to Pair(0xFFFF0033L, "Rouge YouTube"),
+            "mpv" to Pair(0xFFBBBBBBL, "Gris mpv"),
+            "vlc" to Pair(0xFFFF8800L, "Orange VLC"),
+            "spotify" to Pair(0xFF1DB954L, "Vert Spotify"),
+            "aniyomi" to Pair(0xFF9C7CFFL, "Violet Aniyomi"),
+            "minuit" to Pair(0xFF4F8BFFL, "Bleu minuit"),
+        )
 
         /** §anymex-ui : styles de carte média (capture « Card Style »). */
         val CARD_STYLES = listOf("saikou", "exotic", "minimal_exotic", "modern")
@@ -428,6 +499,109 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val next = if (item in cur) cur - item else cur + item
         p.edit().putString("lib_cat_items_" + name, "[\"" + next.joinToString("\",\"") { it.replace("\"", " ") } + "\"]").apply()
         _categoryItemsTick.value++
+    }
+
+    /** §bordures : force des liserés de l'interface (0 = aucune, 100 = marquées). */
+    private val _borderStrength = MutableStateFlow(p.getInt("border_strength", 18))
+    val borderStrength: StateFlow<Int> = _borderStrength
+    fun setBorderStrength(v: Int) {
+        val safe = v.coerceIn(0, 100)
+        p.edit().putInt("border_strength", safe).apply(); _borderStrength.value = safe
+    }
+
+    /** §recherche-sources : identifiants d'extensions EXCLUES de la recherche. */
+    private val _searchExcluded = MutableStateFlow(loadJsonStringList("search_excluded").toSet())
+    val searchExcluded: StateFlow<Set<String>> = _searchExcluded
+    fun toggleSearchExcluded(id: String) {
+        val next = if (id in _searchExcluded.value) _searchExcluded.value - id else _searchExcluded.value + id
+        p.edit().putString("search_excluded", "[\"" + next.joinToString("\",\"") + "\"]").apply()
+        _searchExcluded.value = next
+    }
+
+    /** §recherche-resultats : n'afficher que les résultats (sans en-têtes de source). */
+    private val _searchResultsOnly = MutableStateFlow(p.getBoolean("search_results_only", false))
+    val searchResultsOnly: StateFlow<Boolean> = _searchResultsOnly
+    fun setSearchResultsOnly(v: Boolean) {
+        p.edit().putBoolean("search_results_only", v).apply(); _searchResultsOnly.value = v
+    }
+
+    /** §bibliotheque-locale-fusion : afficher les fichiers locaux avec le reste. */
+    private val _mergeLocalLibrary = MutableStateFlow(p.getBoolean("merge_local_library", true))
+    val mergeLocalLibrary: StateFlow<Boolean> = _mergeLocalLibrary
+    fun setMergeLocalLibrary(v: Boolean) {
+        p.edit().putBoolean("merge_local_library", v).apply(); _mergeLocalLibrary.value = v
+    }
+
+    // ---------------------------------------------------------------- LECTEUR
+    /** §lecteur-placement : "bottom" (défaut) ou "top" pour la barre de progression. */
+    private val _progressPosition = MutableStateFlow(p.getString("player_progress_pos", "bottom") ?: "bottom")
+    val progressPosition: StateFlow<String> = _progressPosition
+    fun setProgressPosition(v: String) {
+        val safe = if (v == "top") "top" else "bottom"
+        p.edit().putString("player_progress_pos", safe).apply(); _progressPosition.value = safe
+    }
+
+    /** §lecteur-placement : où vivent les outils (verrou, vitesse, filtres…). */
+    private val _toolsPosition = MutableStateFlow(p.getString("player_tools_pos", "top") ?: "top")
+    val toolsPosition: StateFlow<String> = _toolsPosition
+    fun setToolsPosition(v: String) {
+        val safe = if (v == "bottom") "bottom" else "top"
+        p.edit().putString("player_tools_pos", safe).apply(); _toolsPosition.value = safe
+    }
+
+    /** §lecteur-placement : côté de la pastille mégaskip ("right" / "left"). */
+    private val _megaSkipSide = MutableStateFlow(p.getString("player_mega_side", "right") ?: "right")
+    val megaSkipSide: StateFlow<String> = _megaSkipSide
+    fun setMegaSkipSide(v: String) {
+        val safe = if (v == "left") "left" else "right"
+        p.edit().putString("player_mega_side", safe).apply(); _megaSkipSide.value = safe
+    }
+
+    /** §barre-progression : épaisseur en dp (2..12) et bouts arrondis. */
+    private val _progressThickness = MutableStateFlow(p.getInt("player_progress_thickness", 4))
+    val progressThickness: StateFlow<Int> = _progressThickness
+    fun setProgressThickness(v: Int) {
+        val safe = v.coerceIn(2, 14)
+        p.edit().putInt("player_progress_thickness", safe).apply(); _progressThickness.value = safe
+    }
+    private val _progressRounded = MutableStateFlow(p.getBoolean("player_progress_round", true))
+    val progressRounded: StateFlow<Boolean> = _progressRounded
+    fun setProgressRounded(v: Boolean) {
+        p.edit().putBoolean("player_progress_round", v).apply(); _progressRounded.value = v
+    }
+
+    /**
+     * §theme-lecteur : habillage du lecteur. Les couleurs viennent de [PLAYER_THEMES] ;
+     * "app" suit le thème de l'application.
+     */
+    private val _playerTheme = MutableStateFlow(p.getString("player_theme", "app") ?: "app")
+    val playerTheme: StateFlow<String> = _playerTheme
+    fun setPlayerTheme(v: String) {
+        p.edit().putString("player_theme", v).apply(); _playerTheme.value = v
+    }
+
+    /** §amelioration-video : post-traitement léger appliqué à l'image. */
+    private val _videoEnhance = MutableStateFlow(p.getString("video_enhance", "none") ?: "none")
+    val videoEnhance: StateFlow<String> = _videoEnhance
+    fun setVideoEnhance(v: String) {
+        p.edit().putString("video_enhance", v).apply(); _videoEnhance.value = v
+    }
+
+    /** §filtres-video : contraste (0.5..2), gamma (0.5..2), netteté (0..1), température (-1..1). */
+    private val _videoContrast = MutableStateFlow(p.getFloat("vf_contrast", 1f))
+    val videoContrast: StateFlow<Float> = _videoContrast
+    private val _videoGamma = MutableStateFlow(p.getFloat("vf_gamma", 1f))
+    val videoGamma: StateFlow<Float> = _videoGamma
+    private val _videoSharp = MutableStateFlow(p.getFloat("vf_sharp", 0f))
+    val videoSharp: StateFlow<Float> = _videoSharp
+    private val _videoTemp = MutableStateFlow(p.getFloat("vf_temp", 0f))
+    val videoTemp: StateFlow<Float> = _videoTemp
+    fun setVideoAdvanced(contrast: Float, gamma: Float, sharp: Float, temp: Float) {
+        p.edit()
+            .putFloat("vf_contrast", contrast).putFloat("vf_gamma", gamma)
+            .putFloat("vf_sharp", sharp).putFloat("vf_temp", temp).apply()
+        _videoContrast.value = contrast; _videoGamma.value = gamma
+        _videoSharp.value = sharp; _videoTemp.value = temp
     }
 
     private fun loadJsonStringList(key: String): List<String> =

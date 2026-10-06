@@ -20,6 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -201,19 +208,19 @@ fun SettingsScreen(
             }
             // §anymex-ui : deux entrées distinctes comme AnyMEX — « Interface » (mise
             // en page, styles de cartes, multiplicateurs) et « Thème » (couleurs, verre).
-            if (matchesQuery(settingsQuery, "Extensions installées", "Ajouter un dépôt, activer, mettre à jour, supprimer")) item {
-                SettingCategory("🧩", "Extensions installées",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Extensions installées", "Ajouter un dépôt, activer, mettre à jour, supprimer")) item {
+                SettingCategory(Icons.Filled.Extension, "Extensions installées",
                     "Ajouter un dépôt, activer, mettre à jour, supprimer", expanded = false) { onOpenExtensions() }
             }
-            if (matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis et halos")) item {
-                SettingCategory("🪟", "Interface",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis et halos")) item {
+                SettingCategory(Icons.Filled.Dashboard, "Interface",
                     "Styles de cartes, carrousel, barre, arrondis et halos", expanded = "ui" in openCategories) { toggleCategory("ui") }
             }
             if ("ui" in openCategories) {
                 item { UiSettingsSection(viewModel, state) }
             }
-            if (matchesQuery(settingsQuery, "Thème", "Verre liquide, AMOLED, accent, police, fond d'écran")) item {
-                SettingCategory("🎨", "Thème",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Thème", "Verre liquide, AMOLED, accent, police, fond d'écran")) item {
+                SettingCategory(Icons.Filled.Palette, "Thème",
                     "Verre liquide, AMOLED, accent, police, fond d'écran", expanded = "interface" in openCategories) { toggleCategory("interface") }
             }
             if ("interface" in openCategories) {
@@ -324,7 +331,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         androidx.compose.material3.OutlinedButton(onClick = { bgImagePicker.launch("image/*") }) {
-                            Text("🖼 Choisir…")
+                            Text("Choisir…")
                         }
                         if (state.bgImageUri != null) {
                             TextButton(onClick = { viewModel.setBgImage(null) }) { Text("Retirer") }
@@ -438,7 +445,7 @@ fun SettingsScreen(
                         FilterChip(
                             selected = state.logoTint == "original",
                             onClick = { viewModel.setLogoTint("original") },
-                            label = { Text("Thème (auto) 🌊") },
+                            label = { Text("Thème (auto)") },
                         )
                         AppPrefs.ACCENTS.keys.forEach { name ->
                             FilterChip(
@@ -606,7 +613,7 @@ fun SettingsScreen(
                         }
                         if (state.bgImageUri != null) {
                             TextButton(onClick = { viewModel.setBgImage(null) }) {
-                                Text("↩ Affiche par défaut (retirer l'image de fond)")
+                                Text("Affiche par défaut (retirer l'image de fond)")
                             }
                         }
                     }
@@ -618,8 +625,8 @@ fun SettingsScreen(
             if (openCategoryFull == null && settingsQuery.isBlank()) {
                 item { GroupTitle("Média & lecture") }
             }
-            if (matchesQuery(settingsQuery, "Téléchargement", "Wi-Fi seul, segments, tâches parallèles et résolveur DNS")) item {
-                SettingCategory("📥", "Téléchargement",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Téléchargement", "Wi-Fi seul, segments, tâches parallèles et résolveur DNS")) item {
+                SettingCategory(Icons.Filled.Download, "Téléchargement",
                     "Wi-Fi seul, segments, tâches parallèles et résolveur DNS", expanded = "download" in openCategories) { toggleCategory("download") }
             }
             if ("download" in openCategories) {
@@ -649,8 +656,8 @@ fun SettingsScreen(
 
             // --------------------------------------------------------- LECTEUR
             }
-            if (matchesQuery(settingsQuery, "Lecteur", "Vitesse, gestes, mégaskip, filtres vidéo, orientation")) item {
-                SettingCategory("⏯", "Lecteur",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Lecteur", "Vitesse, gestes, mégaskip, filtres vidéo, orientation")) item {
+                SettingCategory(Icons.Filled.PlayCircle, "Lecteur",
                     "Vitesse, gestes, mégaskip, filtres vidéo, orientation", expanded = "player" in openCategories) { toggleCategory("player") }
             }
             if ("player" in openCategories) {
@@ -730,13 +737,146 @@ fun SettingsScreen(
                         FilterChip(
                             selected = orient != "portrait",
                             onClick = { viewModel.setPlayerOrientation("landscape") },
-                            label = { Text("🖥 Paysage (défaut)") },
+                            label = { Text("Paysage (défaut)") },
                         )
                         FilterChip(
                             selected = orient == "portrait",
                             onClick = { viewModel.setPlayerOrientation("portrait") },
-                            label = { Text("📱 Portrait") },
+                            label = { Text("Portrait") },
                         )
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §placements-lecteur : l'utilisateur décide où vont les contrôles
+                    Text("Disposition des contrôles", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Barre de progression, rangée d'outils et pastille de grand saut : " +
+                            "chacun en haut ou en bas, à votre main.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val progPos = viewModel.progressPosition.collectAsState().value
+                    Text("Barre de progression", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = progPos != "top",
+                            onClick = { viewModel.setProgressPosition("bottom") },
+                            label = { Text("En bas") },
+                        )
+                        FilterChip(
+                            selected = progPos == "top",
+                            onClick = { viewModel.setProgressPosition("top") },
+                            label = { Text("En haut") },
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    val toolsPos = viewModel.toolsPosition.collectAsState().value
+                    Text("Outils (verrou, vitesse, filtres…)", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = toolsPos == "top",
+                            onClick = { viewModel.setToolsPosition("top") },
+                            label = { Text("En haut") },
+                        )
+                        FilterChip(
+                            selected = toolsPos != "top",
+                            onClick = { viewModel.setToolsPosition("bottom") },
+                            label = { Text("En bas") },
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    val megaSide = viewModel.megaSkipSide.collectAsState().value
+                    Text("Pastille de grand saut", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = megaSide != "left",
+                            onClick = { viewModel.setMegaSkipSide("right") },
+                            label = { Text("À droite") },
+                        )
+                        FilterChip(
+                            selected = megaSide == "left",
+                            onClick = { viewModel.setMegaSkipSide("left") },
+                            label = { Text("À gauche") },
+                        )
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §barre-progression : épaisseur + bouts arrondis
+                    val thick = viewModel.progressThickness.collectAsState().value
+                    val rounded = viewModel.progressRounded.collectAsState().value
+                    Text("Barre de progression — style", style = MaterialTheme.typography.bodyLarge)
+                    Text("Épaisseur : $thick dp", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Slider(
+                        value = thick.toFloat(),
+                        onValueChange = { viewModel.setProgressThickness(it.toInt()) },
+                        valueRange = 2f..14f,
+                        steps = 11,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = rounded, onCheckedChange = { viewModel.setProgressRounded(it) })
+                        Spacer(Modifier.width(10.dp))
+                        Text("Bouts arrondis")
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §theme-lecteur : habillages type Netflix / Crunchyroll / …
+                    Text("Thème du lecteur", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Colore la barre, la pastille et les accents du lecteur.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val cur = viewModel.playerTheme.collectAsState().value
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES.forEach { (key, v) ->
+                            FilterChip(
+                                selected = cur == key,
+                                onClick = { viewModel.setPlayerTheme(key) },
+                                label = { Text(v.second) },
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §amelioration-video : profil d'image par défaut
+                    Text("Amélioration de l'image", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Appliquée à chaque lecture. Pas d'upscale « anime 4K » (trop lourd " +
+                            "pour un téléphone) : ce sont des traitements légers — netteté, " +
+                            "éclat, lissage du grain, rendu cinéma, mode nuit.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val enh = viewModel.videoEnhance.collectAsState().value
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "none" to "Aucune", "net" to "Netteté", "eclat" to "Éclat",
+                            "doux" to "Anti-grain", "cinema" to "Cinéma", "nuit" to "Nuit",
+                        ).forEach { (key, label) ->
+                            FilterChip(
+                                selected = enh == key,
+                                onClick = { viewModel.setVideoEnhance(key) },
+                                label = { Text(label) },
+                            )
+                        }
                     }
                 }
             }
@@ -757,12 +897,12 @@ fun SettingsScreen(
                         FilterChip(
                             selected = render != "surface",
                             onClick = { viewModel.setVideoRender("texture") },
-                            label = { Text("🎨 Texture (filtres)") },
+                            label = { Text("Texture (filtres)") },
                         )
                         FilterChip(
                             selected = render == "surface",
                             onClick = { viewModel.setVideoRender("surface") },
-                            label = { Text("⚡ Surface (perf)") },
+                            label = { Text("Surface (perf)") },
                         )
                     }
                 }
@@ -770,7 +910,7 @@ fun SettingsScreen(
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Text(
-                        "Filtres vidéo (luminosité/teinte/saturation) : réglés dans le lecteur, bouton 🎛, avec préréglages sauvegardés.",
+                        "Filtres vidéo (luminosité/teinte/saturation) : réglés dans le lecteur, bouton , avec préréglages sauvegardés.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -801,11 +941,9 @@ fun SettingsScreen(
 
             // ---------------------------------------------------------- GENRES
             }
-            if (matchesQuery(settingsQuery, "Genres", "Ajouter, renommer, réordonner, masquer")) item {
-                SettingCategory("🏷", "Genres",
-                    "Ajouter, renommer, réordonner, masquer", expanded = "genres" in openCategories) { toggleCategory("genres") }
-            }
-            if ("genres" in openCategories) {
+            // §fusion-reglages : « Genres » n'est plus une page à part — elle vit
+            // désormais à la fin de la page « Interface ».
+            if ("genres" in openCategories || "ui" in openCategories) {
             item {
                 SettingRow(
                     title = "Gérer les genres (${state.genres.size})",
@@ -816,8 +954,8 @@ fun SettingsScreen(
 
             // -------------------------------------- RÉGLAGES PAR EXTENSION
             }
-            if (matchesQuery(settingsQuery, "Sources — réglages par extension", "Options déclarées par chaque source installée")) item {
-                SettingCategory("🧩", "Sources — réglages par extension",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Sources — réglages par extension", "Options déclarées par chaque source installée")) item {
+                SettingCategory(Icons.Filled.Extension, "Sources — réglages par extension",
                     "Options déclarées par chaque source installée", expanded = "sources" in openCategories) { toggleCategory("sources") }
             }
             if ("sources" in openCategories) {
@@ -891,15 +1029,15 @@ fun SettingsScreen(
                 }
             }
             }
-            if (matchesQuery(settingsQuery, "Sauvegarde", "Export / import JSON + sauvegarde automatique locale")) item {
-                SettingCategory("💾", "Sauvegarde",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Sauvegarde", "Export / import JSON + sauvegarde automatique locale")) item {
+                SettingCategory(Icons.Filled.Save, "Sauvegarde",
                     "Export / import JSON + sauvegarde automatique locale", expanded = "backup" in openCategories) { toggleCategory("backup") }
             }
             if ("backup" in openCategories) {
             item {
                 SettingSwitch(
                     title = "Sauvegarde automatique locale",
-                    subtitle = "Chaque jour : bibliothèque + historique + favoris → endlesssea-backup-AAAAMMJJ.json " +
+                    subtitle = "Chaque jour : bibliothèque + historique + favoris endlesssea-backup-AAAAMMJJ.json" +
                         "(dossier privé de l'app)" +
                         if (state.lastBackupAt > 0)
                             "\nDernière : ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.FRANCE).format(java.util.Date(state.lastBackupAt))}"
@@ -934,7 +1072,7 @@ fun SettingsScreen(
                 val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { diagTick.value++ }) { Text("↻ Rafraîchir") }
+                        TextButton(onClick = { diagTick.value++ }) { Text("Rafraîchir") }
                         TextButton(
                             onClick = {
                                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(dev.endlesssea.core.diag.EsLog.export()))
@@ -961,7 +1099,7 @@ fun SettingsScreen(
                     }
                     if (entries.isEmpty()) {
                         Text(
-                            "Aucune erreur enregistrée depuis le lancement ✨",
+                            "Aucune erreur enregistrée depuis le lancement",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 12.dp),
@@ -1007,8 +1145,8 @@ fun SettingsScreen(
 
             // --------------------------------------------------------- À PROPOS
             }
-            if (matchesQuery(settingsQuery, "À propos", "Version, mises à jour, journal d'erreurs, licence")) item {
-                SettingCategory("🍥", "À propos",
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "À propos", "Version, mises à jour, journal d'erreurs, licence")) item {
+                SettingCategory(Icons.Filled.Info, "À propos",
                     "Version, mises à jour, journal d'erreurs, licence", expanded = "about" in openCategories) { toggleCategory("about") }
             }
             if ("about" in openCategories) {
@@ -1299,7 +1437,7 @@ private fun GroupTitle(title: String) {
  *  arrondie, titre, sous-titre, chevron. Ouvre la page dédiée de la section. */
 @Composable
 private fun SettingCategory(
-    icon: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
     expanded: Boolean,
@@ -1326,7 +1464,7 @@ private fun SettingCategory(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(icon, style = MaterialTheme.typography.titleMedium)
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

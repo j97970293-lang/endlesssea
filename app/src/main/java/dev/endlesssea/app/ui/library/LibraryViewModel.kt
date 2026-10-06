@@ -7,6 +7,8 @@ import dev.endlesssea.app.ui.search.SearchItemUi
 import dev.endlesssea.data.db.LibraryDao
 import dev.endlesssea.data.db.MediaDao
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -153,11 +155,23 @@ class LibraryViewModel @Inject constructor(
         scanLocal()
     }
 
-    /** Scan multi-dossiers SAF — jamais sur le thread UI (DocumentFile est lent). */
+    /**
+     * §scan-rapide : scan multi-dossiers SAF.
+     *
+     * Deux étapes : (1) la liste des fichiers s'affiche TOUT DE SUITE (un curseur
+     * par dossier, cf. LocalVideos.scanAsync) ; (2) les durées, qui exigent
+     * d'ouvrir chaque fichier avec MediaMetadataRetriever (très lent : c'était la
+     * cause du scan interminable), sont calculées ensuite en tâche de fond, 4 à la
+     * fois, et viennent enrichir la liste au fil de l'eau.
+     */
+    private var durationJob: kotlinx.coroutines.Job? = null
+
     fun scanLocal() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
         val dirs = prefs.localVideoDirs.value
         _uiState.value = _uiState.value.copy(localScanning = true)
-        val files = dirs.flatMap { dev.endlesssea.app.local.LocalVideos.scan(context, it) }
+        val known = _uiState.value.localFiles.associate { it.uri to it.durationMs }
+        val files = dirs
+            .flatMap { dev.endlesssea.app.local.LocalVideos.scanAsync(context, it) }
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
@@ -165,13 +179,39 @@ class LibraryViewModel @Inject constructor(
                 LocalVideoUi(
                     uri = f.uri, name = f.displayName, parentUri = f.parentUri,
                     sizeBytes = f.sizeBytes,
-                    durationMs = dev.endlesssea.app.local.LocalVideos.durationMs(context, f.uri),
+                    durationMs = known[f.uri],
                     customTitle = m.title, customCoverUri = m.coverUri,
                     introStartSec = m.introStartSec, introEndSec = m.introEndSec,
                     outroStartSec = m.outroStartSec,
                 )
             }
         _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false)
+
+        durationJob?.cancel()
+        durationJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val gate = kotlinx.coroutines.sync.Semaphore(4)
+            val todo = files.filter { it.durationMs == null }
+            val found = java.util.Collections.synchronizedMap(mutableMapOf<String, Long>())
+            kotlinx.coroutines.coroutineScope {
+                todo.chunked(25).forEach { chunk ->
+                    chunk.map { f ->
+                        async {
+                            gate.withPermit {
+                                dev.endlesssea.app.local.LocalVideos.durationMs(context, f.uri)
+                                    ?.let { found[f.uri] = it }
+                            }
+                        }
+                    }.forEach { it.await() }
+                    // publication par paquets : la liste se complète sous les yeux
+                    val snap = found.toMap()
+                    _uiState.value = _uiState.value.copy(
+                        localFiles = _uiState.value.localFiles.map { v ->
+                            snap[v.uri]?.let { d -> v.copy(durationMs = d) } ?: v
+                        },
+                    )
+                }
+            }
+        }
     }
 
     /** Persistance de métadonnées locales éditées (§métadonnées-locales + §marqueurs). */
@@ -222,6 +262,13 @@ class LibraryViewModel @Inject constructor(
     fun addCategory(name: String) = prefs.addCustomCategory(name)
     fun removeCategory(name: String) = prefs.removeCustomCategory(name)
     fun categoryItems(name: String): List<String> = prefs.categoryItems(name)
+
+    /** §bibliotheque-locale-fusion : afficher les vidéos locales dans la grille. */
+    val mergeLocal: StateFlow<Boolean> = prefs.mergeLocalLibrary
+    fun setMergeLocal(v: Boolean) {
+        prefs.setMergeLocalLibrary(v)
+        if (v) scanLocal()
+    }
     fun toggleCategoryItem(name: String, item: String) = prefs.toggleCategoryItem(name, item)
 
     /** §métadonnées-éditées : titre/affiche perso sur une source (téléchargée ou non). */

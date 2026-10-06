@@ -62,7 +62,7 @@ fun UpdateProgressDialog(onRetry: (() -> Unit)? = null) {
             dismissButton = {
                 TextButton(onClick = { UpdateDownloadState.reset() }) { Text("Plus tard") }
             },
-            title = { Text("Mise à jour prête ✔") },
+            title = { Text("Mise à jour prête") },
             text = {
                 Text(
                     "Le fichier a été téléchargé et vérifié. Le système va te proposer " +

@@ -18,7 +18,13 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -96,12 +102,13 @@ class MainActivity : ComponentActivity() {
             val navBarLayout by prefs.navBarLayout.collectAsState()
             val translucentNav by prefs.translucentNav.collectAsState()
             val legacyHeader by prefs.legacyHeader.collectAsState()
+            val borderStrength by prefs.borderStrength.collectAsState()
             val accentGlassLink by prefs.accentLinkedToGlass.collectAsState()
             androidx.compose.runtime.LaunchedEffect(
                 glassOverlay, glassScrim, cardStyle, preferredAudioLang,
                 glassVariant, liquidGlass, accentGlassLink, accentName, bloom,
                 glowMult, radiusMult, blurMult, cardRoundness, cardAnim,
-                carouselStyle, historyCardStyle, animationsOn,
+                carouselStyle, historyCardStyle, animationsOn, borderStrength,
             ) {
                 // §couleurs : « fusion accent/verre » — si liées, l'accent teinte aussi le verre ;
                 // sinon la variante Glass saturée choisie s'applique (beaucoup de couleurs).
@@ -121,6 +128,7 @@ class MainActivity : ComponentActivity() {
                     carouselStyle = carouselStyle, historyCardStyle = historyCardStyle,
                 )
                 dev.endlesssea.app.ui.components.UiTuning.updateAnimations(animationsOn)
+                dev.endlesssea.app.ui.components.UiTuning.updateBorders(borderStrength)
                 dev.endlesssea.extensions.loader.AppEnv.preferredAudioLang = preferredAudioLang
             }
             val pendingUpdate = androidx.compose.runtime.remember {
@@ -247,7 +255,27 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.statusBarsPadding(),
                             // §anymex-ui / capture « Endless Sea barré » : plus de titre
                             // d'application en haut — seul l'en-tête classique le réaffiche.
-                            title = { if (legacyHeader) Text(title) },
+                            // §logo-en-haut : plus de titre ni de message d'accueil —
+                            // le logo de l'application, discret, tient lieu d'en-tête.
+                            title = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    androidx.compose.foundation.Image(
+                                        painter = androidx.compose.ui.res.painterResource(
+                                            dev.endlesssea.app.R.drawable.logo_sea,
+                                        ),
+                                        contentDescription = "EndlessSea",
+                                        modifier = Modifier.size(30.dp),
+                                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
+                                            MaterialTheme.colorScheme.primary,
+                                            androidx.compose.ui.graphics.BlendMode.Modulate,
+                                        ),
+                                    )
+                                    if (legacyHeader) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(title, style = MaterialTheme.typography.titleMedium)
+                                    }
+                                }
+                            },
                             actions = {
                                 // §fournisseur-en-haut : le sélecteur de source remplace
                                 // l'icône Extensions (déplacée dans les Réglages).
@@ -266,12 +294,15 @@ class MainActivity : ComponentActivity() {
                                         onClick = { dev.endlesssea.app.ui.home.HomeUiBus.openProviderSheet() },
                                     ) {
                                         Text(
-                                            "☁ " + provider,
+                                            provider,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                             modifier = Modifier.widthIn(max = 180.dp),
                                         )
-                                        Text(" ▾")
+                                        Icon(
+                                            Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = null,
+                                        )
                                     }
                                 }
                                 IconButton(onClick = { nav.navigate(Screen.Settings.route) }) {

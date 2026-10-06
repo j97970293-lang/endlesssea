@@ -93,8 +93,13 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
         poster = poster
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
+        // §bordures : liseré d'affiche proportionnel au réglage global
+        val borderStrength = UiTuning.borders.collectAsState().value / 100f
         if (style == "exotic" || style == "minimal_exotic") {
-            poster = poster.border(BorderStroke(1.dp, accent.copy(alpha = 0.55f)), shape)
+            val bs = borderStrength
+            if (bs > 0.01f) {
+                poster = poster.border(BorderStroke(1.dp, accent.copy(alpha = 0.55f * bs)), shape)
+            }
         }
 
         Box(poster) {
@@ -134,7 +139,7 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
             // ---- Note : pastille bas-droite (Saikou) ou haut-droite (autres styles)
             item.rating?.let { note ->
                 val align = if (style == "saikou") Alignment.BottomEnd else Alignment.TopEnd
-                Pill("⭐ %.1f".format(note), Modifier.align(align).padding(6.dp), accent)
+                Pill("%.1f".format(note), Modifier.align(align).padding(6.dp), accent)
             }
 
             // ---- Titre en surimpression (Modern / Minimal Exotic) + bandeau vif (Exotic)

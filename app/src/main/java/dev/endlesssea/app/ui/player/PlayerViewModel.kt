@@ -55,6 +55,13 @@ data class PlayerUiState(
     /** §épisode-suivant : y a-t-il un élément avant / après dans la file ? */
     val hasPrev: Boolean = false,
     val hasNext: Boolean = false,
+    // §filtres-video : réglages avancés (contraste, gamma, netteté, température)
+    val filterContrast: Float = 1f,
+    val filterGamma: Float = 1f,
+    val filterSharp: Float = 0f,
+    val filterTemp: Float = 0f,
+    /** §amelioration-video : "none" | "net" | "eclat" | "doux" | "cinema" | "nuit". */
+    val enhance: String = "none",
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -105,6 +112,13 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.videoPresetsJson.collect { _uiState.value = _uiState.value.copy(savedPresets = parsePresets(it)) }
         }
+        _uiState.value = _uiState.value.copy(
+            filterContrast = prefs.videoContrast.value,
+            filterGamma = prefs.videoGamma.value,
+            filterSharp = prefs.videoSharp.value,
+            filterTemp = prefs.videoTemp.value,
+            enhance = prefs.videoEnhance.value,
+        )
         applyFilter(
             prefs.videoBrightness.value, prefs.videoSaturation.value, prefs.videoHue.value,
             prefs.videoPreset.value, persist = false,
@@ -132,17 +146,100 @@ class PlayerViewModel @Inject constructor(
 
     /** Applique le triplet au moteur (et persiste si [persist]=true). Valeurs -100..100 / hue -180..180. */
     fun applyFilter(brightness: Float, saturation: Float, hue: Float, presetName: String, persist: Boolean = true) {
-        val hl = androidx.media3.effect.HslAdjustment.Builder()
-            .adjustLightness(brightness)
-            .adjustSaturation(saturation)
-            .adjustHue(hue)
-            .build()
-        engine.applyVideoEffects(listOf(hl))
         _uiState.value = _uiState.value.copy(
             filterBrightness = brightness, filterSaturation = saturation,
             filterHue = hue, filterPresetName = presetName,
         )
         if (persist) prefs.setVideoFilter(brightness, saturation, hue, presetName)
+        rebuildEffects()
+    }
+
+    /** §filtres-video : contraste / gamma (via luminosité) / netteté / température. */
+    fun applyAdvanced(contrast: Float, gamma: Float, sharp: Float, temp: Float) {
+        _uiState.value = _uiState.value.copy(
+            filterContrast = contrast, filterGamma = gamma,
+            filterSharp = sharp, filterTemp = temp,
+        )
+        prefs.setVideoAdvanced(contrast, gamma, sharp, temp)
+        rebuildEffects()
+    }
+
+    /** §amelioration-video : profils d'amélioration d'image légers (sans surcoût GPU notable). */
+    fun setEnhance(mode: String) {
+        _uiState.value = _uiState.value.copy(enhance = mode)
+        prefs.setVideoEnhance(mode)
+        rebuildEffects()
+    }
+
+    /**
+     * Recompose TOUTE la chaîne d'effets (filtres + amélioration) et la pousse au
+     * moteur. Un seul point d'entrée : c'est ce qui corrige les filtres « qui ne
+     * s'appliquaient qu'après avoir quitté la vidéo » (chaînes concurrentes).
+     */
+    private fun rebuildEffects() {
+        val st = _uiState.value
+        val effects = mutableListOf<androidx.media3.common.Effect>()
+        // 1) profil d'amélioration
+        when (st.enhance) {
+            "net" -> {
+                runCatching { effects += androidx.media3.effect.Contrast(0.12f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(6f).build()
+            }
+            "eclat" -> {
+                runCatching { effects += androidx.media3.effect.Contrast(0.22f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(18f).build()
+            }
+            "doux" -> {
+                // « anti-grain » : on baisse légèrement le contraste et la saturation,
+                // ce qui noie le bruit de compression sans flouter l'image.
+                runCatching { effects += androidx.media3.effect.Contrast(-0.08f) }
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustSaturation(-6f).adjustLightness(2f).build()
+            }
+            "cinema" -> {
+                runCatching {
+                    effects += androidx.media3.effect.RgbAdjustment.Builder()
+                        .setRedScale(1.06f).setGreenScale(1.0f).setBlueScale(0.94f).build()
+                }
+                runCatching { effects += androidx.media3.effect.Contrast(0.10f) }
+            }
+            "nuit" -> {
+                effects += androidx.media3.effect.HslAdjustment.Builder()
+                    .adjustLightness(14f).build()
+                runCatching { effects += androidx.media3.effect.Contrast(-0.05f) }
+            }
+        }
+        // 2) réglages fins de l'utilisateur
+        if (st.filterContrast != 1f) {
+            runCatching {
+                effects += androidx.media3.effect.Contrast((st.filterContrast - 1f).coerceIn(-1f, 1f))
+            }
+        }
+        if (st.filterTemp != 0f) {
+            runCatching {
+                val t = st.filterTemp.coerceIn(-1f, 1f)
+                effects += androidx.media3.effect.RgbAdjustment.Builder()
+                    .setRedScale(1f + 0.15f * t)
+                    .setBlueScale(1f - 0.15f * t)
+                    .build()
+            }
+        }
+        if (st.filterSharp > 0f) {
+            // Netteté perçue : contraste local approximé par un contraste global doux
+            runCatching {
+                effects += androidx.media3.effect.Contrast((st.filterSharp * 0.25f).coerceIn(0f, 0.5f))
+            }
+        }
+        // 3) le triplet classique (luminosité / saturation / teinte), toujours en dernier
+        val lightness = st.filterBrightness + (st.filterGamma - 1f) * 20f
+        effects += androidx.media3.effect.HslAdjustment.Builder()
+            .adjustLightness(lightness)
+            .adjustSaturation(st.filterSaturation)
+            .adjustHue(st.filterHue)
+            .build()
+        engine.applyVideoEffects(effects)
     }
 
     fun applyPreset(preset: VideoFilterPreset) =
@@ -155,15 +252,15 @@ class PlayerViewModel @Inject constructor(
         sleepJob?.cancel()
         sleepJob = null
         if (minutes <= 0) {
-            _uiState.value = _uiState.value.copy(sleepEndAt = null, toast = "⏰ Minuterie désactivée")
+            _uiState.value = _uiState.value.copy(sleepEndAt = null, toast = "Minuterie désactivée")
             return
         }
         val endAt = System.currentTimeMillis() + minutes * 60_000L
-        _uiState.value = _uiState.value.copy(sleepEndAt = endAt, toast = "⏰ Pause dans $minutes min")
+        _uiState.value = _uiState.value.copy(sleepEndAt = endAt, toast = "Pause dans $minutes min")
         sleepJob = viewModelScope.launch {
             kotlinx.coroutines.delay(minutes * 60_000L)
             engine.pause()
-            _uiState.value = _uiState.value.copy(sleepEndAt = null, toast = "⏰ Minuterie — lecture mise en pause")
+            _uiState.value = _uiState.value.copy(sleepEndAt = null, toast = "Minuterie — lecture mise en pause")
         }
     }
 
@@ -294,6 +391,20 @@ class PlayerViewModel @Inject constructor(
     fun megaJump(deltaSec: Int) = viewModelScope.launch {
         engine.player.seekTo((engine.player.currentPosition + deltaSec * 1000L).coerceAtLeast(0))
     }
+
+    // §lecteur-placement / §theme-lecteur : réglages lus directement par l'écran
+    val progressPosition: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.progressPosition
+    val toolsPosition: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.toolsPosition
+    val megaSkipSide: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.megaSkipSide
+    val progressThickness: kotlinx.coroutines.flow.StateFlow<Int> get() = prefs.progressThickness
+    val progressRounded: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.progressRounded
+    val playerTheme: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.playerTheme
+    fun setProgressPosition(v: String) = prefs.setProgressPosition(v)
+    fun setToolsPosition(v: String) = prefs.setToolsPosition(v)
+    fun setMegaSkipSide(v: String) = prefs.setMegaSkipSide(v)
+    fun setProgressThickness(v: Int) = prefs.setProgressThickness(v)
+    fun setProgressRounded(v: Boolean) = prefs.setProgressRounded(v)
+    fun setPlayerTheme(v: String) = prefs.setPlayerTheme(v)
 
     /** §rendu-vidéo : "texture" (filtres) ou "surface" (perf/HDR). */
     val videoRender: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.videoRender

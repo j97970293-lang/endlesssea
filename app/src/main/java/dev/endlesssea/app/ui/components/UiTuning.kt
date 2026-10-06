@@ -27,6 +27,7 @@ object UiTuning {
     private val _carouselStyle = MutableStateFlow("classic")
     private val _historyCardStyle = MutableStateFlow("bootiful")
     private val _animations = MutableStateFlow(true)
+    private val _borders = MutableStateFlow(18)
 
     /** Opacité de la couche « verre » (%) — 0 (invisible) .. 30 (laiteux). Défaut 12. */
     val glassOverlay: StateFlow<Int> = _glassOverlay
@@ -69,6 +70,11 @@ object UiTuning {
 
     /** Animations globales (défilement auto des carrousels, transitions). */
     val animations: StateFlow<Boolean> = _animations
+
+    /** §bordures : force des liserés (0 = aucun liseré nulle part, 100 = marqués). */
+    val borders: StateFlow<Int> = _borders
+
+    fun updateBorders(v: Int) { _borders.value = v.coerceIn(0, 100) }
 
     fun updateBloom(v: Boolean) { _bloom.value = v }
 

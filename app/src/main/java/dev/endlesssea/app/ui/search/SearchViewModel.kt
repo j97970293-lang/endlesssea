@@ -41,7 +41,23 @@ data class SearchUiState(
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val registry: ExtensionRegistry,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
 ) : ViewModel() {
+
+    /** §recherche-sources : liste des sources activables (id, nom) et exclusions. */
+    val searchExcluded: StateFlow<Set<String>> = prefs.searchExcluded
+    val resultsOnly: StateFlow<Boolean> = prefs.searchResultsOnly
+    fun availableSources(): List<Pair<String, String>> =
+        registry.enabledExtensions().map { (_, ext) -> ext.info.id to ext.info.name }
+    fun toggleSearchSource(id: String) {
+        prefs.toggleSearchExcluded(id)
+        if (_uiState.value.query.isNotBlank()) {
+            _uiState.value = _uiState.value.copy(loading = true)
+            queryFlow.value = _uiState.value.query + " "
+            queryFlow.value = _uiState.value.query
+        }
+    }
+    fun setResultsOnly(v: Boolean) = prefs.setSearchResultsOnly(v)
 
     private val queryFlow = MutableStateFlow("")
     /** Filtres actifs (type + langue) — transmis aux extensions via FilterSet. */
@@ -120,6 +136,8 @@ class SearchViewModel @Inject constructor(
         val errors = mutableMapOf<String, String>()
 
         registry.enabledExtensions()
+            // §recherche-sources : on saute les sources désactivées dans l'écran
+            .filter { (_, ext) -> ext.info.id !in prefs.searchExcluded.value }
             .filter { (_, ext) -> sourceFilter == "ALL" || ext.info.id == sourceFilter }
             .map { (name, ext) ->
             async {
