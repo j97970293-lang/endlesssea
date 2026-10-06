@@ -735,6 +735,7 @@ private fun CustomCategoryPanel(
                                         server = "Fichier local",
                                     ),
                                 ),
+                                startIndex = 0,
                                 markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
                                     introStartSec = video.introStartSec,
                                     introEndSec = video.introEndSec,
