@@ -45,3 +45,6 @@ keystore.properties
 releases/
 !*.jar exception for wrapper
 !gradle/wrapper/gradle-wrapper.jar
+
+# Kotlin compilation cache
+.kotlin/
