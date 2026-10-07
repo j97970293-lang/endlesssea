@@ -1289,38 +1289,45 @@ private fun CharacterCard(credit: dev.endlesssea.extensions.api.model.CharacterC
 }
 
 /**
- * §suivi (conversation 11) — carte « Suivi » de la fiche :
- *  · service rattaché, progression et statut (En cours / Terminé / À voir) ;
- *  · « +1 épisode vu » et changement de statut en un tap ;
- *  · sans rattachement : recherche du titre sur les services connectés.
- * Tout reste facultatif : sans compte connecté, la carte propose simplement de
- * connecter un service (elle n'envoie jamais rien).
+ * §suivi (conversation 11) — bloc « Suivi » de la fiche : service rattaché,
+ * progression, statut, et rattachement manuel par recherche (résultats
+ * cliquables avec vignette + année). Sans compte connecté, le bloc propose
+ * simplement d'ouvrir l'écran « Comptes & suivi ».
  */
 @Composable
 private fun TrackerCard(
     viewModel: dev.endlesssea.app.ui.details.DetailsViewModel,
     onOpenTrackers: () -> Unit,
 ) {
-    // Se relit à chaque changement de rattachement/progression.
-    val tick by viewModel.trackerTick.collectAsState()
+    val link by viewModel.trackerLink.collectAsState()
+    val services by viewModel.connectedServices.collectAsState()
     val search by viewModel.trackerSearch.collectAsState()
-    val summary = remember(tick) { viewModel.trackerSummary() }
-    val connected = remember(tick) { viewModel.connectedTrackers() }
+    val tick by viewModel.trackerTick.collectAsState()
+    // tick force la relecture après une action (progression/statut/détachement)
+    remember(tick) { link }
 
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        cornerRadius = 16.dp,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
+        contentPadding = PaddingValues(14.dp),
     ) {
         Column {
             Text("Suivi", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
+
             when {
-                summary != null -> {
+                link != null -> {
+                    val l = link!!
                     Text(
-                        "${summary.first} · ${summary.second}" +
-                            (summary.third?.let { " / $it" } ?: "") + " épisode(s)",
+                        "${l.title.ifBlank { l.remoteId }} · ${l.progress}" +
+                            (l.totalEpisodes.takeIf { it > 0 }?.let { " / $it" } ?: "") +
+                            " épisode(s)",
                         style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "Service : " + l.service.lowercase().replaceFirstChar { it.uppercase() } +
+                            (if (l.pendingSync) " · en attente de synchronisation" else ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(
@@ -1332,31 +1339,33 @@ private fun TrackerCard(
                             onClick = { viewModel.markNextWatched() },
                             label = { Text("+1 épisode vu", maxLines = 1, softWrap = false) },
                         )
-                        dev.endlesssea.app.tracking.TrackerStatus.entries.forEach { st ->
-                            androidx.compose.material3.FilterChip(
-                                selected = false,
-                                onClick = { viewModel.setTrackerStatus(st) },
-                                label = { Text(st.label, maxLines = 1, softWrap = false) },
-                            )
-                        }
+                        listOf("WATCHING" to "En cours", "COMPLETED" to "Terminé", "DROPPED" to "Abandonné")
+                            .forEach { (key, label) ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = l.status == key,
+                                    onClick = { viewModel.setTrackerStatus(key) },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
+                                )
+                            }
                     }
-                    TextButton(onClick = { viewModel.unlinkTracker() }) { Text("Détacher") }
+                    TextButton(onClick = { viewModel.unlinkTracker() }) { Text("Ne plus suivre") }
                 }
-                connected.isEmpty() -> {
+                services.isEmpty() -> {
                     Text(
-                        "Aucun service connecté. Connecte AniList, MyAnimeList, Shikimori ou TMDB " +
-                            "pour suivre tes épisodes et compléter les fiches.",
+                        "Connecte AniList, MyAnimeList ou Shikimori pour suivre tes épisodes " +
+                            "(et TMDB pour les affiches et bandes-annonces).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
                     androidx.compose.material3.Button(onClick = onOpenTrackers) {
-                        Text("Connecter un service")
+                        Text("Ouvrir Comptes & suivi")
                     }
                 }
                 else -> {
                     Text(
-                        "Rattache cette fiche pour synchroniser les épisodes vus.",
+                        "Rattache cette fiche à ton compte pour envoyer la progression " +
+                            "(un épisode vu hors ligne partira plus tard).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1365,24 +1374,19 @@ private fun TrackerCard(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        connected.filter {
-                            it.tracksProgress
-                        }.forEach { id ->
+                        services.forEach { id ->
                             androidx.compose.material3.FilterChip(
                                 selected = false,
                                 onClick = { viewModel.searchTracker(id) },
-                                label = { Text("Chercher sur ${id.label}", maxLines = 1, softWrap = false) },
-                            )
-                        }
-                        connected.filter { !it.tracksProgress }.forEach { id ->
-                            androidx.compose.material3.FilterChip(
-                                selected = false,
-                                onClick = { viewModel.searchTracker(id) },
-                                label = { Text("Rattacher via ${id.label}", maxLines = 1, softWrap = false) },
+                                label = {
+                                    Text(
+                                        "Chercher sur " + (dev.endlesssea.app.tracking.TrackerRegistry.LABELS[id] ?: id),
+                                        maxLines = 1, softWrap = false,
+                                    )
+                                },
                             )
                         }
                     }
-                    // résultats de recherche → choix du rattachement
                     if (search.loading) {
                         Spacer(Modifier.height(8.dp))
                         Text("Recherche…", style = MaterialTheme.typography.bodySmall)
@@ -1390,7 +1394,7 @@ private fun TrackerCard(
                     search.hits.forEach { hit ->
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable { search.id?.let { viewModel.linkTracker(it, hit) } }
+                                .clickable { search.service?.let { viewModel.linkTracker(it, hit) } }
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -1405,7 +1409,7 @@ private fun TrackerCard(
                             Column(Modifier.weight(1f)) {
                                 Text(hit.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
                                 Text(
-                                    listOfNotNull(hit.year?.toString(), hit.episodes?.let { "$it ép." })
+                                    listOfNotNull(hit.year?.toString(), hit.totalEpisodes?.let { "$it ép." })
                                         .joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

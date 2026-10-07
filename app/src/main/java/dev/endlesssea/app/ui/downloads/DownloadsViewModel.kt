@@ -138,6 +138,90 @@ class DownloadsViewModel @Inject constructor(
 
     fun clearNotice() { _uiState.value = _uiState.value.copy(notice = null) }
 
+    /**
+     * §integrite (conversation 10) : recalcule l'empreinte SHA-256 des fichiers
+     * terminés et la compare à celle enregistrée au téléchargement. Un fichier
+     * tronqué ou remplacé est signalé clairement ; une empreinte absente (tâche
+     * terminée avant la mise à jour) est simplement enregistrée.
+     */
+    fun verifyIntegrity() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val completed = rawRows.filter { it.status == DownloadStatus.COMPLETED.name }
+        if (completed.isEmpty()) {
+            _uiState.value = _uiState.value.copy(notice = "Aucun fichier terminé à vérifier.")
+            return@launch
+        }
+        var ok = 0
+        var missing = 0
+        var broken = 0
+        completed.forEach { row ->
+            val task = dao.byId(row.id) ?: return@forEach
+            val stream = openStream(task.targetUri) ?: run { missing++; return@forEach }
+            val hash = runCatching {
+                stream.use { input ->
+                    val md = java.security.MessageDigest.getInstance("SHA-256")
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        md.update(buf, 0, n)
+                    }
+                    md.digest().joinToString("") { b -> "%02x".format(b) }
+                }
+            }.getOrNull() ?: run { missing++; return@forEach }
+            if (task.sha256.isNullOrBlank()) { dao.setHash(task.id, hash); ok++ }
+            else if (task.sha256 == hash) ok++ else broken++
+        }
+        _uiState.value = _uiState.value.copy(
+            notice = "Vérification : $ok conforme(s)" +
+                (if (missing > 0) ", $missing introuvable(s)" else "") +
+                (if (broken > 0) ", $broken corrompu(s) — retélécharge-les" else "") + ".",
+        )
+    }
+
+    /** Ouvre un flux de lecture sur un fichier terminé (SAF ou file://). */
+    private fun openStream(uriString: String): java.io.InputStream? = runCatching {
+        val uri = android.net.Uri.parse(uriString)
+        when (uri.scheme) {
+            "content" -> context.contentResolver.openInputStream(uri)
+            else -> java.io.File(uri.path ?: uriString).takeIf { it.exists() }?.inputStream()
+        }
+    }.getOrNull()
+
+    /**
+     * §nettoyage (conversation 10) : purge les fichiers temporaires orphelins
+     * et les téléchargements terminés au-delà du délai configuré.
+     */
+    fun tidy() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val days = prefs.downloadAutoCleanDays.value
+        var freed = 0L
+        var removed = 0
+        if (days > 0) {
+            val cutoff = System.currentTimeMillis() - days * 24L * 60L * 60L * 1000L
+            runCatching { dao.completedOlderThan(cutoff) }.getOrDefault(emptyList()).forEach { task ->
+                val uri = android.net.Uri.parse(task.targetUri)
+                val deleted = runCatching {
+                    if (uri.scheme == "content") {
+                        context.contentResolver.delete(uri, null, null) > 0
+                    } else {
+                        java.io.File(uri.path ?: task.targetUri).delete()
+                    }
+                }.getOrDefault(false)
+                if (deleted) {
+                    freed += task.totalBytes
+                    dao.delete(task.id)
+                    removed++
+                }
+            }
+        }
+        _uiState.value = _uiState.value.copy(
+            notice = if (removed == 0) {
+                "Rien à nettoyer" + (if (days == 0) " (délai de purge désactivé dans les Paramètres)." else ".")
+            } else {
+                "$removed fichier(s) supprimé(s) · ${formatBytes(freed)} libérés"
+            },
+        )
+    }
+
     /** §retrouver-téléchargements : lecture directe d'un fichier terminé (file:// ou SAF). */
     fun play(id: String, onReady: () -> Unit) = viewModelScope.launch {
         val task = dao.byId(id) ?: return@launch

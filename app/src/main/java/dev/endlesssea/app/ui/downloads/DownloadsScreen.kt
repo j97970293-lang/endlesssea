@@ -141,6 +141,24 @@ fun DownloadsScreen(
                 modifier = Modifier.clickable { viewModel.toggleOrder() }.padding(6.dp),
             )
         }
+        // ---- §entretien (conversation 10) : intégrité + nettoyage
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.AssistChip(
+                onClick = { viewModel.verifyIntegrity() },
+                label = { Text("Vérifier l'intégrité (SHA-256)", maxLines = 1, softWrap = false) },
+            )
+            androidx.compose.material3.AssistChip(
+                onClick = { viewModel.tidy() },
+                label = { Text("Nettoyer maintenant", maxLines = 1, softWrap = false) },
+            )
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

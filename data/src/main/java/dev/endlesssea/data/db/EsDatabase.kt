@@ -17,8 +17,10 @@ import androidx.room.RoomDatabase
         ExtensionEntity::class,
         SkipCacheEntity::class,
         SkipButtonEntity::class,
+        TrackerAccountEntity::class,
+        TrackerLinkEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class EsDatabase : RoomDatabase() {
@@ -30,6 +32,9 @@ abstract class EsDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
     abstract fun watchHistoryDao(): WatchHistoryDao
     abstract fun downloadsDao(): DownloadsDao
+
+    /** §suivi (conversation 11) : comptes AniList / MAL / Shikimori / TMDB. */
+    abstract fun trackerDao(): TrackerDao
     abstract fun genreDao(): GenreDao
     abstract fun repoDao(): RepoDao
     abstract fun extensionDao(): ExtensionDao

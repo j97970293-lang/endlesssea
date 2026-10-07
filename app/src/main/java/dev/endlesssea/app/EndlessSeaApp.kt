@@ -45,6 +45,27 @@ class EndlessSeaApp : Application() {
             database.genreDao().insertAll(EsDatabase.SEED_GENRES)
             seedCategories()
         }
+        // §nettoyage-auto (conversation 10) : purge des téléchargements terminés
+        // au-delà du délai choisi (0 = jamais), sans bloquer le démarrage.
+        appScope.launch {
+            runCatching {
+                val days = prefs.downloadAutoCleanDays.value
+                if (days > 0) {
+                    val cutoff = System.currentTimeMillis() - days * 24L * 60L * 60L * 1000L
+                    database.downloadsDao().completedOlderThan(cutoff).forEach { task ->
+                        val uri = android.net.Uri.parse(task.targetUri)
+                        val deleted = runCatching {
+                            if (uri.scheme == "content") {
+                                contentResolver.delete(uri, null, null) > 0
+                            } else {
+                                java.io.File(uri.path ?: task.targetUri).delete()
+                            }
+                        }.getOrDefault(false)
+                        if (deleted) database.downloadsDao().delete(task.id)
+                    }
+                }
+            }
+        }
         // §service-telechargement (conversation 10) : la file survivait au passage
         // en arrière-plan par chance ; on reprend sur le service au premier plan
         // (wake-lock + notifications) dès qu'une tâche est en attente.

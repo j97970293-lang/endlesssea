@@ -81,10 +81,33 @@ object AppModule {
         }
     }
 
+    /** v6 → v7 : comptes et rattachements des services de suivi (conversation 11). */
+    private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `tracker_accounts` (" +
+                    "`service` TEXT NOT NULL, `userName` TEXT NOT NULL DEFAULT '', " +
+                    "`accessToken` TEXT, `refreshToken` TEXT, `clientId` TEXT, `apiKey` TEXT, " +
+                    "`expiresAt` INTEGER NOT NULL DEFAULT 0, `enabled` INTEGER NOT NULL DEFAULT 1, " +
+                    "`connectedAt` INTEGER NOT NULL DEFAULT 0, `lastError` TEXT, " +
+                    "PRIMARY KEY(`service`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `tracker_links` (" +
+                    "`mediaId` TEXT NOT NULL, `service` TEXT NOT NULL, `remoteId` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL DEFAULT '', `totalEpisodes` INTEGER NOT NULL DEFAULT 0, " +
+                    "`progress` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL DEFAULT 'PLANNING', " +
+                    "`lastEpisodeId` TEXT NOT NULL DEFAULT '', `pendingSync` INTEGER NOT NULL DEFAULT 0, " +
+                    "`updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`mediaId`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_tracker_links_service` ON `tracker_links` (`service`)")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 
@@ -97,6 +120,9 @@ object AppModule {
     @Provides fun provideRepoDao(db: EsDatabase): RepoDao = db.repoDao()
     @Provides fun provideExtensionDao(db: EsDatabase): ExtensionDao = db.extensionDao()
     @Provides fun provideSkipDao(db: EsDatabase): dev.endlesssea.data.db.SkipDao = db.skipDao()
+
+    /** §suivi (conversation 11) : comptes et rattachements des services. */
+    @Provides fun provideTrackerDao(db: EsDatabase): dev.endlesssea.data.db.TrackerDao = db.trackerDao()
 
     @Provides @Singleton
     fun provideDownloadEngine(

@@ -4,26 +4,32 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.endlesssea.app.di.AppPrefs
-import dev.endlesssea.app.tracking.TrackerAccount
-import dev.endlesssea.app.tracking.TrackerCredentials
-import dev.endlesssea.app.tracking.TrackerId
+import dev.endlesssea.app.tracking.TrackerRegistry
 import dev.endlesssea.app.tracking.TrackerRepository
+import dev.endlesssea.data.db.TrackerAccountEntity
+import dev.endlesssea.data.db.TrackerLinkEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** État de l'écran « Comptes & suivi ». */
 data class TrackersUiState(
-    val accounts: Map<TrackerId, TrackerAccount> = emptyMap(),
-    val status: String = "",
-    val busy: TrackerId? = null,
-    /** Champs saisis par service (jamais persistés avant validation). */
-    val drafts: Map<TrackerId, TrackerCredentials> = emptyMap(),
+    val accounts: List<TrackerAccountEntity> = emptyList(),
+    val links: List<TrackerLinkEntity> = emptyList(),
+    /** Service dont le formulaire est ouvert (null = aucun). */
+    val editing: String? = null,
+    /** Message d'état (succès ou erreur) affiché en haut de l'écran. */
+    val notice: String? = null,
+    val busy: Boolean = false,
     val autoMark: Boolean = true,
     val enrichTmdb: Boolean = true,
 )
 
+/**
+ * §suivi (conversation 11) — écran « Comptes & suivi » : brancher AniList,
+ * MyAnimeList, Shikimori et TMDB, voir les fiches rattachées et rejouer les
+ * mises à jour en attente.
+ */
 @HiltViewModel
 class TrackersViewModel @Inject constructor(
     private val repo: TrackerRepository,
@@ -35,10 +41,12 @@ class TrackersViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            repo.accounts.collect { acc -> _uiState.value = _uiState.value.copy(accounts = acc) }
+            repo.accounts.collect { list ->
+                _uiState.value = _uiState.value.copy(accounts = list)
+            }
         }
         viewModelScope.launch {
-            repo.status.collect { s -> _uiState.value = _uiState.value.copy(status = s) }
+            repo.links.collect { list -> _uiState.value = _uiState.value.copy(links = list) }
         }
         viewModelScope.launch {
             prefs.autoMarkWatched.collect { v -> _uiState.value = _uiState.value.copy(autoMark = v) }
@@ -46,60 +54,85 @@ class TrackersViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.enrichWithTmdb.collect { v -> _uiState.value = _uiState.value.copy(enrichTmdb = v) }
         }
-        // pré-remplit les champs avec ce qui est déjà enregistré (jeton masqué)
-        _uiState.value = _uiState.value.copy(
-            drafts = TrackerId.entries.associateWith { repo.credentials(it) },
-        )
+        // Une mise à jour en attente (épisode vu hors ligne) part dès l'ouverture.
+        viewModelScope.launch {
+            val count = runCatching { repo.syncPending() }.getOrDefault(0)
+            if (count > 0) {
+                _uiState.value = _uiState.value.copy(
+                    notice = "$count mise(s) à jour synchronisée(s) avec les services.",
+                )
+            }
+        }
     }
+
+    val services: List<String> = TrackerRegistry.LABELS.keys.toList()
+
+    fun label(id: String): String = TrackerRegistry.LABELS[id] ?: id
+    fun hint(id: String): String = TrackerRegistry.HINTS[id].orEmpty()
+
+    fun account(id: String): TrackerAccountEntity? =
+        _uiState.value.accounts.firstOrNull { it.service == id }
+
+    fun linksFor(id: String): List<TrackerLinkEntity> =
+        _uiState.value.links.filter { it.service == id }
+
+    fun openForm(id: String) { _uiState.value = _uiState.value.copy(editing = id, notice = null) }
+    fun closeForm() { _uiState.value = _uiState.value.copy(editing = null) }
 
     fun setAutoMark(v: Boolean) = prefs.setAutoMarkWatched(v)
     fun setEnrichTmdb(v: Boolean) = prefs.setEnrichWithTmdb(v)
-    fun clearStatus() { /* le statut disparaît au prochain message */ }
+    fun clearNotice() { _uiState.value = _uiState.value.copy(notice = null) }
 
-    fun draft(id: TrackerId): TrackerCredentials = _uiState.value.drafts[id] ?: TrackerCredentials()
-
-    /** Met à jour un champ du brouillon (token, clé, identifiant client…). */
-    fun updateDraft(id: TrackerId, transform: (TrackerCredentials) -> TrackerCredentials) {
-        val next = _uiState.value.drafts.toMutableMap()
-        next[id] = transform(next[id] ?: TrackerCredentials())
-        _uiState.value = _uiState.value.copy(drafts = next)
-    }
-
-    /** Enregistre puis vérifie les identifiants saisis (bouton « Connecter »). */
-    fun connect(id: TrackerId) {
+    /** Connexion : le jeton (ou la clé TMDB) est vérifié avant d'être conservé. */
+    fun connect(id: String, token: String, apiKey: String, clientId: String, refreshToken: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(busy = id)
-            val creds = draft(id)
-            repo.saveCredentials(id, creds, "")
-            repo.verify(id, creds)
-            _uiState.value = _uiState.value.copy(
-                busy = null, drafts = _uiState.value.drafts + (id to repo.credentials(id)),
+            _uiState.value = _uiState.value.copy(busy = true, notice = "Vérification…")
+            val name = repo.connect(
+                id = id,
+                token = token.ifBlank { null },
+                apiKey = apiKey.ifBlank { null },
+                clientId = clientId.ifBlank { null },
+                refreshToken = refreshToken.ifBlank { null },
             )
+            _uiState.value = _uiState.value.copy(
+                busy = false,
+                editing = if (name == null) id else null,
+                notice = if (name != null) {
+                    "${label(id)} connecté en tant que $name."
+                } else {
+                    "${label(id)} : identifiants refusés ou service injoignable."
+                },
+            )
+            if (name != null) repo.syncPending()
         }
     }
 
-    /**
-     * Ouvre la page d'autorisation du service (OAuth). L'appelant lance
-     * l'intent ; on prépare les identifiants nécessaires (dont le PKCE MAL).
-     */
-    fun authorizationUrl(id: TrackerId): String {
-        val d = draft(id)
-        return repo.authorizeUrl(id, d.clientId.trim(), d.clientSecret.trim())
-    }
-
-    /** Échange le code d'autorisation collé par l'utilisateur contre un jeton. */
-    fun completeAuthorization(id: TrackerId, code: String) {
+    fun disconnect(id: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(busy = id)
-            repo.completeAuthorization(id, code)
-            _uiState.value = _uiState.value.copy(
-                busy = null, drafts = _uiState.value.drafts + (id to repo.credentials(id)),
-            )
+            repo.disconnect(id)
+            _uiState.value = _uiState.value.copy(notice = "${label(id)} déconnecté.")
         }
     }
 
-    fun disconnect(id: TrackerId) {
-        repo.disconnect(id)
-        updateDraft(id) { TrackerCredentials() }
+    fun setEnabled(id: String, enabled: Boolean) {
+        viewModelScope.launch { repo.setEnabled(id, enabled) }
+    }
+
+    fun unlink(mediaId: String) {
+        viewModelScope.launch {
+            repo.unlink(mediaId)
+            _uiState.value = _uiState.value.copy(notice = "Rattachement supprimé.")
+        }
+    }
+
+    fun syncNow() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(busy = true, notice = "Synchronisation…")
+            val count = runCatching { repo.syncPending() }.getOrDefault(0)
+            _uiState.value = _uiState.value.copy(
+                busy = false,
+                notice = if (count == 0) "Tout est à jour." else "$count mise(s) à jour envoyée(s).",
+            )
+        }
     }
 }
