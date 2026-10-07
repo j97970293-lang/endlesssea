@@ -34,6 +34,12 @@ data class SeriesMeta(
     val author: String? = null,
     val genres: List<String> = emptyList(),
     val coverUri: String? = null,
+    /**
+     * §episodes-json : titres d'épisodes publiés dans `episodes.json`
+     * (format Aniyomi : `{"episode_number": 1, "name": "…"}`) —
+     * clé = numéro d'épisode, valeur = titre lisible.
+     */
+    val episodeTitles: Map<Int, String> = emptyMap(),
 )
 
 object LocalVideos {
@@ -140,7 +146,21 @@ object LocalVideos {
                             }
                         } else {
                             val ext = name.substringAfterLast('.', "").lowercase()
-                            if (ext in VIDEO_EXT || mime.startsWith("video/")) {
+                            // §episodes-json : titres d'épisodes du dossier (Aniyomi)
+                            if (name.equals("episodes.json", true)) {
+                                val docUri = android.provider.DocumentsContract
+                                    .buildDocumentUriUsingTree(tree, id).toString()
+                                val text = runCatching {
+                                    context.contentResolver.openInputStream(Uri.parse(docUri))
+                                        ?.bufferedReader()?.use { r -> r.readText() }
+                                }.getOrNull()
+                                val titles = parseEpisodeTitles(text)
+                                if (titles.isNotEmpty()) {
+                                    seriesMeta.compute(dirUri) { _, old ->
+                                        (old ?: SeriesMeta()).copy(episodeTitles = titles)
+                                    }
+                                }
+                            } else if (ext in VIDEO_EXT || mime.startsWith("video/")) {
                                 out += LocalVideoFile(
                                     uri = android.provider.DocumentsContract
                                         .buildDocumentUriUsingTree(tree, id).toString(),
@@ -192,4 +212,99 @@ object LocalVideos {
         val h = totalMin / 60; val m = totalMin % 60
         return if (h > 0) "${h}h${"%02d".format(m)}" else "${m} min"
     }
+
+    // ------------------------------------------------ §episodes-json (Aniyomi)
+
+    /**
+     * §episodes-json : lit `episodes.json` d'un dossier de série.
+     * Accepte les deux écritures répandues :
+     *   `[{"episode_number":1,"name":"Le début"}, …]` et `[{"number":1,"title":"…"}]`.
+     * Toute erreur renvoie une table vide : un JSON abîmé ne casse jamais le scan.
+     */
+    fun parseEpisodeTitles(text: String?): Map<Int, String> {
+        val raw = text?.trim().orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            val array = org.json.JSONArray(raw)
+            (0 until array.length()).mapNotNull { i ->
+                val o = array.optJSONObject(i) ?: return@mapNotNull null
+                val number = o.optInt("episode_number", o.optInt("number", 0))
+                val name = o.optString("name").ifBlank { o.optString("title") }
+                if (number > 0 && name.isNotBlank()) number to name else null
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    /**
+     * §episodes-json : numéro d'épisode déduit d'un nom de fichier —
+     * `S01E03`, `E03`, `Ep. 03`, `- 03`, `03 - titre`.
+     */
+    fun episodeNumber(fileName: String): Int? {
+        val base = fileName.substringBeforeLast('.')
+        Regex("(?i)s(\\d{1,2})[ ._-]*e(\\d{1,3})").find(base)?.let { return it.groupValues[2].toInt() }
+        Regex("(?i)\\bep?(?:isode)?[ ._-]?(\\d{1,3})\\b").find(base)?.let { return it.groupValues[1].toInt() }
+        Regex("(?i)^(\\d{1,3})[ ._-]").find(base)?.let { return it.groupValues[1].toInt() }
+        Regex("(?i)[ ._-](\\d{1,3})\\s*$").find(base)?.let { return it.groupValues[1].toInt() }
+        return null
+    }
+
+    /** Titre lisible d'un fichier une fois le numéro retiré (« Le début »). */
+    fun episodeTitleFromFileName(fileName: String): String = fileName.substringBeforeLast('.')
+        .replace(Regex("(?i)s\\d{1,2}[ ._-]*e\\d{1,3}"), " ")
+        .replace(Regex("(?i)\\bep?(?:isode)?[ ._-]?\\d{1,3}\\b"), " ")
+        .replace(Regex("^\\d{1,3}[ ._-]+"), "")
+        .replace(Regex("[_.]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+    /**
+     * §metadonnees-editees : écrit `details.json` dans le dossier de la série
+     * (même contrat que ce que le scanner relit au démarrage). Renvoie false si
+     * le fournisseur SAF refuse l'écriture — l'interface le dit alors à
+     * l'utilisateur au lieu d'un échec silencieux.
+     */
+    fun writeSeriesMeta(
+        context: Context,
+        folderUriString: String,
+        title: String?,
+        description: String? = null,
+        author: String? = null,
+        genres: List<String> = emptyList(),
+    ): Boolean = runCatching {
+        val folder = Uri.parse(folderUriString)
+        val json = org.json.JSONObject().apply {
+            title?.takeIf { it.isNotBlank() }?.let { put("title", it) }
+            description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+            author?.takeIf { it.isNotBlank() }?.let { put("author", it) }
+            if (genres.isNotEmpty()) put("genre", org.json.JSONArray(genres))
+        }.toString(2)
+
+        val docId = android.provider.DocumentsContract.getDocumentId(folder)
+        val children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(folder, docId)
+        var existing: Uri? = null
+        context.contentResolver.query(
+            children,
+            arrayOf(
+                android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            ),
+            null, null, null,
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                if (cursor.getString(1).equals("details.json", ignoreCase = true)) {
+                    existing = android.provider.DocumentsContract
+                        .buildDocumentUriUsingTree(folder, cursor.getString(0))
+                    break
+                }
+            }
+        }
+        val target = existing ?: android.provider.DocumentsContract.createDocument(
+            context.contentResolver, folder, "application/json", "details.json",
+        ) ?: return@runCatching false
+        val ok = context.contentResolver.openOutputStream(target, "wt")?.use { out ->
+            out.write(json.toByteArray()); out.flush(); true
+        } ?: false
+        ok
+    }.getOrDefault(false)
+
 }

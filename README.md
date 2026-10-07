@@ -24,7 +24,9 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 - ⬇️ **Gestionnaire de téléchargement puissant** : multi-connexions segmentées, pause/reprise, file d'attente, arrière-plan, HLS/DASH, sous-titres en fichiers séparés, reprise après redémarrage
 - ▶️ **Lecteur moderne** (Media3/ExoPlayer, backend mpv possible plus tard) : vitesse 0,25×–4× (pitch corrigé), pistes audio, sous-titres stylés, gestes (double appui, glisser luminosité/volume — inversable), zoom au pincement 1×–3×, verrouillage, reprise de position, surimpression de statistiques
 - ⏭️ **Megaskip** : saut d'intro/récap/générique/aperçu alimenté par **TheIntroDB**, **IntroDB** et **AniSkip** (identifiants résolus automatiquement via AniZip/Jikan), **cache hors-ligne** en base, boutons de saut personnalisés (« +85 s », « Opening », « Filler ») et réglages fins par type de segment
-- 📚 **Bibliothèque locale hors-ligne** : anime, films, séries, OVA, ONA, catégories et genres personnalisables
+- 📚 **Bibliothèque locale hors-ligne** : anime, films, séries, OVA, ONA, catégories et genres personnalisables, filtres par emplacement (interne / carte SD) et onglets « En cours / Terminés »
+- 📂 **Dossiers vidéo façon Aniyomi** : `Série/cover.jpg` + `details.json` (éditable depuis l'app, écrit dans le dossier) + `episodes.json` (titres d'épisodes), tri par numéro d'épisode
+- 📥 **Téléchargements dans la bibliothèque** : un épisode téléchargé — même isolé — forme sa propre « série » (badge, nombre d'épisodes, emplacement) et se lit hors-ligne
 - 🔍 **Recherche multi-extensions** agrégée avec filtres
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
 - 📱 Android 8.0+ , stockage interne ou carte SD (SAF)
@@ -145,7 +147,9 @@ Endless Sea is a modern, lightweight Android app inspired by the best ideas of *
 - ⬇️ **Powerful download manager**: segmented multi-connection downloads, pause/resume, queue, background, HLS/DASH, subtitles as sidecar files, crash/restart recovery
 - ▶️ **Modern player** (Media3/ExoPlayer, swappable mpv backend): 0.25×–4× speed with pitch correction, audio tracks, styled subtitles, gestures (double-tap, brightness/volume drag — swappable), 1×–3× pinch zoom, lock, position resume, stats overlay
 - ⏭️ **Megaskip**: intro/recap/credits/preview skipping powered by **TheIntroDB**, **IntroDB** and **AniSkip** (IDs resolved automatically through AniZip/Jikan), **offline cache** in the local database, custom skip buttons (“+85 s”, “Opening”, “Filler”) and per-type settings
-- 📚 **Offline local library**: anime, movies, series, OVA, ONA, customizable categories & genres
+- 📚 **Offline local library**: anime, movies, series, OVA, ONA, customizable categories & genres, storage filters (internal / SD card) and “Watching / Completed” tabs
+- 📂 **Aniyomi-style video folders**: `Series/cover.jpg` + `details.json` (editable in-app, written into the folder) + `episodes.json` (episode titles), sorted by episode number
+- 📥 **Downloads inside the library**: any downloaded episode — even a single one — becomes its own “series” (badge, episode count, storage) and plays offline
 - 🔍 Aggregated **multi-extension search** with filters
 - 🛡️ **CAPTCHA/anti-bot**: user-driven WebView verification screen, per-extension cookie persistence
 - 📱 Android 8.0+, internal or SD-card storage (SAF)

@@ -255,6 +255,17 @@ fun EsNavGraph(nav: NavHostController) {
                 onLocalFolderClick = { folderUri ->
                     nav.navigate("localDetails/" + Uri.encode(folderUri))
                 },
+                // §telecharges-bibliotheque : la fiche d'une « série » téléchargée
+                onDownloadedFolderClick = { key ->
+                    nav.navigate("downloaded/" + Uri.encode(key))
+                },
+            )
+        }
+        // §telecharges-bibliotheque (conversation 7) : épisodes sur l'appareil
+        composable("downloaded/{key}") { entry ->
+            dev.endlesssea.app.ui.downloads.DownloadedFolderScreen(
+                folderKey = Uri.decode(entry.arguments?.getString("key").orEmpty()),
+                onBack = { nav.popBackStack() },
             )
         }
         composable("localDetails/{folder}") { entry ->

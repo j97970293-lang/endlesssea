@@ -59,7 +59,22 @@ interface WatchHistoryDao {
     /** Reprendre sur une fiche : dernier épisode commencé non terminé de ce média. */
     @Query("SELECT * FROM watch_history WHERE mediaId = :mediaId AND watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT 1")
     suspend fun resumeForMedia(mediaId: String): WatchHistoryEntity?
+
+    /**
+     * §bibliotheque-statuts (conversation 6) : un SEUL passage pour classer toute
+     * la bibliothèque en « en cours » / « terminé », au lieu d'une requête par
+     * titre (la grille en affiche des centaines).
+     */
+    @Query(
+        "SELECT mediaId, " +
+            "SUM(CASE WHEN watched = 1 THEN 1 ELSE 0 END) AS watchedCount, " +
+            "COUNT(*) AS total FROM watch_history GROUP BY mediaId",
+    )
+    suspend fun statsAll(): List<MediaWatchStat>
 }
+
+/** Résumé de visionnage d'un média (base des onglets En cours / Terminé). */
+data class MediaWatchStat(val mediaId: String, val watchedCount: Int, val total: Int)
 
 @Dao
 interface DownloadsDao {
@@ -82,6 +97,13 @@ interface DownloadsDao {
     /** §hors-ligne : fichiers téléchargés d'un média (fiche « Sur l'appareil »). */
     @Query("SELECT * FROM download_tasks WHERE mediaId = :mediaId AND status = 'COMPLETED'")
     suspend fun completedForMedia(mediaId: String): List<DownloadTaskEntity>
+
+    /**
+     * §telecharges-bibliotheque (conversation 7) : TOUS les fichiers terminés,
+     * y compris un épisode isolé sans fiche — la bibliothèque les regroupe.
+     */
+    @Query("SELECT * FROM download_tasks WHERE status = 'COMPLETED' ORDER BY updatedAt DESC")
+    fun observeCompleted(): Flow<List<DownloadTaskEntity>>
     /** §deplacer-téléchargement : réoriente une tâche vers un nouveau targetUri (carte SD…). */
     @Query("UPDATE download_tasks SET targetUri = :targetUri, displayPath = :displayPath, updatedAt = :at WHERE id = :id")
     suspend fun setTarget(id: String, targetUri: String, displayPath: String, at: Long = System.currentTimeMillis())

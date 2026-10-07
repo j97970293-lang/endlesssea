@@ -58,6 +58,8 @@ fun LibraryScreen(
     onMediaClick: (String) -> Unit,
     /** §fiche-locale : ouverture de la fiche d'un dossier de vidéos locales. */
     onLocalFolderClick: (String) -> Unit = {},
+    /** §telecharges-bibliotheque : fiche d'une « série » de fichiers téléchargés. */
+    onDownloadedFolderClick: (String) -> Unit = {},
     viewModel: LibraryViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -191,14 +193,70 @@ fun LibraryScreen(
             )
             androidx.compose.material3.FilterChip(
                 selected = state.onDeviceOnly,
-                onClick = { viewModel.setOnDeviceOnly(true) },
+                onClick = {
+                    viewModel.setOnDeviceOnly(true)
+                    viewModel.setDownloadsOnly(false)
+                },
                 label = { Text("Sur l'appareil", maxLines = 1, softWrap = false) },
+            )
+            // §telecharges-bibliotheque (conversation 7) : les épisodes téléchargés
+            // ont leur propre vue, même s'il n'y en a qu'un seul.
+            androidx.compose.material3.FilterChip(
+                selected = state.downloadsOnly,
+                onClick = {
+                    viewModel.setDownloadsOnly(!state.downloadsOnly)
+                    if (!state.downloadsOnly) viewModel.setOnDeviceOnly(false)
+                },
+                label = {
+                    Text(
+                        if (state.downloadedGroups.isEmpty()) "Téléchargés"
+                        else "Téléchargés (${state.downloadedGroups.size})",
+                        maxLines = 1, softWrap = false,
+                    )
+                },
             )
             // §bibliotheque-locale-fusion : mêler les vidéos locales aux titres suivis
             androidx.compose.material3.FilterChip(
                 selected = mergeLocal,
                 onClick = { viewModel.setMergeLocal(!mergeLocal) },
                 label = { Text("Fichiers locaux", maxLines = 1, softWrap = false) },
+            )
+            // §bibliotheque-sources : emplacements réellement présents
+            val kinds = state.localFiles.map { it.storageKind }.distinct() +
+                state.downloadedGroups.map { it.storageKind }.distinct()
+            if (kinds.isNotEmpty()) {
+                androidx.compose.material3.FilterChip(
+                    selected = state.sourceFilter == "ALL",
+                    onClick = { viewModel.setSourceFilter("ALL") },
+                    label = { Text("Toutes sources", maxLines = 1, softWrap = false) },
+                )
+                kinds.distinct().forEach { kind ->
+                    androidx.compose.material3.FilterChip(
+                        selected = state.sourceFilter == kind,
+                        onClick = { viewModel.setSourceFilter(kind) },
+                        label = {
+                            Text(
+                                dev.endlesssea.app.ui.library.StorageKind.label(kind),
+                                maxLines = 1, softWrap = false,
+                            )
+                        },
+                    )
+                }
+            }
+            // §bibliotheque-statuts : Tout / En cours / Terminé (progression réelle)
+            androidx.compose.material3.FilterChip(
+                selected = state.statusTab == "WATCHING",
+                onClick = {
+                    viewModel.setStatusTab(if (state.statusTab == "WATCHING") "ALL" else "WATCHING")
+                },
+                label = { Text("▶ En cours", maxLines = 1, softWrap = false) },
+            )
+            androidx.compose.material3.FilterChip(
+                selected = state.statusTab == "COMPLETED",
+                onClick = {
+                    viewModel.setStatusTab(if (state.statusTab == "COMPLETED") "ALL" else "COMPLETED")
+                },
+                label = { Text("✓ Terminés", maxLines = 1, softWrap = false) },
             )
             // Watchlist §29 : filtre par statut de suivi
             listOf(
@@ -214,7 +272,32 @@ fun LibraryScreen(
                 )
             }
         }
-        val shownItems = state.items + localCards
+        // §bibliotheque-sources (conversation 6) : filtre par emplacement —
+        // mémoire interne, carte SD ou téléchargements.
+        val source = state.sourceFilter
+        val visibleLocal = localCards.filter { card ->
+            source == "ALL" || state.localFiles
+                .firstOrNull { "local:" + it.uri == card.id }
+                ?.storageKind == source
+        }
+        val visibleDownloads = state.downloadedGroups
+            .filter { source == "ALL" || it.storageKind == source }
+            .map { it.toCard() }
+
+        // §telecharges-bibliotheque : en mode « Téléchargés », la grille ne montre
+        // que les séries présentes sur l'appareil (fiches virtuelles incluses).
+        // Le filtre « Sur l'appareil » les ajoute aux titres suivis.
+        val shownItems = when {
+            state.downloadsOnly -> visibleDownloads
+            state.onDeviceOnly -> {
+                val followed = state.items.map { it.id }.toSet()
+                state.items + visibleLocal +
+                    state.downloadedGroups
+                        .filter { it.key !in followed && (source == "ALL" || it.storageKind == source) }
+                        .map { it.toCard() }
+            }
+            else -> state.items + visibleLocal
+        }
         if (shownItems.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
@@ -245,13 +328,18 @@ fun LibraryScreen(
                     MediaCard(
                         item = item,
                         onClick = {
-                            // les cartes locales lancent directement la lecture
-                            if (item.id.startsWith("local:")) {
-                                val uri = item.id.removePrefix("local:")
-                                val video = state.localFiles.firstOrNull { it.uri == uri }
-                                if (video != null) playLocal(context, state.localFiles, video)
-                            } else {
-                                onMediaClick(item.id)
+                            when {
+                                // les cartes locales lancent directement la lecture
+                                item.id.startsWith("local:") -> {
+                                    val uri = item.id.removePrefix("local:")
+                                    val video = state.localFiles.firstOrNull { it.uri == uri }
+                                    if (video != null) playLocal(context, state.localFiles, video)
+                                }
+                                // §telecharges-bibliotheque : un groupe téléchargé
+                                // ouvre sa fiche (liste des épisodes sur l'appareil)
+                                item.id.startsWith("downloaded:") ->
+                                    onDownloadedFolderClick(item.id.removePrefix("downloaded:"))
+                                else -> onMediaClick(item.id)
                             }
                         },
                         onLongClick = { editMediaMeta = item },
@@ -496,10 +584,13 @@ private fun LocalFilesPanel(
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     )
                                     Text(
-                                        "${files.size} vidéo(s) · " +
+                                        // §cartes-bibliotheque (conversation 6) :
+                                        // nombre d'épisodes + emplacement (interne / SD)
+                                        "${files.size} épisode(s) · " +
                                             dev.endlesssea.app.local.LocalVideos.humanSize(
                                                 files.sumOf { it.sizeBytes },
-                                            ),
+                                            ) +
+                                            " · " + StorageKind.label(files.first().storageKind),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -563,8 +654,15 @@ private fun LocalFilesPanel(
                                 )
                             }
                             Column(Modifier.weight(1f)) {
+                                // §episodes-json : « Ép. 3 · Le début » quand le numéro
+                                // d'épisode est déductible du nom de fichier.
+                                val epNum = video.episodeNumber
                                 dev.endlesssea.app.ui.components.ExpandableText(
-                                    text = video.displayName,
+                                    text = if (epNum != null && video.customTitle == null) {
+                                        "Ép. $epNum · ${video.prettyName}"
+                                    } else {
+                                        video.displayName
+                                    },
                                     style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 1,
                                     dialogTitle = "Fichier local",

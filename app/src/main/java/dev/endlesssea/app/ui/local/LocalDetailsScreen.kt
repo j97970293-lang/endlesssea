@@ -66,7 +66,14 @@ fun LocalDetailsScreen(
     val files = remember(state.localFiles, cached, folderUri, state.localMetaTick) {
         (state.localFiles.takeIf { it.isNotEmpty() } ?: cached)
             .filter { it.parentUri == folderUri }
-            .sortedBy { it.displayName.lowercase() }
+            // §episodes-json : tri par NUMÉRO d'épisode (S01E02 avant S01E10),
+            // puis par nom — au lieu du tri alphabétique « épisode 10, épisode 2 ».
+            .sortedWith(
+                compareBy(
+                    { LocalVideos.episodeNumber(it.displayName) ?: Int.MAX_VALUE },
+                    { it.displayName.lowercase() },
+                ),
+            )
     }
     val meta = LocalVideos.seriesMeta[folderUri]
     val first = files.firstOrNull()
@@ -88,6 +95,8 @@ fun LocalDetailsScreen(
     }
     var editTitle by remember { mutableStateOf(false) }
     var titleDraft by remember(title) { mutableStateOf(title) }
+    /** §metadonnees-fichier : édition des métadonnées écrites dans details.json. */
+    var editSeriesMeta by remember { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -156,6 +165,8 @@ fun LocalDetailsScreen(
                             files.firstOrNull()?.let { playLocal(context, files, it) }
                         }) { Text("Lire") }
                         TextButton(onClick = { editTitle = true }) { Text("Renommer") }
+                        // §metadonnees-fichier : écrit details.json dans le dossier
+                        TextButton(onClick = { editSeriesMeta = true }) { Text("Métadonnées") }
                     }
                 }
             }
@@ -254,8 +265,15 @@ fun LocalDetailsScreen(
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
+                        // §episodes-json : « Ép. 3 · Le début » quand le dossier
+                        // publie episodes.json, sinon le nom de fichier nettoyé.
+                        val number = LocalVideos.episodeNumber(video.displayName)
+                        val metaTitle = number?.let { meta?.episodeTitles?.get(it) }
+                        val shownTitle = metaTitle
+                            ?: LocalVideos.episodeTitleFromFileName(video.displayName)
+                                .ifBlank { video.displayName }
                         Text(
-                            video.displayName,
+                            if (number != null) "Ép. $number · $shownTitle" else shownTitle,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
@@ -270,6 +288,76 @@ fun LocalDetailsScreen(
                 }
             }
         }
+    }
+
+    // §metadonnees-fichier : les métadonnées de la série sont écrites DANS le
+    // dossier (details.json) — elles suivent donc la carte SD, pas l'application.
+    if (editSeriesMeta) {
+        var metaTitle by remember(title) { mutableStateOf(meta?.title ?: title) }
+        var metaDescription by remember { mutableStateOf(meta?.description ?: "") }
+        var metaAuthor by remember { mutableStateOf(meta?.author ?: "") }
+        var metaGenres by remember { mutableStateOf(meta?.genres?.joinToString(", ") ?: "") }
+
+        AlertDialog(
+            onDismissRequest = { editSeriesMeta = false },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.saveSeriesMeta(
+                        folderUri = folderUri,
+                        title = metaTitle,
+                        description = metaDescription.ifBlank { null },
+                        author = metaAuthor.ifBlank { null },
+                        genres = metaGenres.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                    )
+                    // Le titre de la série s'applique aussi aux fichiers sans titre
+                    // perso, pour que la grille de la bibliothèque suive le dossier.
+                    files.filter { it.customTitle == null }.forEach { f ->
+                        viewModel.saveLocalMeta(
+                            f.uri, metaTitle.takeIf { it.isNotBlank() }, f.customCoverUri,
+                            f.introStartSec, f.introEndSec, f.outroStartSec,
+                        )
+                    }
+                    editSeriesMeta = false
+                }) { Text("Enregistrer dans le dossier") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editSeriesMeta = false }) { Text("Annuler") }
+            },
+            title = { Text("Métadonnées de la série") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Écrites dans « details.json », à côté des vidéos (format Aniyomi).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = metaTitle,
+                        onValueChange = { metaTitle = it },
+                        label = { Text("Titre de la série") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = metaDescription,
+                        onValueChange = { metaDescription = it },
+                        label = { Text("Synopsis") },
+                        minLines = 3,
+                    )
+                    OutlinedTextField(
+                        value = metaAuthor,
+                        onValueChange = { metaAuthor = it },
+                        label = { Text("Auteur / studio") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = metaGenres,
+                        onValueChange = { metaGenres = it },
+                        label = { Text("Genres (séparés par des virgules)") },
+                        singleLine = true,
+                    )
+                }
+            },
+        )
     }
 
     if (editTitle) {

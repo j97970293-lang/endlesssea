@@ -31,7 +31,78 @@ data class LibraryUiState(
     val localScanLabel: String = "",
     /** Tic de recomposition quand une métadonnée locale change. */
     val localMetaTick: Int = 0,
+    // ---- §telecharges-bibliotheque (conversation 7) : même un épisode isolé
+    // téléchargé apparaît, regroupé en « série » virtuelle.
+    val downloadedGroups: List<DownloadedGroupUi> = emptyList(),
+    val downloadedEpisodes: List<DownloadedEpisodeUi> = emptyList(),
+    /** Afficher UNIQUEMENT les téléchargements (chip « Téléchargés »). */
+    val downloadsOnly: Boolean = false,
+    // ---- §bibliotheque-sources (conversation 6) : filtre par emplacement.
+    /** ALL · INTERNAL · SD · DOWNLOADS. */
+    val sourceFilter: String = "ALL",
+    /** ALL · WATCHING · COMPLETED — onglets de progression (conversation 6). */
+    val statusTab: String = "ALL",
 )
+
+/** Emplacement de stockage d'un élément (conversation 6 : pastille de source). */
+object StorageKind {
+    const val INTERNAL = "INTERNAL"
+    const val SD = "SD"
+    const val DOWNLOADS = "DOWNLOADS"
+    const val ALL = "ALL"
+
+    fun ofUri(uri: String): String = when {
+        uri.startsWith("content://") ->
+            // SAF : « primary: » = mémoire interne, sinon volume externe (carte SD)
+            if (uri.contains("primary", ignoreCase = true)) INTERNAL else SD
+        else -> INTERNAL
+    }
+
+    fun label(kind: String): String = when (kind) {
+        INTERNAL -> "Interne"
+        SD -> "Carte SD"
+        DOWNLOADS -> "Téléchargements"
+        else -> "Toutes"
+    }
+}
+
+/** Une « série » virtuelle construite à partir des fichiers téléchargés. */
+data class DownloadedGroupUi(
+    val key: String,
+    val title: String,
+    val posterUrl: String?,
+    val episodeCount: Int,
+    val totalBytes: Long,
+    val lastAt: Long,
+    /** §bibliotheque-sources : l'emplacement réel du fichier (carte SD ou interne). */
+    val storageKind: String = StorageKind.DOWNLOADS,
+) {
+    val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(totalBytes)
+    /** Carte de bibliothèque correspondante (clic → fiche du groupe). */
+    fun toCard() = SearchItemUi(
+        id = "downloaded:$key",
+        title = title,
+        posterUrl = posterUrl,
+        // §cartes-bibliotheque (conversation 6) : nombre d'épisodes + emplacement
+        subtitle = (if (episodeCount > 1) "$episodeCount épisodes" else "1 épisode") +
+            " · " + StorageKind.label(storageKind),
+    )
+}
+
+/** Un épisode téléchargé (lecture hors-ligne depuis l'appareil). */
+data class DownloadedEpisodeUi(
+    val groupKey: String,
+    val uri: String,
+    val fileName: String,
+    val displayName: String,
+    val episodeNumber: Int?,
+    val sizeBytes: Long,
+    val quality: String,
+    val mediaId: String?,
+    val episodeId: String?,
+) {
+    val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
+}
 
 /** Ligne UI d'une vidéo locale scannée (avec métadonnées éditées le cas échéant). */
 data class LocalVideoUi(
@@ -55,6 +126,17 @@ data class LocalVideoUi(
             .trimEnd('/').substringAfterLast('/').ifBlank { "Dossier" }
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
     val humanDuration: String get() = dev.endlesssea.app.local.LocalVideos.humanDuration(durationMs)
+
+    /** §bibliotheque-sources : mémoire interne ou carte SD (déduit de l'URI SAF). */
+    val storageKind: String get() = StorageKind.ofUri(uri)
+
+    /** §episodes-json : numéro d'épisode déduit du nom de fichier. */
+    val episodeNumber: Int? get() = dev.endlesssea.app.local.LocalVideos.episodeNumber(name)
+
+    /** Titre lisible du fichier (numéro retiré) quand aucun titre perso n'existe. */
+    val prettyName: String
+        get() = customTitle
+            ?: dev.endlesssea.app.local.LocalVideos.episodeTitleFromFileName(name).ifBlank { name }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -63,6 +145,7 @@ class LibraryViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val mediaDao: MediaDao,
     private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
+    private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
@@ -97,7 +180,101 @@ class LibraryViewModel @Inject constructor(
                 applyFilter()
             }
         }
+        // §telecharges-bibliotheque : chaque fichier terminé rejoint la
+        // bibliothèque — seul (« série » d'un épisode) ou rattaché à sa fiche.
+        viewModelScope.launch {
+            downloadsDao.observeCompleted().collect { tasks -> buildDownloads(tasks) }
+        }
     }
+
+    /**
+     * Construit les « séries » de téléchargements (conversation 7) :
+     *  · un épisode rattaché à une fiche (mediaId) → rejoint cette série ;
+     *  · un épisode isolé → devient une série virtuelle d'un seul épisode,
+     *    titrée d'après le dossier de téléchargement (`downloads/<Source>/<Série>/`).
+     */
+    private suspend fun buildDownloads(tasks: List<dev.endlesssea.data.db.DownloadTaskEntity>) {
+        val episodes = tasks.mapNotNull { task ->
+            val uri = task.targetUri.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val fileName = task.fileName.removeSuffix(".part")
+            // Clé de regroupement : la fiche si connue, sinon le dossier parent
+            // (displayPath = « Source/Série/fichier » → « Source/Série »).
+            val key = task.mediaId?.takeIf { it.isNotBlank() }
+                ?: task.displayPath.substringBeforeLast('/', "").ifBlank { "téléchargements" }
+            DownloadedEpisodeUi(
+                groupKey = key,
+                uri = uri,
+                fileName = fileName,
+                displayName = dev.endlesssea.app.local.LocalVideos.episodeTitleFromFileName(fileName)
+                    .ifBlank { dev.endlesssea.app.local.LocalNames.pretty(uri) },
+                episodeNumber = dev.endlesssea.app.local.LocalVideos.episodeNumber(fileName),
+                sizeBytes = task.totalBytes,
+                quality = task.quality,
+                mediaId = task.mediaId,
+                episodeId = task.episodeId,
+            )
+        }
+        val groups = episodes.groupBy { it.groupKey }.map { (key, list) ->
+            val media = list.firstNotNullOfOrNull { it.mediaId }?.let { mediaDao.byId(it) }
+            DownloadedGroupUi(
+                key = key,
+                title = media?.customTitle?.takeIf { it.isNotBlank() }
+                    ?: media?.title
+                    ?: key.substringAfterLast('/').ifBlank { "Téléchargements" },
+                posterUrl = media?.customCoverUri ?: media?.posterUrl,
+                episodeCount = list.size,
+                totalBytes = list.sumOf { it.sizeBytes },
+                lastAt = tasks.filter { t -> list.any { it.fileName == t.fileName.removeSuffix(".part") } }
+                    .maxOfOrNull { it.updatedAt } ?: 0L,
+                // §bibliotheque-sources : « Carte SD » si le fichier final n'est pas
+                // sur le volume interne (URI SAF non « primary »).
+                storageKind = if (tasks.any {
+                        list.any { e -> e.uri == it.targetUri } &&
+                            it.targetUri.startsWith("content://") &&
+                            !it.targetUri.contains("primary", true)
+                    }
+                ) StorageKind.SD else StorageKind.DOWNLOADS,
+            )
+        }.sortedByDescending { it.lastAt }
+        _uiState.value = _uiState.value.copy(
+            downloadedEpisodes = episodes,
+            downloadedGroups = groups,
+        )
+    }
+
+    /** Afficher uniquement les téléchargements (ou revenir à la bibliothèque). */
+    fun setDownloadsOnly(v: Boolean) {
+        _uiState.value = _uiState.value.copy(downloadsOnly = v)
+    }
+
+    // ------------------------------------------------ §bibliotheque-sources / statuts
+
+    /** Filtre d'emplacement : ALL · INTERNAL · SD · DOWNLOADS (conversation 6). */
+    fun setSourceFilter(kind: String) {
+        _uiState.value = _uiState.value.copy(sourceFilter = kind)
+        viewModelScope.launch { applyFilter() }
+    }
+
+    /** Onglets de progression : ALL · WATCHING · COMPLETED (conversation 6). */
+    fun setStatusTab(tab: String) {
+        _uiState.value = _uiState.value.copy(statusTab = tab)
+        viewModelScope.launch { applyFilter() }
+    }
+
+    /** Types d'emplacement réellement présents (pour n'afficher que les chips utiles). */
+    fun presentStorageKinds(): List<String> {
+        val kinds = linkedSetOf<String>()
+        _uiState.value.localFiles.forEach { kinds += it.storageKind }
+        if (_uiState.value.downloadedGroups.isNotEmpty()) kinds += StorageKind.DOWNLOADS
+        return kinds.toList()
+    }
+
+    /** Épisodes d'un groupe (écran « fiche » des téléchargements). */
+    fun downloadedEpisodesOf(key: String): List<DownloadedEpisodeUi> =
+        _uiState.value.downloadedEpisodes.filter { it.groupKey == key }
+            .sortedWith(
+                compareBy({ it.episodeNumber ?: Int.MAX_VALUE }, { it.displayName.lowercase() }),
+            )
 
     /** Re-applique le filtre courant sur les éléments bruts. */
     private suspend fun applyFilter() {
@@ -108,6 +285,26 @@ class LibraryViewModel @Inject constructor(
         } else rawItems
         val st = _uiState.value.filterStatus
         if (st != "ALL") shown = shown.filter { (rawStatuses[it.id] ?: "NONE") == st }
+        // §bibliotheque-statuts (conversation 6) : onglets Tout / En cours / Terminé,
+        // calculés en UNE requête groupée sur l'historique de visionnage.
+        when (_uiState.value.statusTab) {
+            "WATCHING" -> {
+                val stats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList())
+                    .associateBy { it.mediaId }
+                shown = shown.filter { item ->
+                    val s = stats[item.id] ?: return@filter false
+                    s.watchedCount < s.total || s.total == 0 && s.watchedCount > 0
+                }
+            }
+            "COMPLETED" -> {
+                val stats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList())
+                    .associateBy { it.mediaId }
+                shown = shown.filter { item ->
+                    val s = stats[item.id] ?: return@filter false
+                    s.total > 0 && s.watchedCount == s.total
+                }
+            }
+        }
         _uiState.value = _uiState.value.copy(category = category.value, items = shown)
     }
 
@@ -295,6 +492,43 @@ class LibraryViewModel @Inject constructor(
                     outroStartSec = outroStartSec,
                 )
             },
+        )
+    }
+
+    /**
+     * §metadonnees-fichier (conversation 5) : écrit `details.json` DANS le dossier
+     * de la série (titre, synopsis, auteur, genres), comme le fait Aniyomi. Le
+     * scanner relit ce fichier à chaque scan — les métadonnées survivent donc à
+     * une réinstallation et restent lisibles par d'autres applications.
+     */
+    fun saveSeriesMeta(
+        folderUri: String,
+        title: String?,
+        description: String? = null,
+        author: String? = null,
+        genres: List<String> = emptyList(),
+    ) {
+        val ok = dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(
+            context = context,
+            folderUriString = folderUri,
+            title = title,
+            description = description,
+            author = author,
+            genres = genres,
+        )
+        // Cache mémoire : la fiche affiche la modification sans attendre un scan.
+        dev.endlesssea.app.local.LocalVideos.seriesMeta.compute(folderUri) { _, old ->
+            (old ?: dev.endlesssea.app.local.SeriesMeta()).copy(
+                title = title?.takeIf { it.isNotBlank() } ?: old?.title,
+                description = description?.takeIf { it.isNotBlank() } ?: old?.description,
+                author = author?.takeIf { it.isNotBlank() } ?: old?.author,
+                genres = genres.ifEmpty { old?.genres ?: emptyList() },
+            )
+        }
+        _uiState.value = _uiState.value.copy(
+            localMetaTick = _uiState.value.localMetaTick + 1,
+            localScanLabel = if (ok) "details.json enregistré dans le dossier"
+            else "Métadonnées gardées dans l'app (dossier non modifiable)",
         )
     }
 
