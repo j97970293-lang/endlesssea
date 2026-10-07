@@ -26,6 +26,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -188,7 +189,14 @@ fun EsNavGraph(nav: NavHostController) {
     ) {
         composable(Screen.Home.route) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
+            // §barre-haut (conversation 4) : la loupe de la barre ouvre la
+            // recherche de la source courante (comme l'ancien bouton flottant).
+            val homeProviderId = dev.endlesssea.app.ui.home.HomeUiBus.currentProviderId
+                .collectAsState().value
             HomeScreen(
+                onSearch = {
+                    nav.navigate("search/" + android.net.Uri.encode(homeProviderId))
+                },
                 onMediaClick = { id ->
                     // §historique-local : une carte locale relance directement la vidéo
                     if (id.startsWith("local:")) {

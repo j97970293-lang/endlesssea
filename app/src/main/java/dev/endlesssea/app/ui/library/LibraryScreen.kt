@@ -98,6 +98,16 @@ fun LibraryScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
+        // §barre-haut (conversation 4) : verre liquide — titre, sous-titre
+        // (nombre de titres et de fichiers locaux), menu = nouvelle catégorie.
+        dev.endlesssea.app.ui.components.EndlessSeaTopBar(
+            title = "Bibliothèque",
+            subtitle = "${state.items.size} titre(s) · ${state.localFiles.size} fichier(s) local(aux)" +
+                (if (state.downloadedGroups.isNotEmpty()) " · ${state.downloadedGroups.size} téléchargé(s)" else ""),
+            icon = Icons.Filled.VideoLibrary,
+            onMenu = { showNewCategory = true },
+            menuDescription = "Nouvelle catégorie",
+        )
         // §onglets-scrollés : 7 catégories sans cassure verticale (bug « Fa vo ris »)
         // §onglets-compacts (capture utilisateur « Fa vo ris ») : des pastilles
         // qui défilent horizontalement, texte sur UNE ligne, jamais cassé
@@ -628,7 +638,7 @@ private fun LocalFilesPanel(
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             ) {
                 androidx.compose.material3.Icon(
-                    androidx.compose.material.icons.Icons.Filled.VideoLibrary,
+                    Icons.Filled.VideoLibrary,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )

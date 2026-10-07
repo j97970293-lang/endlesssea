@@ -349,35 +349,12 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                                if (route == Screen.Home.route) {
-                                    val provider by dev.endlesssea.app.ui.home.HomeUiBus
-                                        .currentProvider.collectAsState()
-                                    androidx.compose.material3.TextButton(
-                                        onClick = { dev.endlesssea.app.ui.home.HomeUiBus.openProviderSheet() },
-                                    ) {
-                                        Text(
-                                            provider,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = 190.dp),
-                                        )
-                                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
-                                    }
-                                }
+                                // §barre-haut (conversation 4) : le
+                                // sélecteur de source vit désormais dans la
+                                // barre en verre de l'écran Accueil.
                             }
-                            if (route == Screen.Home.route) {
-                                val src by dev.endlesssea.app.ui.home.HomeUiBus
-                                    .currentProviderId.collectAsState()
-                                IconButton(
-                                    onClick = { nav.navigate("search/" + android.net.Uri.encode(src)) },
-                                    modifier = Modifier.align(Alignment.TopEnd)
-                                        .statusBarsPadding()
-                                        .padding(end = 6.dp, top = 2.dp),
-                                ) {
-                                    Icon(Icons.Filled.Search, contentDescription = "Rechercher")
-                                }
-                            }
+                            // §barre-haut (conversation 4) : la recherche
+                            // de l'accueil est dans la barre en verre.
                         }
                     }
                 }

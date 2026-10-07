@@ -721,6 +721,24 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putFloat("video_scale", safe).apply(); _videoScale.value = safe
     }
 
+    /**
+     * §upscale-niveaux (conversation 1) : niveau global d'agrandissement —
+     * off / auto / performance / quality. Le niveau pilote l'échelle et les
+     * contours ; les curseurs manuels restent disponibles en réglage fin.
+     */
+    private val _upscaleLevel = MutableStateFlow(p.getString("upscale_level", "off") ?: "off")
+    val upscaleLevel: StateFlow<String> = _upscaleLevel
+    fun setUpscaleLevel(v: String) {
+        p.edit().putString("upscale_level", v).apply(); _upscaleLevel.value = v
+    }
+
+    /** §thermique (conversation 1) : réduire l'upscaling si l'appareil chauffe. */
+    private val _thermalGuard = MutableStateFlow(p.getBoolean("thermal_guard", true))
+    val thermalGuard: StateFlow<Boolean> = _thermalGuard
+    fun setThermalGuard(v: Boolean) {
+        p.edit().putBoolean("thermal_guard", v).apply(); _thermalGuard.value = v
+    }
+
     /** §upscale : intensité du renforcement de contours (0..2). */
     private val _videoSharpen = MutableStateFlow(p.getFloat("video_sharpen", 0.6f))
     val videoSharpen: StateFlow<Float> = _videoSharpen

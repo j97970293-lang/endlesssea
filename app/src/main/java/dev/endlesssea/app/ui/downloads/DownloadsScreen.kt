@@ -1,6 +1,7 @@
 package dev.endlesssea.app.ui.downloads
 
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.combinedClickable
@@ -97,6 +98,12 @@ fun DownloadsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+        // §barre-haut (conversation 4) : verre liquide — nombre de téléchargements.
+        dev.endlesssea.app.ui.components.EndlessSeaTopBar(
+            title = "Téléchargements",
+            subtitle = "${state.totalCount} tâche(s) · ${state.rows.count { it.status == "EN COURS" || it.status == "TÉLÉCHARGEMENT" }} active(s)",
+            icon = Icons.Filled.Download,
+        )
         // ---- Filtres par statut
         Row(
             Modifier

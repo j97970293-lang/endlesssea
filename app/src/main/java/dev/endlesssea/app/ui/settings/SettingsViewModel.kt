@@ -272,6 +272,20 @@ class SettingsViewModel @Inject constructor(
     val videoSharpen: StateFlow<Float> = prefs.videoSharpen
     fun setVideoScale(v: Float) = prefs.setVideoScale(v)
     fun setVideoSharpen(v: Float) = prefs.setVideoSharpen(v)
+
+    /** §upscale-niveaux : niveau global (off / auto / performance / quality). */
+    val upscaleLevel: StateFlow<String> = prefs.upscaleLevel
+    fun setUpscaleLevel(v: String) {
+        prefs.setUpscaleLevel(v)
+        // Le niveau applique immédiatement l'échelle et les contours.
+        val level = dev.endlesssea.player.UpscalingLevel.of(v)
+        prefs.setVideoScale(level.scale)
+        prefs.setVideoSharpen(level.sharpen)
+    }
+
+    /** §thermique : garde-fou de chauffe. */
+    val thermalGuard: StateFlow<Boolean> = prefs.thermalGuard
+    fun setThermalGuard(v: Boolean) = prefs.setThermalGuard(v)
     // §fusion-filtres : les filtres vidéo vivent avec les autres réglages du lecteur
     val videoContrast: StateFlow<Float> = prefs.videoContrast
     val videoGamma: StateFlow<Float> = prefs.videoGamma

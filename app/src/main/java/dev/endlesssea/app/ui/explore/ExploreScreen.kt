@@ -1,6 +1,7 @@
 package dev.endlesssea.app.ui.explore
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,7 +56,17 @@ fun ExploreScreen(
         // §recherche-dans-explorer : la recherche vit ici (plus d'onglet dédié) et
         // interroge la source sélectionnée dans les pastilles ci-dessous.
         var exploreQuery by remember { mutableStateOf("") }
-        androidx.compose.material3.OutlinedTextField(
+        // §barre-haut (conversation 4) : la loupe de la barre ouvre le champ
+        // de recherche (replié par défaut pour laisser la place aux catalogues).
+        var searchOpen by remember { mutableStateOf(false) }
+        dev.endlesssea.app.ui.components.EndlessSeaTopBar(
+            title = "Explorer",
+            subtitle = "Catalogues des extensions",
+            icon = Icons.Filled.Explore,
+            onSearch = { searchOpen = !searchOpen },
+            searchDescription = "Rechercher dans les extensions",
+        )
+        if (searchOpen) androidx.compose.material3.OutlinedTextField(
             value = exploreQuery,
             onValueChange = { exploreQuery = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),

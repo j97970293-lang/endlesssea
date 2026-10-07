@@ -1180,17 +1180,49 @@ fun SettingsScreen(
             // réglages du lecteur (plus de page séparée).
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    // §upscale : échelle + contours, appliqués en direct au lecteur
-                    val scale = viewModel.videoScale.collectAsState().value
+                    // §upscale-niveaux (conversation 1) : un seul choix pour
+                    // l'agrandissement, du plus léger au plus lourd.
+                    val level = viewModel.upscaleLevel.collectAsState().value
+                    Text("Upscaling", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Agrandissement de l'image : x%.2f".format(scale),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        "L'image est réellement agrandie puis ses contours sont renforcés " +
-                            "(utile sur une source 480p). Appliqué immédiatement, même en pleine lecture.",
+                        "Agrandit réellement l'image puis renforce les contours (utile sur une " +
+                            "source 480p). « Auto » convient à la plupart des appareils ; " +
+                            "« Qualité » demande plus de batterie.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        dev.endlesssea.player.UpscalingLevel.entries.forEach { lvl ->
+                            FilterChip(
+                                selected = level == lvl.id,
+                                onClick = { viewModel.setUpscaleLevel(lvl.id) },
+                                label = { Text(lvl.label, maxLines = 1, softWrap = false) },
+                            )
+                        }
+                    }
+                    // §thermique : le niveau redescend tout seul si l'appareil chauffe.
+                    val guard = viewModel.thermalGuard.collectAsState().value
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Réduire si l'appareil chauffe", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Pression thermique sévère détectée → upscaling réduit d'un cran " +
+                                    "(puis coupé si l'appareil reste chaud).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = guard, onCheckedChange = { viewModel.setThermalGuard(it) })
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // §upscale : réglage fin manuel (échelle + contours)
+                    val scale = viewModel.videoScale.collectAsState().value
+                    Text(
+                        "Réglage fin — agrandissement : x%.2f".format(scale),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(1f to "Natif", 1.25f to "x1.25", 1.5f to "x1.5", 2f to "x2")

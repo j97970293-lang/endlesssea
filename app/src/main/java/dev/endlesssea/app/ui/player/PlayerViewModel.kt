@@ -98,6 +98,10 @@ class PlayerViewModel @Inject constructor(
 
     val engine = EsPlayer(context, okHttp, viewModelScope)
 
+    /** §thermique (conversation 1) : surveille la chauffe pendant la lecture. */
+    private val thermal = dev.endlesssea.player.ThermalMonitor(context, viewModelScope)
+    val thermalStatus: kotlinx.coroutines.flow.StateFlow<Int> = thermal.status
+
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState
 
@@ -120,6 +124,36 @@ class PlayerViewModel @Inject constructor(
         // retenus (décalage ± des pistes externes, boost jusqu'à 200 %).
         runCatching { engine.setAudioBoost(prefs.audioBoostPercent.value) }
         runCatching { engine.setSubtitleDelay(prefs.subtitleDelayMs.value.toLong()) }
+        // §thermique : pression thermique → réduction automatique de l'upscaling
+        // (qualité → performance → auto → désactivé) tant que la garde est active.
+        thermal.start()
+        viewModelScope.launch {
+            thermal.status.collect { status ->
+                if (!prefs.thermalGuard.value) return@collect
+                val current = dev.endlesssea.player.UpscalingLevel.of(prefs.upscaleLevel.value)
+                if (current == dev.endlesssea.player.UpscalingLevel.OFF) return@collect
+                // modéré = on évite le cran le plus lourd ; sévère = un cran de
+                // plus ; critique = upscaling coupé.
+                val steps = when {
+                    status >= 4 -> 3
+                    status >= 3 -> 1
+                    status == 2 && current == dev.endlesssea.player.UpscalingLevel.QUALITY -> 1
+                    else -> 0
+                }
+                if (steps == 0) return@collect
+                val next = dev.endlesssea.player.UpscalingLevel.downgrade(current, steps)
+                if (next != current) {
+                    prefs.setUpscaleLevel(next.id)
+                    prefs.setVideoScale(next.scale)
+                    prefs.setVideoSharpen(next.sharpen)
+                    _uiState.value = _uiState.value.copy(
+                        toast = "Appareil chaud : upscaling → ${next.label}",
+                    )
+                    kotlinx.coroutines.delay(1_800)
+                    _uiState.value = _uiState.value.copy(toast = null)
+                }
+            }
+        }
         // Persistance de la position toutes les 5 s (spec §7 « mémorisation de la position »)
         viewModelScope.launch {
             while (isActive) {

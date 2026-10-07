@@ -1,6 +1,7 @@
 package dev.endlesssea.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,6 +64,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun HomeScreen(
     onMediaClick: (String) -> Unit,
+    /** §barre-haut (conversation 4) : bouton loupe de la barre. */
+    onSearch: () -> Unit = {},
     /** §tout-voir : (source, catégorie) → page complète du catalogue. */
     onSeeAll: (String, String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
@@ -103,6 +106,20 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        item {
+            // §barre-haut (conversation 4) : la barre en verre liquide remplace
+            // les boutons flottants — titre = source courante, sous-titre fixe.
+            dev.endlesssea.app.ui.components.EndlessSeaTopBar(
+                title = state.sources.firstOrNull { it.first == state.sourceFilter }?.second
+                    ?: "Endless Sea",
+                subtitle = "Accueil · catalogues des extensions",
+                icon = Icons.Filled.Home,
+                onSearch = onSearch,
+                searchDescription = "Rechercher un titre",
+                onMenu = { HomeUiBus.openProviderSheet() },
+                menuDescription = "Changer de source",
+            )
+        }
         item {
             if (state.featured.isNotEmpty()) {
                 // §anymex-ui : « Carousel Style » — bannière pleine largeur (classic)
