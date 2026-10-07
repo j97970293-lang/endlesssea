@@ -118,10 +118,15 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
             ) {
                 when (painter.state) {
                     is coil.compose.AsyncImagePainter.State.Error ->
-                        EsImagePlaceholder(tint = Color(0xFFB3261E), modifier = Modifier.fillMaxWidth().height(185.dp))
+                        // §couleurs (conversation 3) : l'erreur prend la couleur
+                        // d'erreur du thème, le chargement celle de l'accent.
+                        EsImagePlaceholder(
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.fillMaxWidth().height(185.dp),
+                        )
                     is coil.compose.AsyncImagePainter.State.Loading,
                     is coil.compose.AsyncImagePainter.State.Empty ->
-                        EsImagePlaceholder(tint = Color(0xFF2A5F8F), modifier = Modifier.fillMaxWidth().height(185.dp))
+                        EsImagePlaceholder(modifier = Modifier.fillMaxWidth().height(185.dp))
                     else -> SubcomposeAsyncImageContent()
                 }
             }
@@ -133,7 +138,8 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
                         .align(androidx.compose.ui.Alignment.BottomEnd)
                         .padding(6.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xCC1B5E20))
+                        // §couleurs : pastille « hors ligne » teintée par le thème.
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.80f))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 ) {
                     Text(

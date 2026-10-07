@@ -38,13 +38,15 @@ private val SeaAmoled = darkColorScheme(
     secondary = Color(0xFFC0C2E8),
     onSecondary = Color(0xFF242847),
     tertiary = Color(0xFF7AE0E0),
+    // §amoled (conversation 3) : noir pur pour les écrans, surfaces #0A0A0A
+    // pour les cartes — plus de teinte bleutée sur l'AMOLED.
     surface = Color(0xFF000000),
     onSurface = Color(0xFFE4E3EE),
-    surfaceVariant = Color(0xFF0C0F1E),
+    surfaceVariant = Color(0xFF0A0A0A),
     onSurfaceVariant = Color(0xFF8D93B8),
     background = Color(0xFF000000),
-    surfaceContainerHigh = Color(0xFF0C0F1E),
-    surfaceContainer = Color(0xFF070810),
+    surfaceContainerHigh = Color(0xFF0A0A0A),
+    surfaceContainer = Color(0xFF050505),
 )
 
 private val SeaLight = lightColorScheme(

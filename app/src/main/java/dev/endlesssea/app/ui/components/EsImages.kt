@@ -6,6 +6,7 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -175,7 +176,10 @@ object EsImages {
  * Utilisé comme fallback en attendant le chargement réel.
  */
 @Composable
-fun EsImagePlaceholder(modifier: Modifier = Modifier, tint: Color = Color(0xFF2A5F8F)) {
+fun EsImagePlaceholder(modifier: Modifier = Modifier, tint: Color? = null) {
+    // §couleurs (conversation 3) : le placeholder suit la palette (accent),
+    // plus de bleu figé.
+    val tint = tint ?: MaterialTheme.colorScheme.primary
     // Cercle + trait « vague » stylés — 100 % vectoriel inline, zéro asset réseau.
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         androidx.compose.foundation.Canvas(modifier = Modifier.matchParentSize()) {
@@ -225,10 +229,10 @@ fun SafeAsyncImage(
         ) {
             when (painter.state) {
                 is coil.compose.AsyncImagePainter.State.Error ->
-                    EsImagePlaceholder(tint = Color(0xFFB3261E), modifier = placeholderModifier)
+                    EsImagePlaceholder(tint = MaterialTheme.colorScheme.error, modifier = placeholderModifier)
                 is coil.compose.AsyncImagePainter.State.Loading,
                 is coil.compose.AsyncImagePainter.State.Empty ->
-                    EsImagePlaceholder(tint = Color(0xFF2A5F8F), modifier = placeholderModifier)
+                    EsImagePlaceholder(modifier = placeholderModifier)
                 else -> SubcomposeAsyncImageContent()
             }
         }

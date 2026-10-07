@@ -299,7 +299,7 @@ private fun FeaturedBanner(
                         Text(
                             badge,
                             style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFFB9C1FF),
+                            color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                         )
                     }

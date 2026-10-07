@@ -89,6 +89,9 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
         // Palettes d'accent (primary) proposées dans les réglages
         val ACCENTS = linkedMapOf(
+            // §accent-anymex (conversation 3) : le bleu #4FC3F7 est l'accent
+            // par défaut — toute la palette Material 3 en découle.
+            "anymex" to 0xFF4FC3F7,
             "lavande" to 0xFFB9C1FF,
             "cyan" to 0xFF7AD8FF,
             "menthe" to 0xFF8CD6C3,
@@ -152,7 +155,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
             "caramel" to 0xFFD9AE7E,
             "cacao" to 0xFFC9A18A,
         )
-        const val DEFAULT_ACCENT = "lavande"
+        const val DEFAULT_ACCENT = "anymex"
 
         /**
          * §theme-lecteur : habillages prêts à l'emploi (nom → accent, fond de barre).
