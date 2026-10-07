@@ -55,6 +55,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -570,7 +571,7 @@ fun DetailsScreen(
                             if (studios.isNotEmpty()) MetaPill("${studios.take(3).joinToString(", ")}")
                             state.details?.trailerUrl?.let { trailer ->
                                 Surface(
-                                    onClick = { openExternal(context, trailer) },
+                                    onClick = { context.startActivity(android.content.Intent(context, TrailerActivity::class.java).putExtra("url", trailer)) },
                                     shape = RoundedCornerShape(28.dp),
                                     color = MaterialTheme.colorScheme.errorContainer,
                                 ) {
@@ -1299,6 +1300,8 @@ private fun TrackerCard(
     viewModel: dev.endlesssea.app.ui.details.DetailsViewModel,
     onOpenTrackers: () -> Unit,
 ) {
+    var matchQuery by remember { mutableStateOf("") }
+    var selectedMatch by remember { mutableStateOf<dev.endlesssea.app.tracking.TrackerSearchHit?>(null) }
     val link by viewModel.trackerLink.collectAsState()
     val services by viewModel.connectedServices.collectAsState()
     val search by viewModel.trackerSearch.collectAsState()
@@ -1306,6 +1309,13 @@ private fun TrackerCard(
     // tick force la relecture après une action (progression/statut/détachement)
     remember(tick) { link }
 
+    selectedMatch?.let { hit ->
+        AlertDialog(onDismissRequest = { selectedMatch = null },
+            title = { Text("Confirmer le rattachement") },
+            text = { Text("Lier cette fiche à ${hit.title}" + (hit.year?.let { " ($it)" } ?: "") + " ? Les épisodes seront associés par leur numéro.") },
+            confirmButton = { TextButton(onClick = { search.service?.let { viewModel.linkTracker(it, hit) }; selectedMatch = null }) { Text("Confirmer") } },
+            dismissButton = { TextButton(onClick = { selectedMatch = null }) { Text("Annuler") } })
+    }
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         contentPadding = PaddingValues(14.dp),
@@ -1391,10 +1401,15 @@ private fun TrackerCard(
                         Spacer(Modifier.height(8.dp))
                         Text("Recherche…", style = MaterialTheme.typography.bodySmall)
                     }
+                    OutlinedTextField(value = matchQuery, onValueChange = { matchQuery = it },
+                        label = { Text("Titre à rechercher (vide : titre de la fiche)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    search.service?.let { service ->
+                        TextButton(onClick = { viewModel.searchTracker(service, matchQuery) }) { Text("Rechercher") }
+                    }
                     search.hits.forEach { hit ->
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable { search.service?.let { viewModel.linkTracker(it, hit) } }
+                                .clickable { selectedMatch = hit }
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

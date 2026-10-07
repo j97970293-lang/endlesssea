@@ -49,6 +49,8 @@
             android:exported="false"
             android:launchMode="singleTask" />
 
+        <activity android:name=".ui.details.TrailerActivity" android:exported="false" />
+
         <!-- CAPTCHA / anti-bot verification (spec §3) -->
         <activity
             android:name="dev.endlesssea.extensions.loader.captcha.CaptchaActivity"
