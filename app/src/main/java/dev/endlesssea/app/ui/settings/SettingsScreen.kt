@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
@@ -83,6 +84,7 @@ fun SettingsScreen(
     onOpenExtensions: () -> Unit = {},
     /** §suivi (conversation 11) : écran « Comptes & suivi ». */
     onOpenTrackers: () -> Unit = {},
+    onOpenHistory: () -> Unit = {},
     viewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -206,6 +208,9 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }
+            }
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Historique", "Supprimer les vidéos vues")) item {
+                SettingCategory(Icons.Filled.Delete, "Historique", "Consulter, effacer ou désactiver l'historique", expanded = false) { onOpenHistory() }
             }
             // ------------------------------------------------------ APPARENCE
             if (openCategoryFull == null && settingsQuery.isBlank()) {

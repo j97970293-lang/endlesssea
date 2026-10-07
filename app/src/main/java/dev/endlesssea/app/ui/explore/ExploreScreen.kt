@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,35 +56,25 @@ fun ExploreScreen(
     Column(Modifier.fillMaxSize()) {
         // §recherche-dans-explorer : la recherche vit ici (plus d'onglet dédié) et
         // interroge la source sélectionnée dans les pastilles ci-dessous.
-        var exploreQuery by remember { mutableStateOf("") }
-        // §barre-haut (conversation 4) : la loupe de la barre ouvre le champ
-        // de recherche (replié par défaut pour laisser la place aux catalogues).
-        var searchOpen by remember { mutableStateOf(false) }
         dev.endlesssea.app.ui.components.EndlessSeaTopBar(
-            title = "Explorer",
-            subtitle = "Catalogues des extensions",
-            icon = Icons.Filled.Explore,
-            onSearch = { searchOpen = !searchOpen },
+            title = "Explorer", subtitle = "Catalogues des extensions", icon = Icons.Filled.Explore,
+            onSearch = { onSearch("", selectedPkg ?: "ALL") },
             searchDescription = "Rechercher dans les extensions",
         )
-        if (searchOpen) androidx.compose.material3.OutlinedTextField(
-            value = exploreQuery,
-            onValueChange = { exploreQuery = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            placeholder = { Text("Rechercher dans " + (selectedPkg?.let { pkg -> state.extensions.firstOrNull { it.first == pkg }?.second } ?: "toutes les sources") + "…") },
-            trailingIcon = {
-                IconButton(onClick = { if (exploreQuery.isNotBlank()) onSearch(exploreQuery, selectedPkg ?: "ALL") }) {
-                    Icon(Icons.Filled.Search, "Lancer la recherche")
+        var suggestions by remember { mutableStateOf(false) }
+        Row(Modifier.padding(horizontal = 16.dp)) {
+            TextButton(onClick = { suggestions = false }) { Text("Catalogue") }
+            TextButton(onClick = { suggestions = true }) { Text("Suggestions") }
+        }
+        if (suggestions) {
+            val items by viewModel.suggestions.collectAsState()
+            LazyColumn {
+                item {
+                    if (items.isEmpty()) Text("Regardez quelques épisodes pour obtenir des suggestions.", Modifier.padding(16.dp))
+                    else MediaRow(title = "D'après votre activité récente", items = items, onMediaClick = onMediaClick)
                 }
-            },
-            singleLine = true,
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                imeAction = androidx.compose.ui.text.input.ImeAction.Search,
-            ),
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                onSearch = { if (exploreQuery.isNotBlank()) onSearch(exploreQuery, selectedPkg ?: "ALL") },
-            ),
-        )
+            }
+        } else {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -94,12 +85,14 @@ fun ExploreScreen(
         ) {
             IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Filled.Refresh, "Rafraîchir") }
             FilterChip(
+                border = null,
                 selected = selectedPkg == null,
                 onClick = { selectedPkg = null },
                 label = { Text("Toutes", maxLines = 1, softWrap = false) },
             )
             state.extensions.forEach { (pkg, name) ->
                 FilterChip(
+                    border = null,
                     selected = selectedPkg == pkg,
                     onClick = { selectedPkg = if (selectedPkg == pkg) null else pkg },
                     label = { Text(name, maxLines = 1, softWrap = false) },
@@ -168,6 +161,7 @@ fun ExploreScreen(
                     }
                 }
             }
+        }
         }
     }
 }

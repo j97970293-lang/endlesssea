@@ -47,6 +47,14 @@ interface LibraryDao {
 
 @Dao
 interface WatchHistoryDao {
+    @Query("SELECT * FROM watch_history ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<WatchHistoryEntity>>
+    @Query("DELETE FROM watch_history WHERE episodeId = :id") suspend fun deleteEpisode(id: String)
+    @Query("DELETE FROM watch_history WHERE mediaId = :id") suspend fun deleteMedia(id: String)
+    @Query("DELETE FROM watch_history WHERE durationMs > 0 AND positionMs * 1.0 / durationMs >= 0.95") suspend fun deleteCompleted(): Int
+    @Query("DELETE FROM watch_history WHERE updatedAt < :before") suspend fun deleteOlderThan(before: Long): Int
+    @Query("DELETE FROM watch_history") suspend fun deleteAll(): Int
+
     @Upsert suspend fun upsert(entry: WatchHistoryEntity)
     @Query("SELECT * FROM watch_history WHERE episodeId = :id") suspend fun byEpisode(id: String): WatchHistoryEntity?
     /** "Continue watching": started, not finished (spec §10). */

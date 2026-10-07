@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.items
@@ -58,6 +59,9 @@ fun SearchScreen(
     viewModel: SearchViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val focusRequester = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
     androidx.compose.runtime.LaunchedEffect(initialSource) {
         if (initialSource.isNotBlank()) viewModel.setSourceFilter(initialSource)
     }
@@ -66,7 +70,7 @@ fun SearchScreen(
         OutlinedTextField(
             value = state.query,
             onValueChange = viewModel::onQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).focusRequester(focusRequester),
             placeholder = { Text("One Piece, Naruto, un film…") },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
             trailingIcon = {

@@ -187,6 +187,9 @@ fun EsNavGraph(nav: NavHostController) {
         popEnterTransition = { popEnterAnim },
         popExitTransition = { popExitAnim },
     ) {
+        composable("history") {
+            dev.endlesssea.app.ui.history.HistoryScreen(onBack = { nav.popBackStack() })
+        }
         composable(Screen.Home.route) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             // §barre-haut (conversation 4) : la loupe de la barre ouvre la
@@ -194,6 +197,7 @@ fun EsNavGraph(nav: NavHostController) {
             val homeProviderId = dev.endlesssea.app.ui.home.HomeUiBus.currentProviderId
                 .collectAsState().value
             HomeScreen(
+                onOpenSettings = { nav.navigate("settings") },
                 onSearch = {
                     nav.navigate("search/" + android.net.Uri.encode(homeProviderId))
                 },
@@ -288,6 +292,7 @@ fun EsNavGraph(nav: NavHostController) {
         }
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onOpenHistory = { nav.navigate("history") },
                 onOpenExtensions = { nav.navigate(Screen.Extensions.route) },
                 // §suivi (conversation 11) : comptes AniList / MAL / Shikimori / TMDB
                 onOpenTrackers = { nav.navigate("trackers") },

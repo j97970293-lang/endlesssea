@@ -35,12 +35,34 @@ data class ExploreUiState(
 @HiltViewModel
 class ExploreViewModel @Inject constructor(
     private val registry: ExtensionRegistry,
+    private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
+    private val mediaDao: dev.endlesssea.data.db.MediaDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExploreUiState())
     val uiState: StateFlow<ExploreUiState> = _uiState
 
-    init { refresh() }
+    private val _suggestions = MutableStateFlow<List<SearchItemUi>>(emptyList())
+    val suggestions: StateFlow<List<SearchItemUi>> = _suggestions
+    init {
+        refresh()
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(historyDao.observeAll(), uiState) { history, state ->
+                history to state
+            }.collect { (history, state) ->
+                val recent = history.map { it.mediaId }.distinct().take(12)
+                val genres = recent.mapNotNull { mediaDao.byId(it) }.flatMap { media ->
+                    runCatching {
+                        val array = org.json.JSONArray(media.genresJson)
+                        (0 until array.length()).map { array.getString(it).lowercase() }
+                    }.getOrDefault(emptyList())
+                }.toSet()
+                val candidates = state.rows.filter { row -> genres.any { row.title.lowercase().contains(it) } }
+                    .flatMap { it.items }.distinctBy { it.id }.filter { it.id !in recent }.take(20)
+                _suggestions.value = candidates
+            }
+        }
+    }
 
     private companion object {
         /** Plafond de rangées par source sur Explorer (évite un mur avec 14 genres). */

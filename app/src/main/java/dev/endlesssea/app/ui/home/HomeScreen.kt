@@ -66,6 +66,7 @@ fun HomeScreen(
     onMediaClick: (String) -> Unit,
     /** §barre-haut (conversation 4) : bouton loupe de la barre. */
     onSearch: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     /** §tout-voir : (source, catégorie) → page complète du catalogue. */
     onSeeAll: (String, String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
@@ -109,15 +110,11 @@ fun HomeScreen(
         item {
             // §barre-haut (conversation 4) : la barre en verre liquide remplace
             // les boutons flottants — titre = source courante, sous-titre fixe.
-            dev.endlesssea.app.ui.components.EndlessSeaTopBar(
-                title = state.sources.firstOrNull { it.first == state.sourceFilter }?.second
-                    ?: "Endless Sea",
-                subtitle = "Accueil · catalogues des extensions",
-                icon = Icons.Filled.Home,
-                onSearch = onSearch,
-                searchDescription = "Rechercher un titre",
-                onMenu = { HomeUiBus.openProviderSheet() },
-                menuDescription = "Changer de source",
+            HomeTopBar(
+                activeExtensionName = state.sources.firstOrNull { it.first == state.sourceFilter }?.second,
+                onOpenSettings = onOpenSettings,
+                onOpenSearch = onSearch,
+                onOpenMenu = { HomeUiBus.openProviderSheet() },
             )
         }
         item {
