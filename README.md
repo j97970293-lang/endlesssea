@@ -27,6 +27,7 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 - ⏭️ **Megaskip** : saut d'intro/récap/générique/aperçu alimenté par **TheIntroDB**, **IntroDB** et **AniSkip** (identifiants résolus automatiquement via AniZip/Jikan), **cache hors-ligne** en base, boutons de saut personnalisés (« +85 s », « Opening », « Filler ») et réglages fins par type de segment
 - 📚 **Bibliothèque locale hors-ligne** : anime, films, séries, OVA, ONA, catégories et genres personnalisables, filtres par emplacement (interne / carte SD) et onglets « En cours / Terminés »
 - 📂 **Dossiers vidéo façon Aniyomi** : `Série/cover.jpg` + `details.json` (éditable depuis l'app, écrit dans le dossier) + `episodes.json` (titres d'épisodes), tri par numéro d'épisode
+- 🔎 **Entretien des téléchargements** : vérification d'intégrité SHA-256, limite de bande passante, purge automatique des fichiers anciens et des temporaires orphelins
 - 📥 **Téléchargements dans la bibliothèque** : un épisode téléchargé — même isolé — forme sa propre « série » (badge, nombre d'épisodes, emplacement) et se lit hors-ligne
 - 🔍 **Recherche multi-extensions** agrégée avec filtres
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
