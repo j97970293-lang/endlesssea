@@ -34,7 +34,7 @@ import coil.request.ImageRequest
  *    pour tester, le fallback doit se déclencher ; le dépôt de démo est servi
  *    depuis Internet Archive (URL publique stable).
  *
- * 「Note」DiskCache.Builder() existe depuis Coil 2.3. Rétro-compat OK sur API 26.
+ * « Note » DiskCache.Builder() existe depuis Coil 2.3. Rétro-compat OK sur API 26.
  */
 object EsImages {
 
@@ -44,7 +44,7 @@ object EsImages {
     /**
      * Instance unique, créée une seule fois par process.
      *
-     * 「Piège」`imageLoader()` est appelé depuis un composable : sans
+     * « Piège » `imageLoader()` est appelé depuis un composable : sans
      * mémoïsation, chaque recomposition reconstruisait un ImageLoader complet —
      * donc un second `DiskCache` sur LE MÊME répertoire. Coil/okio verrouille ce
      * répertoire : la deuxième instance échoue à ouvrir son journal et TOUTES
@@ -74,7 +74,7 @@ object EsImages {
                 add(coil.decode.VideoFrameDecoder.Factory())
             }
             .diskCache {
-                // 「Piège」Coil 2.x : DiskCache.Builder.build() fait
+                // « Piège » Coil 2.x : DiskCache.Builder.build() fait
                 // checkNotNull(directory) { "directory == null" }. Sans
                 // .directory(...), la construction LÈVE une IllegalStateException
                 // à la première image demandée — donc AUCUNE image ne s'affiche.

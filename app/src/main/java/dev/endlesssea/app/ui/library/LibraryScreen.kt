@@ -143,7 +143,7 @@ fun LibraryScreen(
             }
             androidx.compose.material3.AssistChip(
                 onClick = { newCategoryName = ""; showNewCategory = true },
-                label = { Text("＋ Catégorie", maxLines = 1, softWrap = false) },
+                label = { Text("+ Catégorie", maxLines = 1, softWrap = false) },
             )
         }
 
@@ -814,7 +814,7 @@ private fun LocalFilesPanel(
                                 }
                             }
                             androidx.compose.material3.TextButton(onClick = { addToCat = video }) {
-                                Text("＋")
+                                Text("+")
                             }
                             androidx.compose.material3.IconButton(onClick = { editMeta = video }) {
                                 androidx.compose.material3.Icon(
@@ -883,7 +883,7 @@ private fun LocalFilesPanel(
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (cats.isEmpty()) {
                             Text(
-                                "Aucune catégorie : crée-en une avec « ＋ Catégorie » " +
+                                "Aucune catégorie : crée-en une avec « + Catégorie » " +
                                     "en haut de la bibliothèque.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -1035,7 +1035,7 @@ private fun CustomCategoryPanel(
         }
         if (files.isEmpty()) {
             Text(
-                "Catégorie vide — ouvre « Fichiers », puis « ＋ » sur une vidéo pour la ranger ici.",
+                "Catégorie vide — ouvre « Fichiers », puis « + » sur une vidéo pour la ranger ici.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

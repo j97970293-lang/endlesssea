@@ -141,7 +141,7 @@ fun ExploreScreen(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text("(¬‿¬)", style = MaterialTheme.typography.titleMedium)
+                            Text(":(", style = MaterialTheme.typography.titleMedium)
                             Text(
                                 "Catalogue vide pour l'instant — essayez une autre source ci-dessus.",
                                 style = MaterialTheme.typography.bodyMedium,

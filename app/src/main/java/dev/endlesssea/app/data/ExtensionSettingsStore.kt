@@ -11,7 +11,7 @@ import javax.inject.Singleton
  * préfixées par l'identifiant d'extension. Exposé au loader via [provider] pour que
  * chaque nouvelle instance reçoive `ExtensionContext.settings`.
  *
- * 「Piège corrigé」le séparateur était `\u0000`. Les SharedPreferences sont
+ * « Piège corrigé » : le séparateur était `\u0000`. Les SharedPreferences sont
  * persistées en **XML**, or NUL est un caractère **illégal en XML 1.0** : la valeur
  * vivait en mémoire pour la session en cours, puis le fichier ne se relisait plus au
  * démarrage suivant (`An invalid XML character (Unicode: 0x0) was found in the value

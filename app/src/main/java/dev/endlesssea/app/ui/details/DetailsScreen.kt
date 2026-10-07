@@ -380,7 +380,7 @@ fun DetailsScreen(
                         Modifier.fillMaxWidth().padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("(˘･_･˘)", style = MaterialTheme.typography.titleMedium)
+                        Text(":(", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
                         Text(state.error ?: "Erreur", color = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.height(12.dp))
@@ -1415,7 +1415,7 @@ private fun TrackerCard(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            Text("＋", style = MaterialTheme.typography.titleMedium)
+                            Text("+", style = MaterialTheme.typography.titleMedium)
                         }
                     }
                 }

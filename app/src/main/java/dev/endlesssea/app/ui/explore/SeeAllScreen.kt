@@ -76,7 +76,7 @@ fun SeeAllScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("(˘̩︿˘̩)", style = MaterialTheme.typography.headlineSmall)
+                Text(":(", style = MaterialTheme.typography.headlineSmall)
                 Text(
                     state.error ?: "",
                     color = MaterialTheme.colorScheme.error,
