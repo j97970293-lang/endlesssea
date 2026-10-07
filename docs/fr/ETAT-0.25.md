@@ -28,7 +28,7 @@ pas des fonctionnalités manquantes.
    `:app:assembleDebug` et publication de l'APK. Chaque commit poussé doit être
    vert ; les anciennes exécutions rouges d'avant correctif ont été supprimées
    du dépôt.
-2. **Tests unitaires (≈ 90, tous sur JVM — aucun appareil requis)** :
+2. **Tests unitaires (85, tous sur JVM — aucun appareil requis)** :
    `:player` — décalage SRT/VTT dans les deux sens, bornage à zéro, ordre des
    niveaux d'upscaling, descente thermique ; `:core` — noms de fichiers
    (caractères interdits, accents, troncature) et gabarits de renommage ;
