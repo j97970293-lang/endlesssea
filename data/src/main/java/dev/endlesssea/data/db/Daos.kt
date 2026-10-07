@@ -56,14 +56,10 @@ interface WatchHistoryDao {
     @Query("SELECT COUNT(*) FROM watch_history WHERE mediaId = :mediaId AND watched = 1")
     suspend fun watchedCount(mediaId: String): Int
 
-    /** Reprendre sur une fiche : dernier épisode commencé non terminé de ce média. */
-    @Query("SELECT * FROM watch_history WHERE mediaId = :mediaId AND watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT 1")
-    suspend fun resumeForMedia(mediaId: String): WatchHistoryEntity?
-
     /**
-     * §bibliotheque-statuts (conversation 6) : un SEUL passage pour classer toute
-     * la bibliothèque en « en cours » / « terminé », au lieu d'une requête par
-     * titre (la grille en affiche des centaines).
+     * §bibliotheque-statuts (conversation 6) : état de visionnage de TOUTES les
+     * fiches en une requête (évite N requêtes pour afficher les onglets
+     * « En cours » / « Terminé » d'une grille de plusieurs centaines de titres).
      */
     @Query(
         "SELECT mediaId, " +
@@ -71,9 +67,13 @@ interface WatchHistoryDao {
             "COUNT(*) AS total FROM watch_history GROUP BY mediaId",
     )
     suspend fun statsAll(): List<MediaWatchStat>
+
+    /** Reprendre sur une fiche : dernier épisode commencé non terminé de ce média. */
+    @Query("SELECT * FROM watch_history WHERE mediaId = :mediaId AND watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun resumeForMedia(mediaId: String): WatchHistoryEntity?
 }
 
-/** Résumé de visionnage d'un média (base des onglets En cours / Terminé). */
+/** État de visionnage d'une fiche (onglets « En cours » / « Terminé »). */
 data class MediaWatchStat(val mediaId: String, val watchedCount: Int, val total: Int)
 
 @Dao

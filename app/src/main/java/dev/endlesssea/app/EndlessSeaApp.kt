@@ -30,6 +30,16 @@ class EndlessSeaApp : Application() {
         // §4 — Images des extensions : Coil partagé avec cache disque, UA honnête
         // et DNS DoH. Doit être initialisé AVANT la première AsyncImage.
         EsImages.imageLoader(this)
+        // §telecharges-bibliotheque (conversation 7) : la pastille « téléchargé »
+        // des affiches est alimentée par la base dès le démarrage — sinon elle
+        // n'apparaissait qu'après un passage par l'accueil.
+        appScope.launch {
+            runCatching {
+                dev.endlesssea.app.ui.components.DownloadedRegistry.set(
+                    database.downloadsDao().completedMediaIds(),
+                )
+            }
+        }
         appScope.launch {
             // Seed user-editable genres/categories once (spec §8/§9 — everything stays editable).
             database.genreDao().insertAll(EsDatabase.SEED_GENRES)

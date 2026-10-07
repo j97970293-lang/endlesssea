@@ -222,43 +222,6 @@ fun LibraryScreen(
                 onClick = { viewModel.setMergeLocal(!mergeLocal) },
                 label = { Text("Fichiers locaux", maxLines = 1, softWrap = false) },
             )
-            // §bibliotheque-sources : emplacements réellement présents
-            val kinds = state.localFiles.map { it.storageKind }.distinct() +
-                state.downloadedGroups.map { it.storageKind }.distinct()
-            if (kinds.isNotEmpty()) {
-                androidx.compose.material3.FilterChip(
-                    selected = state.sourceFilter == "ALL",
-                    onClick = { viewModel.setSourceFilter("ALL") },
-                    label = { Text("Toutes sources", maxLines = 1, softWrap = false) },
-                )
-                kinds.distinct().forEach { kind ->
-                    androidx.compose.material3.FilterChip(
-                        selected = state.sourceFilter == kind,
-                        onClick = { viewModel.setSourceFilter(kind) },
-                        label = {
-                            Text(
-                                dev.endlesssea.app.ui.library.StorageKind.label(kind),
-                                maxLines = 1, softWrap = false,
-                            )
-                        },
-                    )
-                }
-            }
-            // §bibliotheque-statuts : Tout / En cours / Terminé (progression réelle)
-            androidx.compose.material3.FilterChip(
-                selected = state.statusTab == "WATCHING",
-                onClick = {
-                    viewModel.setStatusTab(if (state.statusTab == "WATCHING") "ALL" else "WATCHING")
-                },
-                label = { Text("▶ En cours", maxLines = 1, softWrap = false) },
-            )
-            androidx.compose.material3.FilterChip(
-                selected = state.statusTab == "COMPLETED",
-                onClick = {
-                    viewModel.setStatusTab(if (state.statusTab == "COMPLETED") "ALL" else "COMPLETED")
-                },
-                label = { Text("✓ Terminés", maxLines = 1, softWrap = false) },
-            )
             // Watchlist §29 : filtre par statut de suivi
             listOf(
                 "WISHLIST" to "À regarder",
@@ -272,32 +235,76 @@ fun LibraryScreen(
                     label = { Text(label, maxLines = 1, softWrap = false) },
                 )
             }
+            // §multi-sources (conversation 6) : d'où vient le contenu — on
+            // n'affiche que les sources réellement présentes sur l'appareil.
+            val availableSources = viewModel.presentSources()
+            if (availableSources.isNotEmpty()) {
+                androidx.compose.material3.FilterChip(
+                    selected = state.sourceFilter == LibrarySource.ALL,
+                    onClick = { viewModel.setSourceFilter(LibrarySource.ALL) },
+                    label = { Text("Toutes sources", maxLines = 1, softWrap = false) },
+                )
+                availableSources.forEach { kind ->
+                    androidx.compose.material3.FilterChip(
+                        selected = state.sourceFilter == kind,
+                        onClick = { viewModel.setSourceFilter(kind) },
+                        label = { Text(LibrarySource.label(kind), maxLines = 1, softWrap = false) },
+                    )
+                }
+            }
+            // §multi-sources : état de visionnage réel (tout / en cours / terminé)
+            androidx.compose.material3.FilterChip(
+                selected = state.watchFilter == "WATCHING",
+                onClick = {
+                    viewModel.setWatchFilter(if (state.watchFilter == "WATCHING") "ALL" else "WATCHING")
+                },
+                label = { Text("◐ En cours", maxLines = 1, softWrap = false) },
+            )
+            androidx.compose.material3.FilterChip(
+                selected = state.watchFilter == "COMPLETED",
+                onClick = {
+                    viewModel.setWatchFilter(if (state.watchFilter == "COMPLETED") "ALL" else "COMPLETED")
+                },
+                label = { Text("✓ Terminés", maxLines = 1, softWrap = false) },
+            )
         }
-        // §bibliotheque-sources (conversation 6) : filtre par emplacement —
-        // mémoire interne, carte SD ou téléchargements.
+        // §multi-sources (conversation 6) : on ne garde que ce qui vient de la
+        // source choisie (mémoire interne, carte SD, téléchargements).
         val source = state.sourceFilter
-        val visibleLocal = localCards.filter { card ->
-            source == "ALL" || state.localFiles
-                .firstOrNull { "local:" + it.uri == card.id }
-                ?.storageKind == source
+        val sourceLocal = when (source) {
+            LibrarySource.ALL, LibrarySource.DOWNLOADS -> localCards
+            else -> state.localFiles
+                .filter { it.storageKind == source }
+                .map { f ->
+                    SearchItemUi(
+                        id = "local:" + f.uri,
+                        title = f.customTitle ?: f.folderName,
+                        posterUrl = f.customCoverUri,
+                        subtitle = f.humanSize + " · " + LibrarySource.label(f.storageKind),
+                    )
+                }
         }
-        val visibleDownloads = state.downloadedGroups
-            .filter { source == "ALL" || it.storageKind == source }
-            .map { it.toCard() }
-
+        val sourceDownloads = if (source == LibrarySource.ALL || source == LibrarySource.DOWNLOADS) {
+            state.downloadedGroups.map { it.toCard() }
+        } else {
+            emptyList()
+        }
         // §telecharges-bibliotheque : en mode « Téléchargés », la grille ne montre
         // que les séries présentes sur l'appareil (fiches virtuelles incluses).
         // Le filtre « Sur l'appareil » les ajoute aux titres suivis.
         val shownItems = when {
-            state.downloadsOnly -> visibleDownloads
+            state.downloadsOnly -> sourceDownloads
             state.onDeviceOnly -> {
                 val followed = state.items.map { it.id }.toSet()
-                state.items + visibleLocal +
+                state.items + sourceLocal +
                     state.downloadedGroups
-                        .filter { it.key !in followed && (source == "ALL" || it.storageKind == source) }
+                        .filter {
+                            it.key !in followed &&
+                                (source == LibrarySource.ALL || source == LibrarySource.DOWNLOADS)
+                        }
                         .map { it.toCard() }
             }
-            else -> state.items + visibleLocal
+            else -> state.items + sourceLocal
         }
         if (shownItems.isEmpty()) {
             Column(
@@ -705,7 +712,7 @@ private fun LocalFilesPanel(
                                             dev.endlesssea.app.local.LocalVideos.humanSize(
                                                 files.sumOf { it.sizeBytes },
                                             ) +
-                                            " · " + StorageKind.label(files.first().storageKind),
+                                            " · " + LibrarySource.label(files.first().storageKind),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )

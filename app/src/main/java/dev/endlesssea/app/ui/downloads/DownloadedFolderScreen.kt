@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.ui.components.GlassCard
 import dev.endlesssea.app.ui.library.DownloadedEpisodeUi
+import dev.endlesssea.app.ui.library.LibrarySource
 import dev.endlesssea.app.ui.library.LibraryViewModel
 import dev.endlesssea.app.ui.player.PlayerLaunchStore
 
@@ -58,6 +59,8 @@ fun DownloadedFolderScreen(
     val episodes = remember(state.downloadedEpisodes, folderKey) {
         viewModel.downloadedEpisodesOf(folderKey)
     }
+    /** §gestion : épisode en attente de confirmation de suppression. */
+    var deleteCandidate by remember { mutableStateOf<DownloadedEpisodeUi?>(null) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -142,10 +145,12 @@ fun DownloadedFolderScreen(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Row(
-                    Modifier.fillMaxWidth().clickable { playDownloaded(context, episodes, episode) },
+                    Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(Modifier.weight(1f)) {
+                    Column(
+                        Modifier.weight(1f).clickable { playDownloaded(context, episodes, episode) },
+                    ) {
                         Text(
                             if (episode.episodeNumber != null) {
                                 "Ép. ${episode.episodeNumber} · ${episode.displayName}"
@@ -157,16 +162,54 @@ fun DownloadedFolderScreen(
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            listOf(episode.humanSize, episode.quality.takeIf { it != "UNKNOWN" })
-                                .filterNotNull().joinToString(" · "),
+                            listOf(
+                                episode.humanSize,
+                                episode.quality.takeIf { it != "UNKNOWN" },
+                                LibrarySource.label(episode.storageKind),
+                            ).filterNotNull().joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text("▶", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "▶",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier
+                            .clickable { playDownloaded(context, episodes, episode) }
+                            .padding(horizontal = 8.dp),
+                    )
+                    // §gestion (conversation 7) : libérer l'espace d'un épisode
+                    Text(
+                        "🗑",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.clickable { deleteCandidate = episode }.padding(6.dp),
+                    )
                 }
             }
         }
+    }
+
+    // Confirmation : la suppression efface vraiment le fichier de l'appareil.
+    deleteCandidate?.let { episode ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteDownloadedEpisode(episode.taskId, episode.uri)
+                    deleteCandidate = null
+                }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate = null }) { Text("Annuler") }
+            },
+            title = { Text("Supprimer ce téléchargement ?") },
+            text = {
+                Text(
+                    "${episode.displayName} — ${episode.humanSize} libérés. " +
+                        "Le fichier est effacé de l'appareil ; tu pourras le retélécharger plus tard.",
+                )
+            },
+        )
     }
 }
 

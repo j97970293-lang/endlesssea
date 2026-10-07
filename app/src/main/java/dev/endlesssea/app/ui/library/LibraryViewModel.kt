@@ -37,17 +37,32 @@ data class LibraryUiState(
     val downloadedEpisodes: List<DownloadedEpisodeUi> = emptyList(),
     /** Afficher UNIQUEMENT les téléchargements (chip « Téléchargés »). */
     val downloadsOnly: Boolean = false,
-    // ---- §bibliotheque-sources (conversation 6) : filtre par emplacement.
-    /** ALL · INTERNAL · SD · DOWNLOADS. */
-    val sourceFilter: String = "ALL",
-    /** ALL · WATCHING · COMPLETED — onglets de progression (conversation 6). */
-    val statusTab: String = "ALL",
     // ---- §bibliotheque-sections (conversation 6)
     /** « Reprendre la lecture » : épisodes commencés, non terminés. */
     val continueWatching: List<ContinueCardUi> = emptyList(),
     /** « Récemment ajoutés » : derniers titres entrés dans la bibliothèque. */
     val recentlyAdded: List<SearchItemUi> = emptyList(),
+    // ---- §multi-sources (conversation 6) : d'où vient le contenu
+    /** ALL · DEVICE · SD · DOWNLOADS. */
+    val sourceFilter: String = "ALL",
+    /** ALL · WATCHING · COMPLETED — état de visionnage (onglets de la grille). */
+    val watchFilter: String = "ALL",
 )
+
+/** §multi-sources (conversation 6) : origine d'un contenu de la bibliothèque. */
+object LibrarySource {
+    const val ALL = "ALL"
+    const val DEVICE = "DEVICE"
+    const val SD = "SD"
+    const val DOWNLOADS = "DOWNLOADS"
+
+    fun label(id: String): String = when (id) {
+        DEVICE -> "Mémoire interne"
+        SD -> "Carte SD"
+        DOWNLOADS -> "Téléchargements"
+        else -> "Toutes sources"
+    }
+}
 
 /**
  * §bibliotheque-sections (conversation 6) — carte « Reprendre » : miniature
@@ -64,27 +79,6 @@ data class ContinueCardUi(
     val updatedLabel: String,
 )
 
-/** Emplacement de stockage d'un élément (conversation 6 : pastille de source). */
-object StorageKind {
-    const val INTERNAL = "INTERNAL"
-    const val SD = "SD"
-    const val DOWNLOADS = "DOWNLOADS"
-    const val ALL = "ALL"
-
-    fun ofUri(uri: String): String = when {
-        uri.startsWith("content://") ->
-            // SAF : « primary: » = mémoire interne, sinon volume externe (carte SD)
-            if (uri.contains("primary", ignoreCase = true)) INTERNAL else SD
-        else -> INTERNAL
-    }
-
-    fun label(kind: String): String = when (kind) {
-        INTERNAL -> "Interne"
-        SD -> "Carte SD"
-        DOWNLOADS -> "Téléchargements"
-        else -> "Toutes"
-    }
-}
 
 /** Une « série » virtuelle construite à partir des fichiers téléchargés. */
 data class DownloadedGroupUi(
@@ -94,8 +88,8 @@ data class DownloadedGroupUi(
     val episodeCount: Int,
     val totalBytes: Long,
     val lastAt: Long,
-    /** §bibliotheque-sources : l'emplacement réel du fichier (carte SD ou interne). */
-    val storageKind: String = StorageKind.DOWNLOADS,
+    /** §multi-sources : l'emplacement réel du fichier (carte SD ou interne). */
+    val storageKind: String = LibrarySource.DOWNLOADS,
 ) {
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(totalBytes)
     /** Carte de bibliothèque correspondante (clic → fiche du groupe). */
@@ -105,7 +99,7 @@ data class DownloadedGroupUi(
         posterUrl = posterUrl,
         // §cartes-bibliotheque (conversation 6) : nombre d'épisodes + emplacement
         subtitle = (if (episodeCount > 1) "$episodeCount épisodes" else "1 épisode") +
-            " · " + StorageKind.label(storageKind),
+            " · " + LibrarySource.label(storageKind),
     )
 }
 
@@ -120,8 +114,17 @@ data class DownloadedEpisodeUi(
     val quality: String,
     val mediaId: String?,
     val episodeId: String?,
+    /** §gestion : identifiant de la tâche — permet de supprimer le fichier. */
+    val taskId: String = "",
 ) {
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
+
+    /** §multi-sources : l'épisode est-il sur la carte SD ? */
+    val storageKind: String get() = when {
+        !uri.startsWith("content://") -> LibrarySource.DEVICE
+        uri.contains("primary", ignoreCase = true) -> LibrarySource.DEVICE
+        else -> LibrarySource.SD
+    }
 }
 
 /** Ligne UI d'une vidéo locale scannée (avec métadonnées éditées le cas échéant). */
@@ -147,11 +150,16 @@ data class LocalVideoUi(
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
     val humanDuration: String get() = dev.endlesssea.app.local.LocalVideos.humanDuration(durationMs)
 
-    /** §bibliotheque-sources : mémoire interne ou carte SD (déduit de l'URI SAF). */
-    val storageKind: String get() = StorageKind.ofUri(uri)
-
     /** §episodes-json : numéro d'épisode déduit du nom de fichier. */
     val episodeNumber: Int? get() = dev.endlesssea.app.local.LocalVideos.episodeNumber(name)
+
+    /** §multi-sources (conversation 6) : interne ou carte SD (déduit du volume SAF). */
+    val storageKind: String
+        get() = when {
+            !uri.startsWith("content://") -> LibrarySource.DEVICE
+            uri.contains("primary", ignoreCase = true) -> LibrarySource.DEVICE
+            else -> LibrarySource.SD
+        }
 
     /** Titre lisible du fichier (numéro retiré) quand aucun titre perso n'existe. */
     val prettyName: String
@@ -179,6 +187,9 @@ class LibraryViewModel @Inject constructor(
 
     /** mediaId → statut watchlist (pour le filtre §29). */
     private var rawStatuses: Map<String, String> = emptyMap()
+
+    /** mediaId → épisodes terminés / entamés (§multi-sources, conversation 6). */
+    private var rawStats: Map<String, dev.endlesssea.data.db.MediaWatchStat> = emptyMap()
 
     init {
         viewModelScope.launch {
@@ -219,6 +230,12 @@ class LibraryViewModel @Inject constructor(
         // bibliothèque — seul (« série » d'un épisode) ou rattaché à sa fiche.
         viewModelScope.launch {
             downloadsDao.observeCompleted().collect { tasks -> buildDownloads(tasks) }
+        }
+        // §multi-sources : statistiques de visionnage (une requête groupée)
+        viewModelScope.launch {
+            rawStats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList())
+                .associateBy { it.mediaId }
+            applyFilter()
         }
         // §bibliotheque-sections : « Reprendre la lecture » (progression réelle,
         // < 95 % — un épisode presque fini n'encombre pas la rangée).
@@ -286,6 +303,7 @@ class LibraryViewModel @Inject constructor(
                 quality = task.quality,
                 mediaId = task.mediaId,
                 episodeId = task.episodeId,
+                taskId = task.id,
             )
         }
         val groups = episodes.groupBy { it.groupKey }.map { (key, list) ->
@@ -307,7 +325,7 @@ class LibraryViewModel @Inject constructor(
                             it.targetUri.startsWith("content://") &&
                             !it.targetUri.contains("primary", true)
                     }
-                ) StorageKind.SD else StorageKind.DOWNLOADS,
+                ) LibrarySource.SD else LibrarySource.DOWNLOADS,
             )
         }.sortedByDescending { it.lastAt }
         _uiState.value = _uiState.value.copy(
@@ -321,13 +339,7 @@ class LibraryViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(downloadsOnly = v)
     }
 
-    // ------------------------------------------------ §bibliotheque-sources / statuts
-
-    /** Filtre d'emplacement : ALL · INTERNAL · SD · DOWNLOADS (conversation 6). */
-    fun setSourceFilter(kind: String) {
-        _uiState.value = _uiState.value.copy(sourceFilter = kind)
-        viewModelScope.launch { applyFilter() }
-    }
+    // ------------------------------------------------ §multi-sources (conversation 6)
 
     // ------------------------------------------------ §netto-automatique (conversation 10)
 
@@ -366,18 +378,22 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Onglets de progression : ALL · WATCHING · COMPLETED (conversation 6). */
-    fun setStatusTab(tab: String) {
-        _uiState.value = _uiState.value.copy(statusTab = tab)
-        viewModelScope.launch { applyFilter() }
-    }
-
-    /** Types d'emplacement réellement présents (pour n'afficher que les chips utiles). */
-    fun presentStorageKinds(): List<String> {
-        val kinds = linkedSetOf<String>()
-        _uiState.value.localFiles.forEach { kinds += it.storageKind }
-        if (_uiState.value.downloadedGroups.isNotEmpty()) kinds += StorageKind.DOWNLOADS
-        return kinds.toList()
+    /**
+     * §gestion (conversation 7) : supprime un épisode téléchargé — le fichier
+     * (SAF ou file://) ET la ligne en base, pour que l'espace soit réellement
+     * récupéré et que la fiche/la bibliothèque se mettent à jour d'elles-mêmes.
+     */
+    fun deleteDownloadedEpisode(taskId: String, uri: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                if (uri.startsWith("content://")) {
+                    context.contentResolver.delete(android.net.Uri.parse(uri), null, null)
+                } else {
+                    java.io.File(android.net.Uri.parse(uri).path ?: uri).delete()
+                }
+            }
+            runCatching { downloadsDao.delete(taskId) }
+        }
     }
 
     /** Épisodes d'un groupe (écran « fiche » des téléchargements). */
@@ -396,24 +412,15 @@ class LibraryViewModel @Inject constructor(
         } else rawItems
         val st = _uiState.value.filterStatus
         if (st != "ALL") shown = shown.filter { (rawStatuses[it.id] ?: "NONE") == st }
-        // §bibliotheque-statuts (conversation 6) : onglets Tout / En cours / Terminé,
-        // calculés en UNE requête groupée sur l'historique de visionnage.
-        when (_uiState.value.statusTab) {
-            "WATCHING" -> {
-                val stats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList())
-                    .associateBy { it.mediaId }
-                shown = shown.filter { item ->
-                    val s = stats[item.id] ?: return@filter false
-                    s.watchedCount < s.total || s.total == 0 && s.watchedCount > 0
-                }
+        // §multi-sources (conversation 6) : onglets Tout / En cours / Terminé
+        when (_uiState.value.watchFilter) {
+            "WATCHING" -> shown = shown.filter { item ->
+                val stat = rawStats[item.id] ?: return@filter false
+                stat.watchedCount < stat.total || stat.watchedCount == 0
             }
-            "COMPLETED" -> {
-                val stats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList())
-                    .associateBy { it.mediaId }
-                shown = shown.filter { item ->
-                    val s = stats[item.id] ?: return@filter false
-                    s.total > 0 && s.watchedCount == s.total
-                }
+            "COMPLETED" -> shown = shown.filter { item ->
+                val stat = rawStats[item.id] ?: return@filter false
+                stat.total > 0 && stat.watchedCount >= stat.total && stat.watchedCount > 0
             }
         }
         _uiState.value = _uiState.value.copy(category = category.value, items = shown)
@@ -429,6 +436,25 @@ class LibraryViewModel @Inject constructor(
     fun setFilterStatus(status: String) {
         _uiState.value = _uiState.value.copy(filterStatus = status)
         viewModelScope.launch { applyFilter() }
+    }
+
+    /** §multi-sources : Toutes / Mémoire interne / Carte SD / Téléchargements. */
+    fun setSourceFilter(id: String) { _uiState.value = _uiState.value.copy(sourceFilter = id) }
+
+    /** §multi-sources : Tout / En cours / Terminé (état réel de visionnage). */
+    fun setWatchFilter(id: String) {
+        _uiState.value = _uiState.value.copy(watchFilter = id)
+        viewModelScope.launch { applyFilter() }
+    }
+
+    /** Sources réellement présentes (pour n'afficher que les puces utiles). */
+    fun presentSources(): List<String> {
+        val found = linkedSetOf<String>()
+        if (_uiState.value.localFiles.isNotEmpty()) {
+            _uiState.value.localFiles.forEach { found += it.storageKind }
+        }
+        if (_uiState.value.downloadedEpisodes.isNotEmpty()) found += LibrarySource.DOWNLOADS
+        return found.toList()
     }
 
     /** §bibliothèque-locale : dossiers SAF choisis (pour chips + scan). */
