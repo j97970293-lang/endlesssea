@@ -158,19 +158,38 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
          * §theme-lecteur : habillages prêts à l'emploi (nom → accent, fond de barre).
          * "app" = suit le thème de l'application.
          */
+        /**
+         * §theme-lecteur (conversations 1 & 2) — les 8 thèmes complets du lecteur.
+         * Un thème n'est pas une couleur : chaque skin fournit sa propre mise en
+         * page des commandes (voir `ui/player/themes/`). Le couple (argb, libellé)
+         * sert uniquement à l'aperçu du sélecteur ; 0 = couleur de l'application.
+         */
         val PLAYER_THEMES = linkedMapOf(
-            "app" to Pair(0L, "Thème de l'application"),
-            "netflix" to Pair(0xFFE50914L, "Rouge Netflix"),
-            "crunchyroll" to Pair(0xFFF47521L, "Orange Crunchyroll"),
-            "prime" to Pair(0xFF00A8E1L, "Bleu Prime"),
-            "disney" to Pair(0xFF49A6FFL, "Bleu Disney"),
-            "youtube" to Pair(0xFFFF0033L, "Rouge YouTube"),
-            "mpv" to Pair(0xFFBBBBBBL, "Gris mpv"),
-            "vlc" to Pair(0xFFFF8800L, "Orange VLC"),
-            "spotify" to Pair(0xFF1DB954L, "Vert Spotify"),
-            "aniyomi" to Pair(0xFF9C7CFFL, "Violet Aniyomi"),
-            "minuit" to Pair(0xFF4F8BFFL, "Bleu minuit"),
+            "default" to Pair(0L, "Endless Sea"),
+            "netflix" to Pair(0xFFE50914L, "Netflix"),
+            "crunchyroll" to Pair(0xFFF47521L, "Crunchyroll"),
+            "youtube" to Pair(0xFFFF0033L, "YouTube"),
+            "vlc" to Pair(0xFFFF8800L, "VLC"),
+            "plex" to Pair(0xFFE5A00DL, "Plex"),
+            "appletv" to Pair(0xFFFFFFFFL, "Apple TV+"),
+            "gaming" to Pair(0xFF00E5FFL, "Gaming"),
         )
+
+        /**
+         * Anciennes clés (0.23 et avant, « couleurs ») → thèmes complets :
+         * app→default, mpv→vlc, prime/disney→plex, spotify/aniyomi→crunchyroll,
+         * minuit→gaming.
+         */
+        fun migratePlayerTheme(old: String?): String = when (old) {
+            null -> "default"
+            in PLAYER_THEMES.keys -> old
+            "app" -> "default"
+            "mpv" -> "vlc"
+            "prime", "disney" -> "plex"
+            "spotify", "aniyomi" -> "crunchyroll"
+            "minuit" -> "gaming"
+            else -> "default"
+        }
 
         /** §anymex-ui : styles de carte média (capture « Card Style »). */
         val CARD_STYLES = listOf("saikou", "exotic", "minimal_exotic", "modern")
@@ -595,10 +614,29 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
      * §theme-lecteur : habillage du lecteur. Les couleurs viennent de [PLAYER_THEMES] ;
      * "app" suit le thème de l'application.
      */
-    private val _playerTheme = MutableStateFlow(p.getString("player_theme", "app") ?: "app")
+    private val _playerTheme = MutableStateFlow(migratePlayerTheme(p.getString("player_theme", "default")))
     val playerTheme: StateFlow<String> = _playerTheme
     fun setPlayerTheme(v: String) {
         p.edit().putString("player_theme", v).apply(); _playerTheme.value = v
+    }
+
+    /**
+     * §sous-titres (conversation 1) : décalage appliqué aux pistes externes
+     * (négatif = sous-titres en avance, positif = en retard), en millisecondes.
+     */
+    private val _subtitleDelayMs = MutableStateFlow(p.getInt("player_sub_delay_ms", 0))
+    val subtitleDelayMs: StateFlow<Int> = _subtitleDelayMs
+    fun setSubtitleDelayMs(v: Int) {
+        val ms = v.coerceIn(-30_000, 30_000)
+        p.edit().putInt("player_sub_delay_ms", ms).apply(); _subtitleDelayMs.value = ms
+    }
+
+    /** §audio (conversation 1) : boost de 100 % (normal) à 200 % (×2). */
+    private val _audioBoostPercent = MutableStateFlow(p.getInt("player_audio_boost", 100))
+    val audioBoostPercent: StateFlow<Int> = _audioBoostPercent
+    fun setAudioBoostPercent(v: Int) {
+        val percent = v.coerceIn(100, 200)
+        p.edit().putInt("player_audio_boost", percent).apply(); _audioBoostPercent.value = percent
     }
 
     /** §amelioration-video : post-traitement léger appliqué à l'image. */

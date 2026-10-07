@@ -68,6 +68,27 @@ class EsPlayer(
     /** §stats : surimpression technique (résolution, codec, débit, images perdues…). */
     private val _stats = MutableStateFlow(PlayerStats())
 
+    /** §sous-titres : décalage courant (ms) de la piste externe active. */
+    private val _subtitleDelayMs = MutableStateFlow(0L)
+    val subtitleDelayMs: StateFlow<Long> = _subtitleDelayMs
+
+    /** §audio : boost de 100 % (normal) à 200 % (×2, +6 dB). */
+    private val _audioBoostPercent = MutableStateFlow(100)
+    val audioBoostPercent: StateFlow<Int> = _audioBoostPercent
+
+    /** Pistes externes rattachées à la volée (décalage possible). */
+    private data class ExtSub(
+        val original: String,
+        val label: String,
+        var offsetMs: Long = 0L,
+        var current: String = original,
+    )
+
+    private val externalSubs = mutableListOf<ExtSub>()
+
+    /** §audio : LoudnessEnhancer branché sur la session audio du lecteur. */
+    private var loudness: android.media.audiofx.LoudnessEnhancer? = null
+
     override val isPlaying: StateFlow<Boolean> = _isPlaying
     override val positionMs: StateFlow<Long> = _positionMs
     override val durationMs: StateFlow<Long> = _durationMs
@@ -111,6 +132,14 @@ class EsPlayer(
 
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
                 _stats.value = _stats.value.copy(speed = playbackParameters.speed)
+            }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                // §audio : la session peut changer après un changement de piste
+                // ou de lien — le boost doit être rebranché.
+                loudness?.release()
+                loudness = null
+                applyAudioBoost()
             }
         })
         // §stats : images perdues (compteur du décodeur, sans coût mesurable)
@@ -168,18 +197,108 @@ class EsPlayer(
     fun addExternalSubtitle(uri: String, label: String) {
         val current = player.currentMediaItem ?: return
         val pos = player.currentPosition
+        // §sous-titres : le décalage par défaut de l'utilisateur s'applique
+        // immédiatement à la piste qui vient d'être ajoutée.
+        val wanted = _subtitleDelayMs.value
+        val file = if (wanted != 0L) SubtitleShift.shiftToCache(appContext, uri, wanted) ?: uri else uri
+        externalSubs.removeAll { it.original == uri }
+        externalSubs.add(ExtSub(original = uri, label = label, offsetMs = wanted, current = file))
         val subs = current.localConfiguration?.subtitleConfigurations.orEmpty() +
-            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(uri))
-                .setMimeType(
-                    if (uri.endsWith(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP,
-                )
-                .setLabel(label)
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                .build()
+            subtitleConfig(file, label, selected = true)
         val item = current.buildUpon().setSubtitleConfigurations(subs).build()
         player.setMediaItem(item, pos)
         player.prepare()
         player.play()
+    }
+
+    /**
+     * §sous-titres (conversation 1) — décale la piste externe active de
+     * [deltaMs] (bornes ±30 s). Le fichier décalé est réécrit dans le cache et
+     * rattaché à la lecture en cours, qui reprend à la même position.
+     * Renvoie le décalage appliqué (ms).
+     */
+    fun shiftSubtitle(deltaMs: Long): Long {
+        val sub = externalSubs.lastOrNull() ?: run {
+            _subtitleDelayMs.value = (_subtitleDelayMs.value + deltaMs).coerceIn(-30_000L, 30_000L)
+            return _subtitleDelayMs.value
+        }
+        val next = (sub.offsetMs + deltaMs).coerceIn(-30_000L, 30_000L)
+        val shifted = if (next == 0L) {
+            sub.original
+        } else {
+            SubtitleShift.shiftToCache(appContext, sub.original, next) ?: sub.current
+        }
+        sub.offsetMs = next
+        sub.current = shifted
+        _subtitleDelayMs.value = next
+        reattachSubtitles()
+        return next
+    }
+
+    /** Force le décalage (sans le cumuler) — utilisé au démarrage. */
+    fun setSubtitleDelay(ms: Long) {
+        val target = ms.coerceIn(-30_000L, 30_000L)
+        val delta = target - _subtitleDelayMs.value
+        if (delta != 0L) shiftSubtitle(delta) else _subtitleDelayMs.value = target
+    }
+
+    /** Reconstruit les pistes externes (le fichier décalé remplace l'original). */
+    private fun reattachSubtitles() {
+        val current = player.currentMediaItem ?: return
+        val pos = player.currentPosition
+        val ours = (externalSubs.map { it.current } + externalSubs.map { it.original }).toSet()
+        val kept = current.localConfiguration?.subtitleConfigurations.orEmpty()
+            .filterNot { it.uri.toString() in ours }
+        val rebuilt = kept + externalSubs.map { sub ->
+            subtitleConfig(
+                sub.current,
+                sub.label + offsetLabel(sub.offsetMs),
+                selected = sub == externalSubs.lastOrNull(),
+            )
+        }
+        val item = current.buildUpon().setSubtitleConfigurations(rebuilt).build()
+        player.setMediaItem(item, pos)
+        player.prepare()
+        player.play()
+    }
+
+    private fun offsetLabel(ms: Long): String = when {
+        ms == 0L -> ""
+        else -> " (${if (ms > 0) "+" else "−"}%.1f s)".format(kotlin.math.abs(ms) / 1000.0)
+    }
+
+    private fun subtitleConfig(file: String, label: String, selected: Boolean) =
+        MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(file))
+            .setMimeType(
+                if (file.endsWith(".vtt", true) || file.contains(".vtt?")) MimeTypes.TEXT_VTT
+                else MimeTypes.APPLICATION_SUBRIP,
+            )
+            .setLabel(label)
+            .setSelectionFlags(if (selected) C.SELECTION_FLAG_DEFAULT else 0)
+            .build()
+
+    /**
+     * §audio (conversation 1) — **boost jusqu'à 200 %** (+6 dB) via un
+     * LoudnessEnhancer attaché à la session audio d'ExoPlayer (pas de
+     * ré-encodage, fonctionne sur toutes les pistes).
+     */
+    fun setAudioBoost(percent: Int) {
+        _audioBoostPercent.value = percent.coerceIn(100, 200)
+        applyAudioBoost()
+    }
+
+    private fun applyAudioBoost() {
+        val session = runCatching { player.audioSessionId }.getOrDefault(C.AUDIO_SESSION_ID_UNSET)
+        if (session == C.AUDIO_SESSION_ID_UNSET || session == 0) return
+        runCatching {
+            if (loudness == null) {
+                loudness = android.media.audiofx.LoudnessEnhancer(session).apply { enabled = true }
+            }
+            // 200 % en amplitude = 20·log10(2) ≈ 6,02 dB = 602 mB.
+            val p = _audioBoostPercent.value
+            val gainMb = (2000.0 * kotlin.math.log10(p / 100.0)).toInt()
+            loudness?.setTargetGain(gainMb)
+        }
     }
 
     /** Sets extension headers (Referer/UA/cookies) on the shared OkHttpDataSource. */
@@ -259,6 +378,8 @@ class EsPlayer(
     )
 
     override fun release() {
+        runCatching { loudness?.release() }
+        loudness = null
         player.release()
     }
 

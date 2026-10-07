@@ -116,6 +116,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     init {
+        // §sous-titres / §audio (conversation 1) : on réapplique les réglages
+        // retenus (décalage ± des pistes externes, boost jusqu'à 200 %).
+        runCatching { engine.setAudioBoost(prefs.audioBoostPercent.value) }
+        runCatching { engine.setSubtitleDelay(prefs.subtitleDelayMs.value.toLong()) }
         // Persistance de la position toutes les 5 s (spec §7 « mémorisation de la position »)
         viewModelScope.launch {
             while (isActive) {
@@ -729,6 +733,36 @@ class PlayerViewModel @Inject constructor(
     fun setSwapVolumeBrightness(v: Boolean) = prefs.setSwapVolumeBrightness(v)
 
     /** §stats : flux technique du moteur (résolution, débit, codec, images perdues). */
+    /** §sous-titres : décalage affiché dans la boîte « Sous-titres ». */
+    val subtitleDelayMs: kotlinx.coroutines.flow.StateFlow<Long> = engine.subtitleDelayMs
+
+    /** §audio : boost courant (100–200 %). */
+    val audioBoostPercent: kotlinx.coroutines.flow.StateFlow<Int> = engine.audioBoostPercent
+
+    /** §sous-titres : décale la piste externe (et retient le réglage). */
+    fun shiftSubtitle(deltaMs: Long) {
+        val value = engine.shiftSubtitle(deltaMs)
+        prefs.setSubtitleDelayMs(value.toInt())
+        _uiState.value = _uiState.value.copy(
+            toast = "Sous-titres " + (if (value >= 0) "+" else "−") + "%.1f s".format(kotlin.math.abs(value) / 1000.0),
+        )
+        viewModelScope.launch { kotlinx.coroutines.delay(1_500); _uiState.value = _uiState.value.copy(toast = null) }
+    }
+
+    /** §sous-titres : remet le décalage à zéro. */
+    fun resetSubtitleDelay() {
+        engine.setSubtitleDelay(0L)
+        prefs.setSubtitleDelayMs(0)
+        _uiState.value = _uiState.value.copy(toast = "Sous-titres recalés")
+        viewModelScope.launch { kotlinx.coroutines.delay(1_500); _uiState.value = _uiState.value.copy(toast = null) }
+    }
+
+    /** §audio : applique le boost (100–200 %) et le retient. */
+    fun setAudioBoost(percent: Int) {
+        engine.setAudioBoost(percent)
+        prefs.setAudioBoostPercent(percent)
+    }
+
     val engineStats: kotlinx.coroutines.flow.StateFlow<dev.endlesssea.player.PlayerStats>
         get() = engine.stats
 

@@ -1093,7 +1093,8 @@ fun SettingsScreen(
                     // §theme-lecteur : habillages type Netflix / Crunchyroll / …
                     Text("Thème du lecteur", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Colore la barre, la pastille et les accents du lecteur.",
+                        "Chaque thème est une mise en page complète des commandes du lecteur " +
+                            "(barres, formes, disposition, accents) — pas seulement une couleur.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

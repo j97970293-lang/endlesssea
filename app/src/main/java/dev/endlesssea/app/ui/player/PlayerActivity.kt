@@ -50,6 +50,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -76,6 +77,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import dev.endlesssea.app.ui.player.themes.PlayerControlsActions
+import dev.endlesssea.app.ui.player.themes.PlayerControlsState
+import dev.endlesssea.app.ui.player.themes.ThemeProvider
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.VideoSize
 import dagger.hilt.android.AndroidEntryPoint
@@ -646,323 +650,128 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             }
         }
 
-        if (state.controlsVisible || state.locked) {
-            // ---- Barre supérieure
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopStart)
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .padding(horizontal = 4.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Retour", tint = Color.White) }
-                Text(
-                    state.title,
-                    modifier = Modifier.weight(1f),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                )
-                // §pistes : serveur, sous-titres et audio toujours accessibles
-                // (avant, les boutons disparaissaient s'il n'y avait qu'une piste).
-                if (state.links.isNotEmpty()) {
-                    IconButton(onClick = { showQualityDialog = true }) {
-                        Icon(Icons.Filled.HighQuality, "Qualité / serveur", tint = Color.White)
-                    }
-                }
-                IconButton(onClick = { showCcDialog = true }) {
-                    Icon(Icons.Filled.ClosedCaption, "Sous-titres", tint = Color.White)
-                }
-                IconButton(onClick = { showAudioDialog = true }) {
-                    Icon(Icons.Filled.Audiotrack, "Piste audio", tint = Color.White)
-                }
-                if (state.locked) {
-                    IconButton(onClick = { viewModel.toggleLock() }) {
-                        Icon(Icons.Filled.Lock, "Déverrouiller", tint = Color.White)
-                    }
+        // ---- §sous-titres (conversation 1) : affichage réel des pistes.
+        // Avant, les pistes étaient sélectionnables mais rien ne s'affichait :
+        // Media3 exige une SubtitleView pour rendre les cues.
+        var cues by remember { mutableStateOf<List<androidx.media3.common.text.Cue>>(emptyList()) }
+        DisposableEffect(Unit) {
+            val listener = object : androidx.media3.common.Player.Listener {
+                override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                    cues = cueGroup.cues
                 }
             }
+            viewModel.engine.player.addListener(listener)
+            onDispose { viewModel.engine.player.removeListener(listener) }
+        }
+        if (cues.isNotEmpty()) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
+                    androidx.media3.ui.SubtitleView(ctx).apply {
+                        setApplyEmbeddedStyles(false)
+                        setStyle(viewModel.engine.captionStyle())
+                        setBottomPaddingFraction(0.10f)
+                    }
+                },
+                update = { view ->
+                    view.setStyle(viewModel.engine.captionStyle())
+                    view.setCues(cues)
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = if (state.controlsVisible) 104.dp else 20.dp),
+            )
+        }
 
+        // ---- §theme-lecteur (conversations 1 & 2) : les commandes viennent du
+        // thème choisi — 8 skins complets (mise en page, formes, accents),
+        // pas un simple changement de couleur.
+        val activeTheme = ThemeProvider.of(playerThemeName)
+        if (state.controlsVisible || state.locked) {
+            val controlsState = PlayerControlsState(
+                title = state.title,
+                subtitle = state.links.getOrNull(state.currentLinkIndex)
+                    ?.let { "${it.server} — ${it.quality.label}" } ?: "",
+                playing = isPlaying,
+                locked = state.locked,
+                positionMs = state.positionMs,
+                durationMs = state.durationMs,
+                dragFraction = slidingPos,
+                speed = state.speed,
+                zoomMode = zoomMode,
+                hasPrev = state.hasPrev,
+                hasNext = state.hasNext,
+                hasLinks = state.links.isNotEmpty(),
+                filterActive = state.filterPresetName != "none" && state.filterPresetName != "Aucun",
+                statsVisible = state.statsVisible,
+                skipLoading = state.skipLoading,
+                megaSkipSeconds = state.megaSkipSeconds,
+                megaSkipLeft = megaSide == "left",
+                activeSkip = state.activeSkip,
+                skipCountdown = state.skipCountdown,
+                customSkips = state.skipButtons,
+                progressOnTop = progressPos == "top",
+                toolsOnTop = toolsPos == "top",
+                progressThickness = activeTheme.progressThickness,
+                progressRounded = activeTheme.rounded,
+            )
+            val controlsActions = PlayerControlsActions(
+                onBack = onBack,
+                onTogglePlay = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
+                onPrev = { viewModel.playQueueOffset(-1) },
+                onNext = { viewModel.playQueueOffset(1) },
+                onDrag = { slidingPos = it },
+                onDragFinished = { fraction ->
+                    viewModel.engine.player.seekTo(
+                        (fraction * state.durationMs.coerceAtLeast(1L)).toLong(),
+                    )
+                    slidingPos = null
+                },
+                onJumpRelative = { viewModel.jumpBy(it) },
+                onOpenQuality = { showQualityDialog = true },
+                onOpenSubtitles = { showCcDialog = true },
+                onOpenAudio = { showAudioDialog = true },
+                onToggleLock = { viewModel.toggleLock() },
+                onToggleOrientation = {
+                    val act = context as? android.app.Activity
+                    landscapeNow = !landscapeNow
+                    viewModel.setOrientationPreference(if (landscapeNow) "landscape" else "portrait")
+                    act?.requestedOrientation = if (!landscapeNow) {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                    } else {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    }
+                },
+                onCycleZoom = { zoomMode = (zoomMode + 1) % 3 },
+                onCycleSpeed = {
+                    val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
+                    viewModel.setSpeed(next)
+                },
+                onOpenFilters = { showFilterDialog = true },
+                onToggleStats = { viewModel.toggleStats() },
+                onRefreshSkip = { viewModel.refreshSkip() },
+                onOpenMore = { showMoreSheet = true },
+                onMegaJump = { viewModel.megaJump(state.megaSkipSeconds) },
+                onOpenSkipEditor = { showSkipDialog = true },
+                onSkipSegment = { viewModel.skipActive() },
+                onCustomSkip = { button -> viewModel.customSkip(button) },
+            )
+            activeTheme.TopControls(
+                controlsState, controlsActions,
+                Modifier.align(Alignment.TopStart),
+            )
             if (!state.locked) {
-                // §lecteur-modele / §placements : habillage façon mpv, SANS bandeau.
-                // L'utilisateur choisit où vivent la ligne de temps, les outils et
-                // la pastille mégaskip (Réglages → Lecteur → Disposition).
-                val dur = state.durationMs.coerceAtLeast(1)
-                val progress = (slidingPos ?: (state.positionMs.toFloat() / dur)).coerceIn(0f, 1f)
-                val barH = skinThickness.dp
-                val barShape = if (progressRounded && !skinSquare) RoundedCornerShape(50)
-                else RoundedCornerShape(1.dp)
-
-                // ---- Transport central : précédent · lecture · suivant
-                Row(
+                activeTheme.CenterControls(
+                    controlsState, controlsActions,
                     Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(44.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = { viewModel.playQueueOffset(-1) },
-                        enabled = state.hasPrev,
-                        modifier = Modifier.size(52.dp),
-                    ) {
-                        Icon(
-                            Icons.Filled.SkipPrevious, "Précédent",
-                            tint = if (state.hasPrev) Color.White else Color.White.copy(alpha = 0.25f),
-                            modifier = Modifier.size(44.dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
-                        modifier = Modifier.size(skinPlaySize.dp),
-                    ) {
-                        Icon(
-                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            "Lecture/Pause", tint = Color.White,
-                            modifier = Modifier.size((skinPlaySize - 8).dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = { viewModel.playQueueOffset(1) },
-                        enabled = state.hasNext,
-                        modifier = Modifier.size(52.dp),
-                    ) {
-                        Icon(
-                            Icons.Filled.SkipNext, "Suivant",
-                            tint = if (state.hasNext) Color.White else Color.White.copy(alpha = 0.25f),
-                            modifier = Modifier.size(44.dp),
-                        )
-                    }
-                }
-
-                // ---- Mégaskip : une seule pastille, vers l'avant, côté réglable
-                Box(
-                    Modifier
-                        // §megaskip-bas : juste au-dessus de la barre de progression
-                        .align(if (megaSide == "left") Alignment.BottomStart else Alignment.BottomEnd)
-                        .padding(
-                            start = if (megaSide == "left") 20.dp else 0.dp,
-                            end = if (megaSide == "left") 0.dp else 20.dp,
-                            bottom = if (progressPos == "top") 24.dp else 96.dp,
-                        )
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(accentColor)
-                        // §megaskip-boutons : appui long = éditeur des boutons
-                        // de saut personnalisés (hors-ligne).
-                        .combinedClickable(
-                            onClick = { viewModel.megaJump(state.megaSkipSeconds) },
-                            onLongClick = { showSkipDialog = true },
-                        )
-                        .padding(horizontal = 22.dp, vertical = 12.dp),
-                ) {
-                    Text(
-                        "+${state.megaSkipSeconds} s",
-                        color = Color.Black,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    )
-                }
-
-                // ---- §megaskip : segments communautaires (intro / récap / générique)
-                state.activeSkip?.let { segment ->
-                    dev.endlesssea.app.ui.player.SkipSegmentPill(
-                        segment = segment,
-                        countdown = state.skipCountdown,
-                        accent = accentColor,
-                        onClick = { viewModel.skipActive() },
-                        modifier = Modifier
-                            .align(
-                                if (megaSide == "left") Alignment.BottomEnd else Alignment.BottomStart,
-                            )
-                            .padding(
-                                start = if (megaSide == "left") 0.dp else 20.dp,
-                                end = if (megaSide == "left") 20.dp else 0.dp,
-                                bottom = if (progressPos == "top") 24.dp else 96.dp,
-                            ),
-                    )
-                }
-
-                // ---- §megaskip : boutons personnalisés + rafraîchissement
-                if (state.controlsVisible) {
-                    dev.endlesssea.app.ui.player.MegaskipRow(
-                        buttons = state.skipButtons.filter { it.enabled },
-                        accent = accentColor,
-                        onJump = { viewModel.customSkip(it) },
-                        onLongPress = { showSkipDialog = true },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = if (progressPos == "top") 96.dp else 168.dp),
-                    )
-                }
-
-                // ---- Ligne de temps (placement réglable)
-                val timeline: @Composable () -> Unit = {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            formatTime(slidingPos?.let { (it * dur).toLong() } ?: state.positionMs),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Slider(
-                            value = progress,
-                            onValueChange = { slidingPos = it },
-                            onValueChangeFinished = {
-                                slidingPos?.let { viewModel.engine.player.seekTo((it * dur).toLong()) }
-                                slidingPos = null
-                            },
-                            modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
-                            thumb = {
-                                Box(
-                                    Modifier
-                                        .size((skinThickness + 8).dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(accentColor),
-                                )
-                            },
-                            track = { sliderState ->
-                                val frac = (sliderState.value - sliderState.valueRange.start) /
-                                    (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .height(barH)
-                                        .clip(barShape)
-                                        .background(Color.White.copy(alpha = 0.30f)),
-                                ) {
-                                    Box(
-                                        Modifier
-                                            .fillMaxWidth(frac.coerceIn(0f, 1f))
-                                            .height(barH)
-                                            .clip(barShape)
-                                            .background(accentColor),
-                                    )
-                                }
-                            },
-                        )
-                        Text(
-                            formatTime(dur),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                    }
-                }
-
-                // ---- Rangée d'outils (placement réglable)
-                val tools: @Composable () -> Unit = {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(onClick = { viewModel.toggleLock() }) {
-                            Icon(
-                                if (state.locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                                "Verrouiller", tint = Color.White,
-                            )
-                        }
-                        IconButton(onClick = {
-                            val act = context as? android.app.Activity
-                            landscapeNow = !landscapeNow
-                            viewModel.setOrientationPreference(if (landscapeNow) "landscape" else "portrait")
-                            act?.requestedOrientation = if (!landscapeNow) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                            } else {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                            }
-                        }) {
-                            Icon(Icons.Filled.ScreenRotation, "Orientation", tint = Color.White)
-                        }
-                        // §fit : contenir → remplir → étirer (libellé visible)
-                        Row(
-                            Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .clickable { zoomMode = (zoomMode + 1) % 3 }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Filled.ZoomIn, "Cadrage",
-                                tint = if (zoomMode == 0) Color.White else accentColor,
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                when (zoomMode) {
-                                    0 -> "Contenir"
-                                    1 -> "Remplir"
-                                    else -> "Étirer"
-                                },
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                softWrap = false,
-                            )
-                        }
-                        Text(
-                            "${state.speed}×",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier
-                                .clickable {
-                                    val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
-                                    viewModel.setSpeed(next)
-                                }
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        IconButton(onClick = { showFilterDialog = true }) {
-                            Icon(
-                                Icons.Filled.Tune, "Filtres vidéo",
-                                tint = if (state.filterPresetName != "none" && state.filterPresetName != "Aucun")
-                                    accentColor else Color.White,
-                            )
-                        }
-                        // §stats : surimpression technique à la demande
-                        IconButton(onClick = { viewModel.toggleStats() }) {
-                            Icon(
-                                Icons.Filled.Info, "Statistiques de lecture",
-                                tint = if (state.statsVisible) accentColor else Color.White,
-                            )
-                        }
-                        // §megaskip : rafraîchir les segments depuis les bases communautaires
-                        IconButton(onClick = { viewModel.refreshSkip() }) {
-                            Icon(
-                                Icons.Filled.Refresh, "Rafraîchir les segments",
-                                tint = if (state.skipLoading) accentColor else Color.White,
-                            )
-                        }
-                        IconButton(onClick = { showMoreSheet = true }) {
-                            Icon(Icons.Filled.MoreVert, "Plus", tint = Color.White)
-                        }
-                    }
-                }
-
-                // Placement : ce qui va en haut (sous le titre) et ce qui va en bas.
-                Column(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(top = 58.dp),
-                ) {
-                    if (toolsPos == "top") tools()
-                    if (progressPos == "top") timeline()
-                }
-                Column(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = skinScrim)),
-                            ),
-                        )
-                        .padding(vertical = 8.dp),
-                ) {
-                    if (progressPos != "top") timeline()
-                    if (toolsPos != "top") tools()
-                }
+                )
+                activeTheme.BottomControls(
+                    controlsState, controlsActions,
+                    Modifier.align(Alignment.BottomCenter),
+                )
             }
         }
+
 
         if (state.loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1508,6 +1317,28 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             title = { Text("Sous-titres") },
             text = {
                 Column {
+                    // §sous-titres : décalage ± des pistes externes (pas de 0,5 s).
+                    val delayState by viewModel.subtitleDelayMs.collectAsState()
+                    Text(
+                        "Décalage : " + (if (delayState >= 0) "+" else "−") +
+                            "%.1f s".format(kotlin.math.abs(delayState) / 1000.0),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { viewModel.shiftSubtitle(-500) }) { Text("− 0,5 s") }
+                        TextButton(onClick = { viewModel.shiftSubtitle(500) }) { Text("+ 0,5 s") }
+                        TextButton(onClick = { viewModel.resetSubtitleDelay() }) { Text("Recaler") }
+                    }
+                    Text(
+                        "Le décalage s'applique aux sous-titres externes (fichier local ou téléchargé) ; " +
+                            "les pistes intégrées à la vidéo ne peuvent pas être décalées.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         "Désactivé",
                         color = MaterialTheme.colorScheme.primary,
@@ -1538,6 +1369,22 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             title = { Text("Piste audio") },
             text = {
                 Column {
+                    // §audio : boost du volume jusqu'à 200 % (×2, +6 dB).
+                    val boostState by viewModel.audioBoostPercent.collectAsState()
+                    Text("Boost audio : $boostState %", style = MaterialTheme.typography.labelMedium)
+                    Slider(
+                        value = boostState.toFloat(),
+                        onValueChange = { viewModel.setAudioBoost(it.toInt()) },
+                        valueRange = 100f..200f,
+                        steps = 9,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Au-delà de 100 %, le son est amplifié (LoudnessEnhancer) sans ré-encodage.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
                     audioTracks.forEach { track ->
                         Text(
                             listOfNotNull(track.label.ifBlank { null }, track.language)
