@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Save
@@ -80,6 +81,8 @@ fun SettingsScreen(
     /** §extensions-déplacées : l'icône de la barre du haut a cédé la place au
      *  sélecteur de fournisseur — on ouvre la gestion des extensions d'ici. */
     onOpenExtensions: () -> Unit = {},
+    /** §suivi (conversation 11) : écran « Comptes & suivi ». */
+    onOpenTrackers: () -> Unit = {},
     viewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -213,6 +216,12 @@ fun SettingsScreen(
             if (openCategoryFull == null && matchesQuery(settingsQuery, "Extensions installées", "Ajouter un dépôt, activer, mettre à jour, supprimer")) item {
                 SettingCategory(Icons.Filled.Extension, "Extensions installées",
                     "Ajouter un dépôt, activer, mettre à jour, supprimer", expanded = false) { onOpenExtensions() }
+            }
+            // §suivi (conversation 11) : AniList, MyAnimeList, Shikimori, TMDB
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Comptes & suivi", "AniList, MyAnimeList, Shikimori, TMDB, épisodes vus, bandes-annonces")) item {
+                SettingCategory(Icons.Filled.Person, "Comptes & suivi",
+                    "Synchroniser les épisodes vus, récupérer affiches et bandes-annonces",
+                    expanded = false) { onOpenTrackers() }
             }
             if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis et halos")) item {
                 SettingCategory(Icons.Filled.Dashboard, "Interface et thème",

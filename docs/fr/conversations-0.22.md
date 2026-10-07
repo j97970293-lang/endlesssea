@@ -16,7 +16,7 @@
 | 8 | `yxxuc6nkoc7dak3eax` — paramètres d'extensions : installées / non installées / dépôts + filtres | ✅ **Livré (0.22.0)** | 3 onglets + compteurs, recherche, filtres par langue/type/statut/mises à jour |
 | 9 | `35fnp9bnze6m25vg4e` — « Reprendre la lecture » en cartes d'historique | ✅ **Livré (0.22.0)** | Vignette 16:9, progression, épisode, temps restant, « hier / il y a 2 h » |
 | 10 | `dzao16x9yrn40aipl0` — fiabilisation du gestionnaire de téléchargement | ✅ **Livré (0.23.0)** | Espace disque vérifié avant départ (+64 Mo de marge), SHA-256 du fichier final (colonne `sha256`, migration v5→v6), limitation de bande passante partagée (seau à jetons) réglable dans les Paramètres, nettoyage auto (3/7/30/90 jours) + purge des `.part` orphelins au démarrage, **service au premier plan réellement démarré** (wake-lock + notifications, arrêt automatique au repos) |
-| 11 | `b8n1lyrfk3stmmhf7t` — trackers (AniList, MAL, TMDB, Shikimori…) + comptes + marquage auto + bandes-annonces | ⬜ À faire | Aucune table tracker aujourd'hui ; `media.externalIdsJson` sert de base |
+| 11 | `b8n1lyrfk3stmmhf7t` — services de suivi gratuits (AniList, MAL, TMDB, Shikimori) | ✅ **Livré (0.23.0)** | Paquet `app/tracking/` : 4 services (AniList GraphQL + OAuth implicite, MyAnimeList OAuth2 **PKCE** complet, Shikimori OAuth2, TMDB clé v3/v4), écran « Comptes & suivi », rattachement manuel d'une fiche (recherche + vignettes), marquage **automatique** des épisodes vus à 90 % (une seule fois par épisode), statuts En cours/Terminé/À voir/Abandonné, **bandes-annonces + affiches TMDB** quand la source ne les fournit pas |
 
 ## Légende
 
@@ -38,4 +38,4 @@ Aucun lot n'est poussé sans compilation complète (Kotlin + KSP/Hilt + D8).
 
 - **0.22.0** — Megaskip (3 bases + cache hors-ligne + boutons perso) · gestes du lecteur · cartes d'historique (conv. 1, 2, 9)
 - **0.22.0** — écran Extensions en 3 onglets + filtres (conv. 8)
-- **0.23.0** — `episodes.json`/`details.json` dans les dossiers locaux (conv. 5) · épisodes téléchargés dans la bibliothèque (conv. 7) · sources + statuts de la bibliothèque (conv. 6) · fiabilisation du téléchargement : espace disque, SHA-256, débit, nettoyage auto, service au premier plan (conv. 10)
+- **0.23.0** — `episodes.json`/`details.json` dans les dossiers locaux (conv. 5) · épisodes téléchargés dans la bibliothèque (conv. 7) · sources + statuts de la bibliothèque (conv. 6) · fiabilisation du téléchargement : espace disque, SHA-256, débit, nettoyage auto, service au premier plan (conv. 10) · services de suivi AniList/MAL/Shikimori/TMDB : comptes, marquage auto des épisodes vus, bandes-annonces (conv. 11)

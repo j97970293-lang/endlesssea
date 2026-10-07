@@ -105,6 +105,8 @@ fun DetailsScreen(
     mediaId: String,
     onBack: () -> Unit,
     onDownloadQueued: () -> Unit,
+    /** §suivi (conversation 11) : ouverture de l'écran « Comptes & suivi ». */
+    onOpenTrackers: () -> Unit = {},
     viewModel: DetailsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -599,6 +601,9 @@ fun DetailsScreen(
                         }
                     }
                 }
+
+                // ---- §suivi (conversation 11) : rattachement + progression
+                item { TrackerCard(viewModel = viewModel, onOpenTrackers = onOpenTrackers) }
 
                 // ---- Saisons en pilules + épisodes
                 if (state.episodes.isNotEmpty()) {
@@ -1277,6 +1282,138 @@ private fun CharacterCard(credit: dev.endlesssea.extensions.api.model.CharacterC
                 if (credit.role.isNotBlank()) {
                     Text(credit.role, style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * §suivi (conversation 11) — carte « Suivi » de la fiche :
+ *  · service rattaché, progression et statut (En cours / Terminé / À voir) ;
+ *  · « +1 épisode vu » et changement de statut en un tap ;
+ *  · sans rattachement : recherche du titre sur les services connectés.
+ * Tout reste facultatif : sans compte connecté, la carte propose simplement de
+ * connecter un service (elle n'envoie jamais rien).
+ */
+@Composable
+private fun TrackerCard(
+    viewModel: dev.endlesssea.app.ui.details.DetailsViewModel,
+    onOpenTrackers: () -> Unit,
+) {
+    // Se relit à chaque changement de rattachement/progression.
+    val tick by viewModel.trackerTick.collectAsState()
+    val search by viewModel.trackerSearch.collectAsState()
+    val summary = remember(tick) { viewModel.trackerSummary() }
+    val connected = remember(tick) { viewModel.connectedTrackers() }
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        cornerRadius = 16.dp,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
+    ) {
+        Column {
+            Text("Suivi", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            when {
+                summary != null -> {
+                    Text(
+                        "${summary.first} · ${summary.second}" +
+                            (summary.third?.let { " / $it" } ?: "") + " épisode(s)",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        androidx.compose.material3.FilterChip(
+                            selected = false,
+                            onClick = { viewModel.markNextWatched() },
+                            label = { Text("+1 épisode vu", maxLines = 1, softWrap = false) },
+                        )
+                        dev.endlesssea.app.tracking.TrackerStatus.entries.forEach { st ->
+                            androidx.compose.material3.FilterChip(
+                                selected = false,
+                                onClick = { viewModel.setTrackerStatus(st) },
+                                label = { Text(st.label, maxLines = 1, softWrap = false) },
+                            )
+                        }
+                    }
+                    TextButton(onClick = { viewModel.unlinkTracker() }) { Text("Détacher") }
+                }
+                connected.isEmpty() -> {
+                    Text(
+                        "Aucun service connecté. Connecte AniList, MyAnimeList, Shikimori ou TMDB " +
+                            "pour suivre tes épisodes et compléter les fiches.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.Button(onClick = onOpenTrackers) {
+                        Text("Connecter un service")
+                    }
+                }
+                else -> {
+                    Text(
+                        "Rattache cette fiche pour synchroniser les épisodes vus.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        connected.filter {
+                            it.tracksProgress
+                        }.forEach { id ->
+                            androidx.compose.material3.FilterChip(
+                                selected = false,
+                                onClick = { viewModel.searchTracker(id) },
+                                label = { Text("Chercher sur ${id.label}", maxLines = 1, softWrap = false) },
+                            )
+                        }
+                        connected.filter { !it.tracksProgress }.forEach { id ->
+                            androidx.compose.material3.FilterChip(
+                                selected = false,
+                                onClick = { viewModel.searchTracker(id) },
+                                label = { Text("Rattacher via ${id.label}", maxLines = 1, softWrap = false) },
+                            )
+                        }
+                    }
+                    // résultats de recherche → choix du rattachement
+                    if (search.loading) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Recherche…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    search.hits.forEach { hit ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { search.id?.let { viewModel.linkTracker(it, hit) } }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            hit.posterUrl?.let { url ->
+                                dev.endlesssea.app.SafeAsyncImage(
+                                    url = url,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 10.dp).width(40.dp).height(58.dp),
+                                    placeholderModifier = Modifier.padding(end = 10.dp).width(40.dp).height(58.dp),
+                                )
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(hit.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                                Text(
+                                    listOfNotNull(hit.year?.toString(), hit.episodes?.let { "$it ép." })
+                                        .joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text("＋", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                 }
             }
         }

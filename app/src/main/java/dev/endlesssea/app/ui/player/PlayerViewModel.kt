@@ -92,6 +92,8 @@ class PlayerViewModel @Inject constructor(
     private val prefs: dev.endlesssea.app.di.AppPrefs,
     private val skipRepository: dev.endlesssea.app.skip.SkipRepository,
     private val mediaDao: dev.endlesssea.data.db.MediaDao,
+    /** §suivi (conversation 11) : épisodes vus synchronisés avec les services. */
+    private val trackers: dev.endlesssea.app.tracking.TrackerRepository,
 ) : ViewModel() {
 
     val engine = EsPlayer(context, okHttp, viewModelScope)
@@ -741,15 +743,25 @@ class PlayerViewModel @Inject constructor(
         val pos = engine.positionMs.value
         val dur = engine.durationMs.value
         if (pos <= 0 || dur <= 0) return
+        val watched = pos.toFloat() / dur >= 0.9f   // ≥ 90 % → marqué « vu » (spec §24)
         historyDao.upsert(
             WatchHistoryEntity(
                 episodeId = ep,
                 mediaId = mediaId ?: "",
                 positionMs = pos,
                 durationMs = dur,
-                watched = pos.toFloat() / dur >= 0.9f,   // ≥ 90 % → marqué « vu » (spec §24)
+                watched = watched,
             )
         )
+        // §suivi (conversation 11) : à 90 % de lecture, l'épisode est coché sur
+        // AniList / MAL / Shikimori (si un compte est connecté et le réglage
+        // activé). Hors ligne, la progression est gardée localement.
+        if (watched && prefs.autoMarkWatched.value) {
+            val id = mediaId
+            if (!id.isNullOrBlank()) {
+                runCatching { trackers.markEpisodeWatched(id, ep) }
+            }
+        }
     }
 
     override fun onCleared() {

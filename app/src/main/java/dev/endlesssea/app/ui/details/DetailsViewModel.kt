@@ -84,6 +84,8 @@ class DetailsViewModel @Inject constructor(
     private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val downloads: DownloadEngine,
     private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
+    /** §suivi (conversation 11) : comptes AniList / MAL / Shikimori / TMDB. */
+    private val trackers: dev.endlesssea.app.tracking.TrackerRepository,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -148,6 +150,10 @@ class DetailsViewModel @Inject constructor(
             refreshLibraryFlags()
             refreshResume()
             refreshDeviceFiles()
+            // §bandes-annonces (conversation 11) : la source ne fournit pas
+            // toujours d'affiche ni de bande-annonce — TMDB complète SI une clé
+            // est enregistrée (jamais d'appel réseau sans compte connecté).
+            enrichFromTmdb(details)
         }
         remote.onFailure { e ->
             // Repli sur le cache local (hors-ligne)
@@ -323,6 +329,114 @@ class DetailsViewModel @Inject constructor(
             inLibrary = !_uiState.value.inLibrary, favorite = if (_uiState.value.inLibrary) false else _uiState.value.favorite,
             message = if (_uiState.value.inLibrary) "Retiré de la bibliothèque" else "Ajouté à la bibliothèque",
         )
+    }
+
+    // ------------------------------------------------ §suivi (conversation 11)
+
+    /**
+     * Complète la fiche avec TMDB : affiche, bannière et bande-annonce
+     * manquantes. Les champs fournis par l'extension ne sont jamais écrasés.
+     */
+    private fun enrichFromTmdb(details: dev.endlesssea.extensions.api.model.MediaDetails) {
+        if (!prefs.enrichWithTmdb.value) return
+        if (details.posterUrl != null && details.bannerUrl != null && details.trailerUrl != null) return
+        viewModelScope.launch {
+            val visuals = trackers.tmdbVisuals(details.title, details.year) ?: return@launch
+            val current = _uiState.value.details ?: return@launch
+            // MediaDetails est immuable : on reconstruit une copie enrichie.
+            val enriched = current.copy(
+                posterUrl = current.posterUrl ?: visuals.posterUrl,
+                bannerUrl = current.bannerUrl ?: visuals.bannerUrl,
+            )
+            enriched.trailerUrl = current.trailerUrl ?: visuals.trailerUrl
+            enriched.rating = current.rating
+            enriched.ratingCount = current.ratingCount
+            enriched.characters = current.characters
+            _uiState.value = _uiState.value.copy(details = enriched)
+        }
+    }
+
+    /** Résultats de recherche d'un service (dialogue de rattachement). */
+    data class TrackerSearchState(
+        val id: dev.endlesssea.app.tracking.TrackerId? = null,
+        val loading: Boolean = false,
+        val hits: List<dev.endlesssea.app.tracking.TrackerMediaHit> = emptyList(),
+    )
+
+    private val _trackerSearch = MutableStateFlow(TrackerSearchState())
+    val trackerSearch: StateFlow<TrackerSearchState> = _trackerSearch
+
+    /** Tic de recomposition quand un rattachement change (la fiche se relit). */
+    val trackerTick = MutableStateFlow(0)
+
+    /** Services connectés (proposés au rattachement). */
+    fun connectedTrackers(): List<dev.endlesssea.app.tracking.TrackerId> =
+        dev.endlesssea.app.tracking.TrackerId.entries.filter { trackers.isConnected(it) }
+
+    fun dismissTrackerSearch() { _trackerSearch.value = TrackerSearchState() }
+
+    /** Service de suivi connecté (le premier disponible) ou null. */
+    val linkedTracker: dev.endlesssea.app.tracking.TrackerId?
+        get() = trackers.linkFor(mediaId)?.id
+            ?: dev.endlesssea.app.tracking.TrackerId.entries.firstOrNull { trackers.isConnected(it) }
+
+    /** Statut et progression du rattachement courant (pour la fiche). */
+    fun trackerSummary(): Triple<String, Int, Int?>? {
+        val link = trackers.linkFor(mediaId) ?: return null
+        return Triple(link.title.ifBlank { link.id.label }, link.progress, link.totalEpisodes)
+    }
+
+    /** Rattachement manuel : recherche le titre sur le service choisi. */
+    fun searchTracker(id: dev.endlesssea.app.tracking.TrackerId) = viewModelScope.launch {
+        _trackerSearch.value = TrackerSearchState(id = id, loading = true)
+        val title = _uiState.value.details?.title ?: return@launch
+        val hits = trackers.search(id, title)
+        _trackerSearch.value = TrackerSearchState(id = id, loading = false, hits = hits)
+        if (hits.isEmpty()) {
+            _uiState.value = _uiState.value.copy(message = "Aucun résultat sur ${id.label}")
+        }
+    }
+
+    fun linkTracker(id: dev.endlesssea.app.tracking.TrackerId, hit: dev.endlesssea.app.tracking.TrackerMediaHit) {
+        trackers.link(mediaId, hit, id)
+        _trackerSearch.value = TrackerSearchState()
+        trackerTick.value += 1
+        _uiState.value = _uiState.value.copy(message = "Rattaché à ${id.label} : ${hit.title}")
+    }
+
+    fun unlinkTracker() {
+        trackers.unlink(mediaId)
+        trackerTick.value += 1
+        _uiState.value = _uiState.value.copy(message = "Rattachement supprimé")
+    }
+
+    /** Bouton « +1 » de la fiche : marque l'épisode suivant comme vu. */
+    fun markNextWatched() = viewModelScope.launch {
+        val link = trackers.linkFor(mediaId)
+        if (link == null) {
+            _uiState.value = _uiState.value.copy(
+                message = "Aucun rattachement — rattache cette fiche à un service d'abord.",
+            )
+            return@launch
+        }
+        trackers.setProgress(mediaId, link.progress + 1)
+        trackerTick.value += 1
+        _uiState.value = _uiState.value.copy(message = trackers.status.value.ifBlank { "Progression envoyée" })
+    }
+
+    /** Changement de statut (En cours / Terminé / À voir / Abandonné). */
+    fun setTrackerStatus(status: dev.endlesssea.app.tracking.TrackerStatus) = viewModelScope.launch {
+        val link = trackers.linkFor(mediaId)
+        if (link == null) {
+            _uiState.value = _uiState.value.copy(message = "Rattache d'abord cette fiche à un service.")
+            return@launch
+        }
+        val progress = if (status == dev.endlesssea.app.tracking.TrackerStatus.COMPLETED) {
+            link.totalEpisodes ?: link.progress
+        } else link.progress
+        trackers.setProgress(mediaId, progress, status)
+        trackerTick.value += 1
+        _uiState.value = _uiState.value.copy(message = trackers.status.value.ifBlank { "Statut envoyé" })
     }
 
     fun toggleFavorite() = viewModelScope.launch {

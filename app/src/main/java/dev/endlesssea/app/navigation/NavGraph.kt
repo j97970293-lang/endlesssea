@@ -279,7 +279,14 @@ fun EsNavGraph(nav: NavHostController) {
             ExtensionsScreen(onExplore = { nav.navigate(Screen.Explore.route) })
         }
         composable(Screen.Settings.route) {
-            SettingsScreen(onOpenExtensions = { nav.navigate(Screen.Extensions.route) })
+            SettingsScreen(
+                onOpenExtensions = { nav.navigate(Screen.Extensions.route) },
+                // §suivi (conversation 11) : comptes AniList / MAL / Shikimori / TMDB
+                onOpenTrackers = { nav.navigate("trackers") },
+            )
+        }
+        composable("trackers") {
+            dev.endlesssea.app.ui.tracking.TrackersScreen(onBack = { nav.popBackStack() })
         }
 
         composable("details/{id}") { entry ->
@@ -288,6 +295,7 @@ fun EsNavGraph(nav: NavHostController) {
                 mediaId = id,
                 onBack = { nav.popBackStack() },
                 onDownloadQueued = { nav.navigate(Screen.Downloads.route) },
+                onOpenTrackers = { nav.navigate("trackers") },
             )
         }
     }
