@@ -92,6 +92,8 @@ fun SettingsScreen(
     var showNumbersDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showGenreManager by remember { mutableStateOf(false) }
+    /** §megaskip : éditeur des boutons de saut personnalisés. */
+    var showSkipDialog by remember { mutableStateOf(false) }
     /** §réglages-pleine-page : page d'accueil = liste des catégories ;
      *  un tap ouvre la catégorie EN PLEINE PAGE (plus de pile dépliée, plus de barres). */
     var openCategoryFull: String? by remember { mutableStateOf(null) }
@@ -718,6 +720,152 @@ fun SettingsScreen(
                     subtitle = "Saute seul les plages intro/générique marquées (fichiers locaux édités)",
                     checked = viewModel.autoSkipMarkers.collectAsState().value,
                     onChange = { viewModel.setAutoSkipMarkers(it) },
+                )
+            }
+            // ---- §megaskip : segments communautaires (intro/récap/générique) en ligne,
+            // mis en cache en base → fonctionnent ensuite SANS réseau.
+            item { GroupTitle("Megaskip (segments en ligne)") }
+            item {
+                SettingSwitch(
+                    title = "Sauter l'intro automatiquement",
+                    subtitle = "Intro détectée par TheIntroDB / IntroDB / AniSkip, puis mise en cache",
+                    checked = viewModel.skipAutoIntro.collectAsState().value,
+                    onChange = { viewModel.setSkipAutoIntro(it) },
+                )
+            }
+            item {
+                SettingSwitch(
+                    title = "Sauter le récap automatiquement",
+                    subtitle = "Résumé de l'épisode précédent, quand la base le connaît",
+                    checked = viewModel.skipAutoRecap.collectAsState().value,
+                    onChange = { viewModel.setSkipAutoRecap(it) },
+                )
+            }
+            item {
+                SettingSwitch(
+                    title = "Sauter le générique automatiquement",
+                    subtitle = "Générique de fin — enchaîne l'épisode suivant plus vite",
+                    checked = viewModel.skipAutoCredits.collectAsState().value,
+                    onChange = { viewModel.setSkipAutoCredits(it) },
+                )
+            }
+            item {
+                SettingSwitch(
+                    title = "Sauter les aperçus automatiquement",
+                    subtitle = "Bande-annonce de l'épisode suivant en fin d'épisode",
+                    checked = viewModel.skipAutoPreview.collectAsState().value,
+                    onChange = { viewModel.setSkipAutoPreview(it) },
+                )
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    // §megaskip : délai avant le saut automatique (0 = immédiat)
+                    val countdown = viewModel.skipCountdown.collectAsState().value
+                    Text("Délai avant le saut automatique", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (countdown == 0) "Saut immédiat (aucun compte à rebours)"
+                        else "La pastille « Passer » reste affichée $countdown s — saut si vous ne cliquez pas.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.material3.Slider(
+                        value = countdown.toFloat(),
+                        onValueChange = { viewModel.setSkipCountdown(it.toInt()) },
+                        valueRange = 0f..10f,
+                        steps = 9,
+                    )
+                }
+            }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Bases de segments", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Désactivez une base si elle renvoie de mauvaises plages ; les autres restent interrogées.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = viewModel.skipProviderTheIntroDb.collectAsState().value,
+                            onClick = {
+                                viewModel.setSkipProviderTheIntroDb(
+                                    !viewModel.skipProviderTheIntroDb.value,
+                                )
+                            },
+                            label = { Text("TheIntroDB", maxLines = 1, softWrap = false) },
+                        )
+                        FilterChip(
+                            selected = viewModel.skipProviderIntroDb.collectAsState().value,
+                            onClick = {
+                                viewModel.setSkipProviderIntroDb(!viewModel.skipProviderIntroDb.value)
+                            },
+                            label = { Text("IntroDB", maxLines = 1, softWrap = false) },
+                        )
+                        FilterChip(
+                            selected = viewModel.skipProviderAniSkip.collectAsState().value,
+                            onClick = {
+                                viewModel.setSkipProviderAniSkip(!viewModel.skipProviderAniSkip.value)
+                            },
+                            label = { Text("AniSkip (anime)", maxLines = 1, softWrap = false) },
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    SettingSwitch(
+                        title = "Afficher la pastille « Passer »",
+                        subtitle = "Même quand le saut automatique est actif (pour annuler d'un tap)",
+                        checked = viewModel.skipShowButton.collectAsState().value,
+                        onChange = { viewModel.setSkipShowButton(it) },
+                    )
+                }
+            }
+            item {
+                val buttons = viewModel.skipButtons
+                    .collectAsState(initial = emptyList()).value
+                SettingRow(
+                    title = "Boutons de saut personnalisés",
+                    subtitle = if (buttons.isEmpty()) {
+                        "Ajoutez « +85 s », « Opening », « Filler »… (hors-ligne)"
+                    } else {
+                        buttons.joinToString(" · ") { it.label }
+                    },
+                    onClick = { showSkipDialog = true },
+                )
+            }
+            // ---- §gestes-lecteur : zoom par pincement, inverseur volume/luminosité, stats
+            item { GroupTitle("Gestes et surimpressions") }
+            item {
+                SettingSwitch(
+                    title = "Pincer pour zoomer",
+                    subtitle = "Zoom 1×–3× au pincement + déplacement à deux doigts, pendant la lecture",
+                    checked = viewModel.pinchZoom.collectAsState().value,
+                    onChange = { viewModel.setPinchZoom(it) },
+                )
+            }
+            item {
+                SettingSwitch(
+                    title = "Inverser volume et luminosité",
+                    subtitle = "Glisser à droite = luminosité, à gauche = volume (défaut : l'inverse)",
+                    checked = viewModel.swapVolumeBrightness.collectAsState().value,
+                    onChange = { viewModel.setSwapVolumeBrightness(it) },
+                )
+            }
+            item {
+                SettingSwitch(
+                    title = "Statistiques de lecture",
+                    subtitle = "Résolution, débit, codec, images/s et images perdues en surimpression",
+                    checked = viewModel.playerStats.collectAsState().value,
+                    onChange = { viewModel.setPlayerStats(it) },
+                )
+            }
+            item {
+                SettingRow(
+                    title = "Vider le cache des segments",
+                    subtitle = "Force une nouvelle recherche auprès des bases au prochain épisode",
+                    onClick = { viewModel.clearSkipCache() },
                 )
             }
             item {
@@ -1465,6 +1613,18 @@ fun SettingsScreen(
     // ----------------------------------------------------- Gestion des genres
     if (showGenreManager) {
         GenreManagerDialog(state.genres, viewModel) { showGenreManager = false }
+    }
+
+    // §megaskip : boutons de saut personnalisés (même éditeur que dans le lecteur)
+    if (showSkipDialog) {
+        val buttons = viewModel.skipButtons.collectAsState(initial = emptyList()).value
+        dev.endlesssea.app.ui.player.CustomSkipDialog(
+            buttons = buttons,
+            onAdd = { label, seconds -> viewModel.addSkipButton(label, seconds) },
+            onUpdate = { viewModel.updateSkipButton(it) },
+            onDelete = { viewModel.deleteSkipButton(it) },
+            onDismiss = { showSkipDialog = false },
+        )
     }
 }
 

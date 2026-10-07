@@ -22,7 +22,8 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 
 - 🔌 **Système d'extensions** indépendant (plugins compilés `.esx`, providers déclaratifs JSON), dépôts multiples, permissions et signatures vérifiées
 - ⬇️ **Gestionnaire de téléchargement puissant** : multi-connexions segmentées, pause/reprise, file d'attente, arrière-plan, HLS/DASH, sous-titres en fichiers séparés, reprise après redémarrage
-- ▶️ **Lecteur moderne** (Media3/ExoPlayer, backend mpv possible plus tard) : vitesse, pistes audio, sous-titres stylés, gestes, verrouillage, reprise de position
+- ▶️ **Lecteur moderne** (Media3/ExoPlayer, backend mpv possible plus tard) : vitesse 0,25×–4× (pitch corrigé), pistes audio, sous-titres stylés, gestes (double appui, glisser luminosité/volume — inversable), zoom au pincement 1×–3×, verrouillage, reprise de position, surimpression de statistiques
+- ⏭️ **Megaskip** : saut d'intro/récap/générique/aperçu alimenté par **TheIntroDB**, **IntroDB** et **AniSkip** (identifiants résolus automatiquement via AniZip/Jikan), **cache hors-ligne** en base, boutons de saut personnalisés (« +85 s », « Opening », « Filler ») et réglages fins par type de segment
 - 📚 **Bibliothèque locale hors-ligne** : anime, films, séries, OVA, ONA, catégories et genres personnalisables
 - 🔍 **Recherche multi-extensions** agrégée avec filtres
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
@@ -142,7 +143,8 @@ Endless Sea is a modern, lightweight Android app inspired by the best ideas of *
 
 - 🔌 Independent **extension system** (compiled `.esx` plugins, declarative JSON providers), multiple repositories, verified permissions & checksums
 - ⬇️ **Powerful download manager**: segmented multi-connection downloads, pause/resume, queue, background, HLS/DASH, subtitles as sidecar files, crash/restart recovery
-- ▶️ **Modern player** (Media3/ExoPlayer, swappable mpv backend): speed, audio tracks, styled subtitles, gestures, lock, position resume
+- ▶️ **Modern player** (Media3/ExoPlayer, swappable mpv backend): 0.25×–4× speed with pitch correction, audio tracks, styled subtitles, gestures (double-tap, brightness/volume drag — swappable), 1×–3× pinch zoom, lock, position resume, stats overlay
+- ⏭️ **Megaskip**: intro/recap/credits/preview skipping powered by **TheIntroDB**, **IntroDB** and **AniSkip** (IDs resolved automatically through AniZip/Jikan), **offline cache** in the local database, custom skip buttons (“+85 s”, “Opening”, “Filler”) and per-type settings
 - 📚 **Offline local library**: anime, movies, series, OVA, ONA, customizable categories & genres
 - 🔍 Aggregated **multi-extension search** with filters
 - 🛡️ **CAPTCHA/anti-bot**: user-driven WebView verification screen, per-extension cookie persistence

@@ -65,11 +65,16 @@ class EsPlayer(
     private val _availableSubtitles = MutableStateFlow<List<SubtitleTrack>>(emptyList())
     private val _availableAudio = MutableStateFlow<List<AudioTrackInfo>>(emptyList())
 
+    /** §stats : surimpression technique (résolution, codec, débit, images perdues…). */
+    private val _stats = MutableStateFlow(PlayerStats())
+
     override val isPlaying: StateFlow<Boolean> = _isPlaying
     override val positionMs: StateFlow<Long> = _positionMs
     override val durationMs: StateFlow<Long> = _durationMs
     override val availableSubtitles: StateFlow<List<SubtitleTrack>> = _availableSubtitles
     override val availableAudio: StateFlow<List<AudioTrackInfo>> = _availableAudio
+
+    val stats: StateFlow<PlayerStats> = _stats
 
     var subtitleStyle: SubtitleStyle = SubtitleStyle()
         private set
@@ -79,7 +84,44 @@ class EsPlayer(
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) { _isPlaying.value = playing }
-            override fun onTracksChanged(tracks: Tracks) { publishTracks(tracks) }
+            override fun onTracksChanged(tracks: Tracks) {
+                publishTracks(tracks)
+                // §stats : format vidéo courant (codec, débit, images/s)
+                val format = tracks.groups
+                    .filter { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
+                    .mapNotNull { group -> group.mediaTrackGroup.getFormat(0) }
+                    .firstOrNull()
+                if (format != null) {
+                    _stats.value = _stats.value.copy(
+                        codec = format.codecs ?: format.sampleMimeType ?: "",
+                        bitrate = format.bitrate ?: 0,
+                        frameRate = format.frameRate ?: 0f,
+                        width = format.width.takeIf { it > 0 } ?: _stats.value.width,
+                        height = format.height.takeIf { it > 0 } ?: _stats.value.height,
+                    )
+                }
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                _stats.value = _stats.value.copy(
+                    width = videoSize.width, height = videoSize.height,
+                    pixelRatio = videoSize.pixelWidthHeightRatio,
+                )
+            }
+
+            override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+                _stats.value = _stats.value.copy(speed = playbackParameters.speed)
+            }
+        })
+        // §stats : images perdues (compteur du décodeur, sans coût mesurable)
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onDroppedVideoFrames(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                droppedFrames: Int,
+                elapsedMs: Long,
+            ) {
+                _stats.value = _stats.value.copy(droppedFrames = droppedFrames)
+            }
         })
         scope.launch(Dispatchers.Main) {
             while (isActive) {
@@ -87,6 +129,10 @@ class EsPlayer(
                     _positionMs.value = player.currentPosition
                     _durationMs.value = player.duration.coerceAtLeast(0)
                 }
+                _stats.value = _stats.value.copy(
+                    bufferedMs = player.bufferedPosition,
+                    playbackState = player.playbackState,
+                )
                 delay(1_000)
             }
         }
@@ -146,8 +192,18 @@ class EsPlayer(
     override fun seekTo(ms: Long) = player.seekTo(ms)
     override fun seekBy(deltaMs: Long) = player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0))
 
+    /**
+     * §vitesse : 0,25× → 4× avec **correction du pitch** (la voix reste naturelle
+     * jusqu'à 1,5×, au-delà le son est accéléré comme sur YouTube).
+     */
     override fun setSpeed(factor: Float) {
-        player.playbackParameters = PlaybackParameters(factor.coerceIn(0.25f, 3f))
+        val speed = factor.coerceIn(0.25f, 4f)
+        player.playbackParameters = PlaybackParameters(speed, 1f)
+    }
+
+    /** §vitesse : vitesse temporaire (appui long) — restaurée par l'écran. */
+    fun setTemporarySpeed(factor: Float) {
+        player.playbackParameters = PlaybackParameters(factor.coerceIn(0.25f, 4f), 1f)
     }
 
     /**

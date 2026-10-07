@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -126,14 +127,12 @@ fun HomeScreen(
             }
         }
 
-        // §reprendre : masquée s'il n'y a rien (plus de rangée vide)
+        // §reprendre : masquée s'il n'y a rien (plus de rangée vide).
+        // §carte-historique : mêmes cartes que la page Historique — vignette 16:9,
+        // barre de progression, temps restant et date de visionnage (conversation 9).
         if (state.continueWatching.isNotEmpty()) {
             item {
-                MediaRow(
-                    title = "Reprendre la lecture",
-                    items = state.continueWatching,
-                    onMediaClick = onMediaClick,
-                )
+                ContinueWatchingRow(items = state.continueWatching, onMediaClick = onMediaClick)
             }
         }
 
@@ -494,6 +493,120 @@ private fun PortraitCarousel(items: List<SearchItemUi>, onClick: (String) -> Uni
     ) {
         items(items, key = { it.id }) { item ->
             dev.endlesssea.app.ui.components.MediaCard(item = item, onClick = { onClick(item.id) })
+        }
+    }
+}
+
+/**
+ * §carte-historique — « Reprendre la lecture » avec les cartes de la page
+ * Historique : vignette 16:9, barre de progression, temps restant et date.
+ * (Adapté de la conversation « La reprendre lecture doivent suivre l'interface
+ * carte historique », mais branché sur la table `watch_history` déjà en place.)
+ */
+@Composable
+private fun ContinueWatchingRow(
+    items: List<ContinueItemUi>,
+    onMediaClick: (String) -> Unit,
+) {
+    Column {
+        Text(
+            "Reprendre la lecture",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(items, key = { it.id }) { item ->
+                ContinueWatchingCard(item = item, onClick = { onMediaClick(item.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueWatchingCard(item: ContinueItemUi, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(232.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+            .clickable { onClick() },
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(130.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
+        ) {
+            AsyncImage(
+                model = item.thumbUrl,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Voile de lisibilité + pastille « lecture »
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        ),
+                    ),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(42.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                )
+            }
+            // Barre de progression : exactement le style de l'historique
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { item.progress },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = Color.White.copy(alpha = 0.25f),
+                drawStopIndicator = {},
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            item.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            listOf(item.subtitle, item.watchedLabel)
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (item.remainingLabel.isNotBlank()) {
+            Text(
+                item.remainingLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+            )
         }
     }
 }

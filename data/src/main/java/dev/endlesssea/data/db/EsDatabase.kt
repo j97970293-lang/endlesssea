@@ -15,11 +15,16 @@ import androidx.room.RoomDatabase
         CategoryEntity::class,
         RepoEntity::class,
         ExtensionEntity::class,
+        SkipCacheEntity::class,
+        SkipButtonEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class EsDatabase : RoomDatabase() {
+    /** §megaskip — segments mis en cache + boutons de saut personnalisés. */
+    abstract fun skipDao(): SkipDao
+
     abstract fun mediaDao(): MediaDao
     abstract fun episodeDao(): EpisodeDao
     abstract fun libraryDao(): LibraryDao

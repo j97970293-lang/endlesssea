@@ -88,6 +88,7 @@ class SettingsViewModel @Inject constructor(
     private val extensionDao: dev.endlesssea.data.db.ExtensionDao,
     private val extSettingsStore: dev.endlesssea.app.data.ExtensionSettingsStore,
     private val registry: dev.endlesssea.extensions.loader.ExtensionRegistry,
+    private val skipRepository: dev.endlesssea.app.skip.SkipRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
 
@@ -206,6 +207,49 @@ class SettingsViewModel @Inject constructor(
     val playerOrientation: StateFlow<String> = prefs.playerOrientation
     fun setMegaSkipSeconds(v: Int) { prefs.setMegaSkipSeconds(v) }
     fun setAutoSkipMarkers(v: Boolean) { prefs.setAutoSkipMarkers(v) }
+
+    // ---- §megaskip : segments communautaires + boutons de saut personnalisés
+    val skipAutoIntro: StateFlow<Boolean> = prefs.skipAutoIntro
+    val skipAutoRecap: StateFlow<Boolean> = prefs.skipAutoRecap
+    val skipAutoCredits: StateFlow<Boolean> = prefs.skipAutoCredits
+    val skipAutoPreview: StateFlow<Boolean> = prefs.skipAutoPreview
+    val skipCountdown: StateFlow<Int> = prefs.skipCountdown
+    val skipShowButton: StateFlow<Boolean> = prefs.skipShowButton
+    val skipProviderTheIntroDb: StateFlow<Boolean> = prefs.skipProviderTheIntroDb
+    val skipProviderIntroDb: StateFlow<Boolean> = prefs.skipProviderIntroDb
+    val skipProviderAniSkip: StateFlow<Boolean> = prefs.skipProviderAniSkip
+    fun setSkipAutoIntro(v: Boolean) { prefs.setSkipAutoIntro(v) }
+    fun setSkipAutoRecap(v: Boolean) { prefs.setSkipAutoRecap(v) }
+    fun setSkipAutoCredits(v: Boolean) { prefs.setSkipAutoCredits(v) }
+    fun setSkipAutoPreview(v: Boolean) { prefs.setSkipAutoPreview(v) }
+    fun setSkipCountdown(v: Int) { prefs.setSkipCountdown(v) }
+    fun setSkipShowButton(v: Boolean) { prefs.setSkipShowButton(v) }
+    fun setSkipProviderTheIntroDb(v: Boolean) { prefs.setSkipProviderTheIntroDb(v) }
+    fun setSkipProviderIntroDb(v: Boolean) { prefs.setSkipProviderIntroDb(v) }
+    fun setSkipProviderAniSkip(v: Boolean) { prefs.setSkipProviderAniSkip(v) }
+
+    // ---- §gestes-lecteur + §stats
+    val pinchZoom: StateFlow<Boolean> = prefs.pinchZoom
+    val swapVolumeBrightness: StateFlow<Boolean> = prefs.swapVolumeBrightness
+    val playerStats: StateFlow<Boolean> = prefs.playerStats
+    fun setPinchZoom(v: Boolean) { prefs.setPinchZoom(v) }
+    fun setSwapVolumeBrightness(v: Boolean) { prefs.setSwapVolumeBrightness(v) }
+    fun setPlayerStats(v: Boolean) { prefs.setPlayerStats(v) }
+
+    /** Boutons de saut personnalisés (table locale — disponibles hors-ligne). */
+    val skipButtons: kotlinx.coroutines.flow.Flow<List<dev.endlesssea.app.skip.CustomSkipButton>> =
+        skipRepository.observeButtons()
+    fun addSkipButton(label: String, seconds: Int) = viewModelScope.launch {
+        skipRepository.addButton(label, seconds)
+    }
+    fun updateSkipButton(button: dev.endlesssea.app.skip.CustomSkipButton) = viewModelScope.launch {
+        skipRepository.updateButton(button)
+    }
+    fun deleteSkipButton(id: Long) = viewModelScope.launch { skipRepository.deleteButton(id) }
+    fun clearSkipCache() = viewModelScope.launch {
+        skipRepository.clearCache()
+        _uiState.value = _uiState.value.copy(message = "Cache Megaskip vidé")
+    }
     fun setPlayerOrientation(v: String) { prefs.setPlayerOrientation(v) }
 
     // §placements-lecteur / §barre-progression / §theme-lecteur

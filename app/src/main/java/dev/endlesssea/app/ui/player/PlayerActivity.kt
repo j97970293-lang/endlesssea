@@ -7,8 +7,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.ScreenRotation
@@ -68,6 +72,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -167,7 +172,10 @@ private fun formatTime(ms: Long): String {
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@kotlin.OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+)
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
@@ -212,6 +220,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var lastSkipAt by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
+    /** §megaskip : éditeur des boutons de saut personnalisés (CRUD hors-ligne). */
+    var showSkipDialog by remember { mutableStateOf(false) }
+    /** §gestes-lecteur : pincer pour zoomer (1×–3×) + déplacement à deux doigts. */
+    var pinchScale by remember { mutableStateOf(1f) }
+    var panX by remember { mutableStateOf(0f) }
+    var panY by remember { mutableStateOf(0f) }
 
     LaunchedEffect(Unit) {
         viewModel.engine.player.addListener(object : androidx.media3.common.Player.Listener {
@@ -228,6 +242,10 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val playerThemeName by viewModel.playerTheme.collectAsState()
     val themeArgb = dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES[playerThemeName]?.first ?: 0L
     val accentColor = if (themeArgb == 0L) MaterialTheme.colorScheme.primary else Color(themeArgb)
+    // §megaskip : segments en ligne + boutons personnalisés + stats
+    val pinchZoomOn by viewModel.pinchZoomEnabled.collectAsState()
+    val swapVB by viewModel.swapVolumeBrightness.collectAsState()
+    val engineStats by viewModel.engineStats.collectAsState()
     // §theme-lecteur : chaque habillage change VRAIMENT la mise en page —
     // épaisseur et forme de la barre, voile du bas, taille du bouton central.
     val skinSquare = playerThemeName in setOf("netflix", "youtube", "mpv", "vlc")
@@ -255,6 +273,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
         val renderMode by viewModel.videoRender.collectAsState()
+        // §gestes-lecteur : zoom par pincement + déplacement à deux doigts —
+        // appliqué à la surface vidéo (indépendant du mode « contenir/remplir »).
+        val zoomLayer = Modifier.graphicsLayer(
+            scaleX = pinchScale, scaleY = pinchScale,
+            translationX = panX, translationY = panY,
+        )
         if (renderMode == "surface") {
             // §rendu-vidéo : SurfaceView — rendu matériel direct (plus fluide,
             // compatible HDR / Android TV) ; les filtres vidéo sont inactifs.
@@ -267,7 +291,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 },
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .then(zoomLayer),
             )
         } else {
             AndroidView(
@@ -279,7 +304,27 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 },
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .then(zoomLayer),
+            )
+        }
+
+        // §gestes-lecteur : pincement (zoom 1×–3×) + déplacement à deux doigts.
+        if (pinchZoomOn) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            pinchScale = (pinchScale * zoom).coerceIn(1f, 3f)
+                            if (pinchScale <= 1.01f) {
+                                // Retour au cadre normal : on recentre.
+                                panX = 0f; panY = 0f
+                            } else {
+                                panX += pan.x; panY += pan.y
+                            }
+                        }
+                    },
             )
         }
 
@@ -403,7 +448,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                 (kotlin.math.abs(accX) > 24 || kotlin.math.abs(accY) > 24)
                             ) {
                                 mode = if (kotlin.math.abs(accX) >= kotlin.math.abs(accY)) 1
-                                else if (startX < size.width / 2f) 2 else 3
+                                else {
+                                    // §gestes-lecteur : gauche = luminosité, droite = volume
+                                    // (inversible depuis Réglages → Lecteur → Gestes).
+                                    val leftSide = startX < size.width / 2f
+                                    val brightnessSide = if (swapVB) !leftSide else leftSide
+                                    if (brightnessSide) 2 else 3
+                                }
                             }
                             when (mode) {
                                 1 -> {
@@ -695,7 +746,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         )
                         .clip(RoundedCornerShape(26.dp))
                         .background(accentColor)
-                        .clickable { viewModel.megaJump(state.megaSkipSeconds) }
+                        // §megaskip-boutons : appui long = éditeur des boutons
+                        // de saut personnalisés (hors-ligne).
+                        .combinedClickable(
+                            onClick = { viewModel.megaJump(state.megaSkipSeconds) },
+                            onLongClick = { showSkipDialog = true },
+                        )
                         .padding(horizontal = 22.dp, vertical = 12.dp),
                 ) {
                     Text(
@@ -703,6 +759,38 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         color = Color.Black,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                }
+
+                // ---- §megaskip : segments communautaires (intro / récap / générique)
+                state.activeSkip?.let { segment ->
+                    dev.endlesssea.app.ui.player.SkipSegmentPill(
+                        segment = segment,
+                        countdown = state.skipCountdown,
+                        accent = accentColor,
+                        onClick = { viewModel.skipActive() },
+                        modifier = Modifier
+                            .align(
+                                if (megaSide == "left") Alignment.BottomEnd else Alignment.BottomStart,
+                            )
+                            .padding(
+                                start = if (megaSide == "left") 0.dp else 20.dp,
+                                end = if (megaSide == "left") 20.dp else 0.dp,
+                                bottom = if (progressPos == "top") 24.dp else 96.dp,
+                            ),
+                    )
+                }
+
+                // ---- §megaskip : boutons personnalisés + rafraîchissement
+                if (state.controlsVisible) {
+                    dev.endlesssea.app.ui.player.MegaskipRow(
+                        buttons = state.skipButtons.filter { it.enabled },
+                        accent = accentColor,
+                        onJump = { viewModel.customSkip(it) },
+                        onLongPress = { showSkipDialog = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = if (progressPos == "top") 96.dp else 168.dp),
                     )
                 }
 
@@ -829,6 +917,20 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                     accentColor else Color.White,
                             )
                         }
+                        // §stats : surimpression technique à la demande
+                        IconButton(onClick = { viewModel.toggleStats() }) {
+                            Icon(
+                                Icons.Filled.Info, "Statistiques de lecture",
+                                tint = if (state.statsVisible) accentColor else Color.White,
+                            )
+                        }
+                        // §megaskip : rafraîchir les segments depuis les bases communautaires
+                        IconButton(onClick = { viewModel.refreshSkip() }) {
+                            Icon(
+                                Icons.Filled.Refresh, "Rafraîchir les segments",
+                                tint = if (state.skipLoading) accentColor else Color.White,
+                            )
+                        }
                         IconButton(onClick = { showMoreSheet = true }) {
                             Icon(Icons.Filled.MoreVert, "Plus", tint = Color.White)
                         }
@@ -878,6 +980,31 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
             }
         }
+
+        // ---- §stats : surimpression technique (résolution, débit, codec, fps)
+        if (state.statsVisible) {
+            PlayerStatsOverlay(
+                stats = engineStats,
+                positionMs = state.positionMs,
+                durationMs = state.durationMs,
+                speed = state.speed,
+                segmented = state.skipSegments.size,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 12.dp, top = 96.dp),
+            )
+        }
+    }
+
+    // ---- §megaskip : éditeur des boutons de saut personnalisés
+    if (showSkipDialog) {
+        dev.endlesssea.app.ui.player.CustomSkipDialog(
+            buttons = state.skipButtons,
+            onAdd = { label, seconds -> viewModel.addSkipButton(label, seconds) },
+            onUpdate = { viewModel.updateSkipButton(it) },
+            onDelete = { viewModel.deleteSkipButton(it) },
+            onDismiss = { showSkipDialog = false },
+        )
     }
 
     // ---- §sheet-plus : panneau « Plus » façon lecteurs pro — minuterie de veille
@@ -1449,5 +1576,59 @@ private fun MegaSkipPill(label: String, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelLarge,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         )
+    }
+}
+
+/**
+ * §stats — surimpression technique demandée dans la conversation « lecteur
+ * complet » : résolution, débit, codec, images/s, images perdues, tampon,
+ * vitesse, position et nombre de segments Megaskip connus.
+ */
+@Composable
+private fun PlayerStatsOverlay(
+    stats: dev.endlesssea.player.PlayerStats,
+    positionMs: Long,
+    durationMs: Long,
+    speed: Float,
+    segmented: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Black.copy(alpha = 0.60f),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                "STATISTIQUES",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.55f),
+            )
+            listOf(
+                "Résolution" to stats.resolution,
+                "Débit" to stats.bitrateLabel,
+                "Images/s" to stats.fpsLabel,
+                "Codec" to stats.codec.ifBlank { "—" },
+                "Perdues" to stats.droppedFrames.toString(),
+                "Tampon" to stats.bufferedLabel,
+                "Vitesse" to "%.2f×".format(speed),
+                "Position" to "${formatTime(positionMs)} / ${formatTime(durationMs)}",
+                "Segments" to segmented.toString(),
+            ).forEach { (label, value) ->
+                Row {
+                    Text(
+                        label,
+                        color = Color.White.copy(alpha = 0.65f),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.width(84.dp),
+                    )
+                    Text(
+                        value,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
     }
 }

@@ -840,6 +840,63 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val legacyHeader: StateFlow<Boolean> = _legacyHeader
     fun setLegacyHeader(v: Boolean) { p.edit().putBoolean("legacy_header", v).apply(); _legacyHeader.value = v }
 
+    // ---------------------------------------------------------------- megaskip (segments en ligne)
+    /** §megaskip : saut automatique par type de segment (intro, récap, générique, aperçu). */
+    private val _skipAutoIntro = MutableStateFlow(p.getBoolean("skip_auto_intro", true))
+    val skipAutoIntro: StateFlow<Boolean> = _skipAutoIntro
+    fun setSkipAutoIntro(v: Boolean) { p.edit().putBoolean("skip_auto_intro", v).apply(); _skipAutoIntro.value = v }
+
+    private val _skipAutoRecap = MutableStateFlow(p.getBoolean("skip_auto_recap", false))
+    val skipAutoRecap: StateFlow<Boolean> = _skipAutoRecap
+    fun setSkipAutoRecap(v: Boolean) { p.edit().putBoolean("skip_auto_recap", v).apply(); _skipAutoRecap.value = v }
+
+    private val _skipAutoCredits = MutableStateFlow(p.getBoolean("skip_auto_credits", true))
+    val skipAutoCredits: StateFlow<Boolean> = _skipAutoCredits
+    fun setSkipAutoCredits(v: Boolean) { p.edit().putBoolean("skip_auto_credits", v).apply(); _skipAutoCredits.value = v }
+
+    private val _skipAutoPreview = MutableStateFlow(p.getBoolean("skip_auto_preview", false))
+    val skipAutoPreview: StateFlow<Boolean> = _skipAutoPreview
+    fun setSkipAutoPreview(v: Boolean) { p.edit().putBoolean("skip_auto_preview", v).apply(); _skipAutoPreview.value = v }
+
+    /** §megaskip : délai (s) avant le saut automatique · 0 = immédiat. */
+    private val _skipCountdown = MutableStateFlow(p.getInt("skip_countdown", 3))
+    val skipCountdown: StateFlow<Int> = _skipCountdown
+    fun setSkipCountdown(v: Int) { val c = v.coerceIn(0, 10); p.edit().putInt("skip_countdown", c).apply(); _skipCountdown.value = c }
+
+    /** §megaskip : afficher la pastille « Passer » même quand le saut auto est actif. */
+    private val _skipShowButton = MutableStateFlow(p.getBoolean("skip_show_button", true))
+    val skipShowButton: StateFlow<Boolean> = _skipShowButton
+    fun setSkipShowButton(v: Boolean) { p.edit().putBoolean("skip_show_button", v).apply(); _skipShowButton.value = v }
+
+    /** §megaskip : fournisseurs activés (TheIntroDB, IntroDB, AniSkip). */
+    private val _skipProviderTheIntroDb = MutableStateFlow(p.getBoolean("skip_provider_theintrodb", true))
+    val skipProviderTheIntroDb: StateFlow<Boolean> = _skipProviderTheIntroDb
+    fun setSkipProviderTheIntroDb(v: Boolean) { p.edit().putBoolean("skip_provider_theintrodb", v).apply(); _skipProviderTheIntroDb.value = v }
+
+    private val _skipProviderIntroDb = MutableStateFlow(p.getBoolean("skip_provider_introdb", true))
+    val skipProviderIntroDb: StateFlow<Boolean> = _skipProviderIntroDb
+    fun setSkipProviderIntroDb(v: Boolean) { p.edit().putBoolean("skip_provider_introdb", v).apply(); _skipProviderIntroDb.value = v }
+
+    private val _skipProviderAniSkip = MutableStateFlow(p.getBoolean("skip_provider_aniskip", true))
+    val skipProviderAniSkip: StateFlow<Boolean> = _skipProviderAniSkip
+    fun setSkipProviderAniSkip(v: Boolean) { p.edit().putBoolean("skip_provider_aniskip", v).apply(); _skipProviderAniSkip.value = v }
+
+    // ---------------------------------------------------------------- gestes du lecteur
+    /** §gestes-lecteur : pincer pour zoomer (1×–3×) + déplacement à deux doigts. */
+    private val _pinchZoom = MutableStateFlow(p.getBoolean("gesture_pinch_zoom", true))
+    val pinchZoom: StateFlow<Boolean> = _pinchZoom
+    fun setPinchZoom(v: Boolean) { p.edit().putBoolean("gesture_pinch_zoom", v).apply(); _pinchZoom.value = v }
+
+    /** §gestes-lecteur : inverser les glissers verticaux (volume à gauche, luminosité à droite). */
+    private val _swapVolumeBrightness = MutableStateFlow(p.getBoolean("gesture_swap_vb", false))
+    val swapVolumeBrightness: StateFlow<Boolean> = _swapVolumeBrightness
+    fun setSwapVolumeBrightness(v: Boolean) { p.edit().putBoolean("gesture_swap_vb", v).apply(); _swapVolumeBrightness.value = v }
+
+    /** §stats : surimpression technique (résolution, débit, codec, images perdues). */
+    private val _playerStats = MutableStateFlow(p.getBoolean("player_stats", false))
+    val playerStats: StateFlow<Boolean> = _playerStats
+    fun setPlayerStats(v: Boolean) { p.edit().putBoolean("player_stats", v).apply(); _playerStats.value = v }
+
     init {
         // Synchronise le résolveur réseau global dès la création des préférences.
         dev.endlesssea.core.net.EsNet.dnsMode = _dnsMode.value

@@ -53,10 +53,31 @@ object AppModule {
         }
     }
 
+    /** v4 → v5 : Megaskip — cache des segments + boutons de saut personnalisés. */
+    private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `skip_cache` (" +
+                    "`cacheKey` TEXT NOT NULL, `provider` TEXT NOT NULL, `mediaKey` TEXT NOT NULL, " +
+                    "`season` INTEGER NOT NULL DEFAULT 0, `episode` INTEGER NOT NULL DEFAULT 0, " +
+                    "`json` TEXT NOT NULL, `fetchedAt` INTEGER NOT NULL DEFAULT 0, " +
+                    "PRIMARY KEY(`cacheKey`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_skip_cache_mediaKey` ON `skip_cache` (`mediaKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_skip_cache_fetchedAt` ON `skip_cache` (`fetchedAt`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `skip_buttons` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `label` TEXT NOT NULL, " +
+                    "`seconds` INTEGER NOT NULL, `position` INTEGER NOT NULL DEFAULT 0, " +
+                    "`enabled` INTEGER NOT NULL DEFAULT 1)",
+            )
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 
@@ -68,6 +89,7 @@ object AppModule {
     @Provides fun provideGenreDao(db: EsDatabase): GenreDao = db.genreDao()
     @Provides fun provideRepoDao(db: EsDatabase): RepoDao = db.repoDao()
     @Provides fun provideExtensionDao(db: EsDatabase): ExtensionDao = db.extensionDao()
+    @Provides fun provideSkipDao(db: EsDatabase): dev.endlesssea.data.db.SkipDao = db.skipDao()
 
     @Provides @Singleton
     fun provideDownloadEngine(

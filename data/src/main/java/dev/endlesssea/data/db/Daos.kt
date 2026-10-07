@@ -94,6 +94,35 @@ interface DownloadsDao {
     suspend fun checkpoint(taskId: String, idx: Int, bytes: Long, done: Boolean)
 }
 
+/** §megaskip — cache des segments + boutons de saut personnalisés. */
+@Dao
+interface SkipDao {
+    @Query("SELECT * FROM skip_cache WHERE cacheKey = :key")
+    suspend fun cached(key: String): SkipCacheEntity?
+
+    @Query("SELECT * FROM skip_cache WHERE mediaKey = :mediaKey AND season = :season AND episode = :episode")
+    suspend fun cachedFor(mediaKey: String, season: Int, episode: Int): List<SkipCacheEntity>
+
+    @Upsert suspend fun put(entity: SkipCacheEntity)
+
+    @Query("DELETE FROM skip_cache WHERE fetchedAt < :before")
+    suspend fun purgeOlderThan(before: Long)
+
+    @Query("DELETE FROM skip_cache")
+    suspend fun clear()
+
+    @Query("SELECT * FROM skip_buttons ORDER BY position, id")
+    fun observeButtons(): Flow<List<SkipButtonEntity>>
+
+    @Query("SELECT * FROM skip_buttons WHERE enabled = 1 ORDER BY position, id")
+    suspend fun enabledButtons(): List<SkipButtonEntity>
+
+    @Upsert suspend fun upsertButton(button: SkipButtonEntity): Long
+
+    @Query("DELETE FROM skip_buttons WHERE id = :id")
+    suspend fun deleteButton(id: Long)
+}
+
 @Dao
 interface GenreDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertAll(items: List<GenreEntity>)

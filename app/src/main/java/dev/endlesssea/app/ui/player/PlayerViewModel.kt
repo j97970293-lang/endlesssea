@@ -66,6 +66,21 @@ data class PlayerUiState(
     val videoScale: Float = 1f,
     /** §upscale : intensité du renforcement de contours (0..2). */
     val videoSharpen: Float = 0.6f,
+    // ---------------------------------------------------------------- megaskip
+    /** Segments connus du média courant (intro / récap / générique / aperçu). */
+    val skipSegments: List<dev.endlesssea.app.skip.SkipSegment> = emptyList(),
+    /** Segment en cours de lecture (bouton « Passer » affiché). */
+    val activeSkip: dev.endlesssea.app.skip.SkipSegment? = null,
+    /** Secondes restantes avant le saut automatique (null = pas de compte à rebours). */
+    val skipCountdown: Int? = null,
+    /** Boutons de saut personnalisés (base locale, hors-ligne). */
+    val skipButtons: List<dev.endlesssea.app.skip.CustomSkipButton> = emptyList(),
+    /** Réglages Megaskip (auto-saut, fournisseurs, délai). */
+    val skipSettings: dev.endlesssea.app.skip.SkipSettings = dev.endlesssea.app.skip.SkipSettings(),
+    /** §stats : surimpression technique visible. */
+    val statsVisible: Boolean = false,
+    /** §segments : état du chargement des segments (pour le bouton « Rafraîchir »). */
+    val skipLoading: Boolean = false,
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -75,6 +90,8 @@ class PlayerViewModel @Inject constructor(
     okHttp: OkHttpClient,
     private val historyDao: WatchHistoryDao,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
+    private val skipRepository: dev.endlesssea.app.skip.SkipRepository,
+    private val mediaDao: dev.endlesssea.data.db.MediaDao,
 ) : ViewModel() {
 
     val engine = EsPlayer(context, okHttp, viewModelScope)
@@ -84,6 +101,17 @@ class PlayerViewModel @Inject constructor(
 
     private var episodeId: String? = null
     private var mediaId: String? = null
+
+    /** §megaskip : dernier état des fournisseurs (détecte un changement de réglage). */
+    private var skipSettingsSnapshot: dev.endlesssea.app.skip.SkipSettings? = null
+
+    private fun skipSettingsChanged(now: dev.endlesssea.app.skip.SkipSettings): Boolean {
+        val before = skipSettingsSnapshot ?: return false
+        skipSettingsSnapshot = now
+        return before.providerTheIntroDb != now.providerTheIntroDb ||
+            before.providerIntroDb != now.providerIntroDb ||
+            before.providerAniSkip != now.providerAniSkip
+    }
 
     init {
         // Persistance de la position toutes les 5 s (spec §7 « mémorisation de la position »)
@@ -100,6 +128,8 @@ class PlayerViewModel @Inject constructor(
                     positionMs = engine.player.currentPosition.coerceAtLeast(0),
                     durationMs = engine.player.duration.coerceAtLeast(0),
                 )
+                // §megaskip : détection du segment courant + saut automatique
+                handleSkipAt(engine.player.currentPosition.coerceAtLeast(0))
                 delay(500)
             }
         }
@@ -158,6 +188,45 @@ class PlayerViewModel @Inject constructor(
             prefs.videoBrightness.value, prefs.videoSaturation.value, prefs.videoHue.value,
             prefs.videoPreset.value, persist = false,
         )
+        // §megaskip : réglages (auto-saut par type, fournisseurs, délai) en direct
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                prefs.skipAutoIntro, prefs.skipAutoRecap, prefs.skipAutoCredits,
+                prefs.skipAutoPreview, prefs.skipCountdown,
+            ) { a, b, c, d, countdown -> listOf(a, b, c, d) to countdown }.collect { (flags, countdown) ->
+                _uiState.value = _uiState.value.copy(
+                    skipSettings = _uiState.value.skipSettings.copy(
+                        autoIntro = flags[0], autoRecap = flags[1],
+                        autoCredits = flags[2], autoPreview = flags[3],
+                        countdownSec = countdown,
+                    ),
+                )
+            }
+        }
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                prefs.skipProviderTheIntroDb, prefs.skipProviderIntroDb, prefs.skipProviderAniSkip,
+                prefs.skipShowButton,
+            ) { a, b, c, d -> listOf(a, b, c, d) }.collect { flags ->
+                val settings = _uiState.value.skipSettings.copy(
+                    providerTheIntroDb = flags[0], providerIntroDb = flags[1],
+                    providerAniSkip = flags[2], showButton = flags[3],
+                )
+                _uiState.value = _uiState.value.copy(skipSettings = settings)
+                // Un changement de fournisseurs relance la recherche (cache conservé).
+                if (skipSettingsChanged(settings)) loadSkipSegments(force = true)
+            }
+        }
+        skipSettingsSnapshot = _uiState.value.skipSettings
+        viewModelScope.launch {
+            prefs.playerStats.collect { v -> _uiState.value = _uiState.value.copy(statsVisible = v) }
+        }
+        // §megaskip : boutons personnalisés (base locale → dispo hors-ligne)
+        viewModelScope.launch {
+            skipRepository.observeButtons().collect { buttons ->
+                _uiState.value = _uiState.value.copy(skipButtons = buttons)
+            }
+        }
     }
 
     // ------------------------------------------------------------------ filtres vidéo
@@ -418,6 +487,14 @@ class PlayerViewModel @Inject constructor(
         }
         _uiState.value = _uiState.value.copy(loading = false)
         refreshQueueFlags()
+        // §megaskip : segments du nouvel épisode (cache d'abord, réseau ensuite)
+        _uiState.value = _uiState.value.copy(skipSegments = emptyList(), activeSkip = null)
+        viewModelScope.launch {
+            // On attend une durée exploitable (AniSkip l'exige) — au plus 6 s.
+            var waited = 0
+            while (engine.durationMs.value <= 0 && waited < 12) { delay(500); waited++ }
+            loadSkipSegments()
+        }
     }
 
     /**
@@ -481,6 +558,150 @@ class PlayerViewModel @Inject constructor(
         engine.player.seekTo((engine.player.currentPosition + deltaSec * 1000L).coerceAtLeast(0))
     }
 
+    // ------------------------------------------------------------------ megaskip
+
+    /** Segments déjà sautés (évite la boucle quand la position reste dans la plage). */
+    private val skippedSegments = mutableSetOf<String>()
+
+    /**
+     * §megaskip : charge les segments du média courant. Hors-ligne d'abord (cache
+     * Room), puis TheIntroDB → IntroDB → AniSkip. [force] pour forcer le réseau.
+     */
+    fun loadSkipSegments(force: Boolean = false) = viewModelScope.launch {
+        val state = _uiState.value
+        val target = buildSkipTarget(state.title, state.durationMs)
+        if (target.isAnonymous) {
+            _uiState.value = _uiState.value.copy(skipSegments = emptyList(), skipLoading = false)
+            return@launch
+        }
+        _uiState.value = _uiState.value.copy(skipLoading = true)
+        val segments = runCatching {
+            skipRepository.load(target, _uiState.value.skipSettings, force)
+        }.getOrDefault(emptyList())
+        skippedSegments.clear()
+        _uiState.value = _uiState.value.copy(
+            skipSegments = segments,
+            skipLoading = false,
+            toast = if (force) {
+                if (segments.isEmpty()) "Aucun segment trouvé" else "${segments.size} segment(s) trouvé(s)"
+            } else _uiState.value.toast,
+        )
+    }
+
+    /** Identité du média : ids externes de la fiche + saison/épisode déduits. */
+    private suspend fun buildSkipTarget(title: String, durationMs: Long): dev.endlesssea.app.skip.SkipTarget {
+        var tmdb: String? = null
+        var imdb: String? = null
+        var tvdb: String? = null
+        var mal: String? = null
+        var anilist: String? = null
+        mediaId?.let { id ->
+            val json = runCatching { mediaDao.byId(id)?.externalIdsJson }.getOrNull()
+            if (!json.isNullOrBlank()) {
+                runCatching {
+                    val o = org.json.JSONObject(json)
+                    tmdb = o.optString("tmdb").takeIf { it.isNotBlank() }
+                    imdb = o.optString("imdb").takeIf { it.isNotBlank() }
+                    tvdb = o.optString("tvdb").takeIf { it.isNotBlank() }
+                    mal = o.optString("mal").takeIf { it.isNotBlank() }
+                    anilist = o.optString("anilist").takeIf { it.isNotBlank() }
+                }
+            }
+        }
+        var (season, episode) = dev.endlesssea.app.skip.SkipTarget.parseSeasonEpisode(episodeId ?: title)
+        // Ids d'épisodes d'extension : « <mediaId>:S1:E3 » (spec doc 09).
+        Regex("(?i):[Ss](\\d+):[Ee](\\d+)").find(episodeId.orEmpty())?.let {
+            season = it.groupValues[1].toInt()
+            episode = it.groupValues[2].toInt()
+        }
+        if (episode <= 0) episode = 1
+        return dev.endlesssea.app.skip.SkipTarget(
+            title = title.ifBlank { null },
+            mediaId = mediaId,
+            season = season,
+            episode = episode,
+            tmdbId = tmdb, imdbId = imdb, tvdbId = tvdb,
+            malId = mal, anilistId = anilist,
+            durationMs = durationMs,
+        )
+    }
+
+    /** Boucle de lecture : segment courant, compte à rebours, saut automatique. */
+    private fun handleSkipAt(positionMs: Long) {
+        val state = _uiState.value
+        if (state.skipSegments.isEmpty()) {
+            if (state.activeSkip != null) {
+                _uiState.value = state.copy(activeSkip = null, skipCountdown = null)
+            }
+            return
+        }
+        val segment = state.skipSegments.firstOrNull { it.contains(positionMs) }
+        if (segment == null) {
+            if (state.activeSkip != null) {
+                _uiState.value = state.copy(activeSkip = null, skipCountdown = null)
+            }
+            return
+        }
+        val key = "${segment.type.key}:${segment.startMs}"
+        val auto = state.skipSettings.autoFor(segment.type)
+        val elapsed = (positionMs - segment.startMs) / 1000L
+        val remaining = (state.skipSettings.countdownSec - elapsed).coerceAtLeast(0L).toInt()
+        if (auto && remaining <= 0) {
+            if (skippedSegments.add(key)) {
+                engine.seekTo(segment.endMs)
+                _uiState.value = _uiState.value.copy(
+                    activeSkip = null, skipCountdown = null,
+                    toast = "${segment.type.label} passée",
+                )
+                viewModelScope.launch {
+                    delay(1_600)
+                    _uiState.value = _uiState.value.copy(toast = null)
+                }
+            }
+            return
+        }
+        _uiState.value = state.copy(
+            activeSkip = if (auto && !state.skipSettings.showButton) null else segment,
+            skipCountdown = if (auto) remaining else null,
+        )
+    }
+
+    /** Saut manuel du segment courant (« Passer l'intro »). */
+    fun skipActive() {
+        val segment = _uiState.value.activeSkip ?: return
+        skippedSegments += "${segment.type.key}:${segment.startMs}"
+        engine.seekTo(segment.endMs)
+        _uiState.value = _uiState.value.copy(activeSkip = null, skipCountdown = null)
+    }
+
+    /** Saut vers la fin d'un segment donné (barre mégaskip). */
+    fun skipSegment(segment: dev.endlesssea.app.skip.SkipSegment) {
+        skippedSegments += "${segment.type.key}:${segment.startMs}"
+        engine.seekTo(segment.endMs)
+    }
+
+    /** Bouton personnalisé : saut relatif à la position courante. */
+    fun customSkip(button: dev.endlesssea.app.skip.CustomSkipButton) {
+        engine.seekTo((engine.player.currentPosition + button.seconds * 1000L).coerceAtLeast(0))
+        _uiState.value = _uiState.value.copy(toast = "${button.label} · ${button.human}")
+        viewModelScope.launch { delay(1_500); _uiState.value = _uiState.value.copy(toast = null) }
+    }
+
+    fun addSkipButton(label: String, seconds: Int) = viewModelScope.launch {
+        skipRepository.addButton(label, seconds)
+    }
+
+    fun updateSkipButton(button: dev.endlesssea.app.skip.CustomSkipButton) = viewModelScope.launch {
+        skipRepository.updateButton(button)
+    }
+
+    fun deleteSkipButton(id: Long) = viewModelScope.launch { skipRepository.deleteButton(id) }
+
+    /** §stats : bascule la surimpression technique (résolution/débit/codec). */
+    fun toggleStats() = prefs.setPlayerStats(!_uiState.value.statsVisible)
+
+    fun refreshSkip() = loadSkipSegments(force = true)
+
     // §lecteur-placement / §theme-lecteur : réglages lus directement par l'écran
     val progressPosition: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.progressPosition
     val toolsPosition: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.toolsPosition
@@ -498,6 +719,16 @@ class PlayerViewModel @Inject constructor(
     /** §rendu-vidéo : "texture" (filtres) ou "surface" (perf/HDR). */
     val videoRender: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.videoRender
     fun setVideoRender(v: String) = prefs.setVideoRender(v)
+
+    /** §gestes-lecteur : pincer pour zoomer · inverseur volume/luminosité. */
+    val pinchZoomEnabled: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.pinchZoom
+    val swapVolumeBrightness: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.swapVolumeBrightness
+    fun setPinchZoom(v: Boolean) = prefs.setPinchZoom(v)
+    fun setSwapVolumeBrightness(v: Boolean) = prefs.setSwapVolumeBrightness(v)
+
+    /** §stats : flux technique du moteur (résolution, débit, codec, images perdues). */
+    val engineStats: kotlinx.coroutines.flow.StateFlow<dev.endlesssea.player.PlayerStats>
+        get() = engine.stats
 
     fun toggleLock() = _uiState.value.let { _uiState.value = it.copy(locked = !it.locked) }
     fun toggleControls() = _uiState.value.let { _uiState.value = it.copy(controlsVisible = !it.controlsVisible) }

@@ -16,6 +16,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * §carte-historique : une entrée « Reprendre la lecture » dessinée comme une
+ * carte d'historique (conversation 9) — vignette 16:9, barre de progression,
+ * épisode et temps restant, au lieu d'une affiche de série.
+ */
+data class ContinueItemUi(
+    /** Cible du clic : id de fiche, ou « local:<uri> » pour un fichier local. */
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val thumbUrl: String?,
+    /** Progression 0f..1f. */
+    val progress: Float,
+    val remainingLabel: String,
+    val watchedLabel: String,
+    val isLocal: Boolean = false,
+)
+
 data class HomeRowUi(
     val title: String,
     val items: List<SearchItemUi>,
@@ -30,7 +48,7 @@ data class HomeRowUi(
 data class HomeUiState(
     val loading: Boolean = true,
     val featured: List<SearchItemUi> = emptyList(),
-    val continueWatching: List<SearchItemUi> = emptyList(),
+    val continueWatching: List<ContinueItemUi> = emptyList(),
     val recent: List<SearchItemUi> = emptyList(),
     val favorites: List<SearchItemUi> = emptyList(),
     val remoteRows: List<HomeRowUi> = emptyList(),
@@ -102,22 +120,41 @@ class HomeViewModel @Inject constructor(
         safeLaunch {
             historyDao.observeContinueWatching(12).collect { history ->
                 val items = history.mapNotNull { h ->
-                    val pct = if (h.durationMs > 0) (h.positionMs * 100 / h.durationMs).toInt() else 0
+                    val progress = if (h.durationMs > 0) {
+                        (h.positionMs.toFloat() / h.durationMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+                    val remainingMs = (h.durationMs - h.positionMs).coerceAtLeast(0L)
+                    val remaining = when {
+                        h.durationMs <= 0 -> ""
+                        remainingMs < 60_000 -> "moins d'une minute restante"
+                        else -> "${remainingMs / 60_000} min restantes"
+                    }
+                    val watched = humanSince(h.updatedAt)
                     val media = mediaDao.byId(h.mediaId)
                     when {
-                        media != null -> media.toUi().copy(subtitle = "Reprise à $pct %")
+                        media != null -> ContinueItemUi(
+                            id = media.id,
+                            title = media.customTitle?.takeIf { it.isNotBlank() } ?: media.title,
+                            subtitle = episodeLabel(h.episodeId),
+                            thumbUrl = media.customCoverUri ?: media.posterUrl ?: media.bannerUrl,
+                            progress = progress,
+                            remainingLabel = remaining,
+                            watchedLabel = watched,
+                        )
                         // §historique-local : un fichier local (pas de fiche en base)
                         // apparaît quand même, sauf si l'utilisateur l'exclut.
-                        // Tolérant : content:// (SAF), file://, /storage/... — tout
-                        // ce qui n'est pas une fiche d'extension.
                         prefs.localInHistory.value && isLocalRef(h.episodeId) -> {
                             val meta = runCatching { prefs.localFileMeta(h.episodeId) }.getOrNull()
-                            SearchItemUi(
+                            ContinueItemUi(
                                 id = "local:" + h.episodeId,
                                 title = meta?.title ?: prettyLocalName(h.episodeId),
-                                // la vignette, c'est la vidéo elle-même
-                                posterUrl = meta?.coverUri ?: h.episodeId,
-                                subtitle = "Fichier local — reprise à $pct %",
+                                // la vignette, c'est la vidéo elle-même (Coil + coil-video)
+                                subtitle = "Fichier local",
+                                thumbUrl = meta?.coverUri ?: h.episodeId,
+                                progress = progress,
+                                remainingLabel = remaining,
+                                watchedLabel = watched,
+                                isLocal = true,
                             )
                         }
                         else -> null
@@ -143,6 +180,29 @@ class HomeViewModel @Inject constructor(
 
     private fun prettyLocalName(uri: String): String =
         dev.endlesssea.app.local.LocalNames.pretty(uri)
+
+    /** §carte-historique : « S1:E3 » → « S1 · Épisode 3 » (ids d'extension ou noms de fichiers). */
+    private fun episodeLabel(episodeId: String): String {
+        Regex("(?i):[Ss](\\d+):[Ee](\\d+)").find(episodeId)?.let {
+            return "S${it.groupValues[1].trimStart('0').ifBlank { "0" }} · Épisode ${it.groupValues[2].trimStart('0').ifBlank { "0" }}"
+        }
+        Regex("(?i)[Ss](\\d{1,2})[ ._-]*[Ee](\\d{1,3})").find(episodeId)?.let {
+            return "S${it.groupValues[1].trimStart('0').ifBlank { "0" }} · Épisode ${it.groupValues[2].trimStart('0').ifBlank { "0" }}"
+        }
+        return if (isLocalRef(episodeId)) "Fichier local" else "Épisode"
+    }
+
+    /** §carte-historique : « hier », « il y a 2 h » — comme la page Historique. */
+    private fun humanSince(at: Long): String {
+        val delta = (System.currentTimeMillis() - at).coerceAtLeast(0L)
+        return when {
+            delta < 60_000L -> "à l'instant"
+            delta < 3_600_000L -> "il y a ${delta / 60_000L} min"
+            delta < 86_400_000L -> "il y a ${delta / 3_600_000L} h"
+            delta < 2L * 86_400_000L -> "hier"
+            else -> "il y a ${delta / 86_400_000L} jours"
+        }
+    }
 
     // ---------- Contenu réel des extensions (ce qui donne vie à l'accueil)
     fun loadRemote() = safeLaunch {
