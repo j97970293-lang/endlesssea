@@ -6,7 +6,7 @@
 
 *An open-source Android platform for anime, movies & series — streaming, advanced downloading and a local library, powered by extensions.*
 
-Android 8.0+ (API 26) • Kotlin • Jetpack Compose • GPL-3.0
+Android 8.0+ (API 26, testé jusqu'à Android 15) • Kotlin • Jetpack Compose • GPL-3.0
 
 </div>
 
@@ -31,7 +31,7 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 - 📥 **Téléchargements dans la bibliothèque** : un épisode téléchargé — même isolé — forme sa propre « série » (badge, nombre d'épisodes, emplacement) et se lit hors-ligne
 - 🔍 **Recherche multi-extensions** agrégée avec filtres
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
-- 📱 Android 8.0+ , stockage interne ou carte SD (SAF)
+- 📱 Android 8.0+ (API 26 → 15), stockage interne ou carte SD (SAF)
 
 ### État des lieux & audit
 
@@ -71,7 +71,10 @@ endless-sea/
 │   │   ├── 11-android-8-compatibility.md       ← compatibilité Android 8→15
 │   │   └── 12-testing-strategy.md              ← stratégie de tests
 │   └── fr/
-│       └── 00-resume.md                        ← résumé complet en français
+│       ├── 00-resume.md                        ← résumé complet en français
+│       ├── AUDIT.md                            ← audit vivant par composant
+│       ├── conversations-0.22.md               ← suivi des 11 conversations (ligne par ligne)
+│       └── ETAT-0.24.md                        ← état livré 0.24.0 (suivi, téléchargements, lecteur)
 │
 ├── core/                            ← modèles partagés, erreurs, réseau commun
 │   └── src/main/java/dev/endlesssea/core/
@@ -174,14 +177,21 @@ Full design docs live in [`docs/en`](docs/en) (a French summary is in [`docs/fr/
 10. [Android permissions](docs/en/10-android-permissions.md) · 11. [Android 8+ compatibility](docs/en/11-android-8-compatibility.md)
 12. [Testing strategy](docs/en/12-testing-strategy.md)
 
+🇫🇷 Documentation complémentaire : [résumé complet](docs/fr/00-resume.md) ·
+[audit par composant](docs/fr/AUDIT.md) · [suivi des 11 conversations](docs/fr/conversations-0.22.md) ·
+[état livré 0.24.0](docs/fr/ETAT-0.24.md).
+
 ### Build
 
 ```bash
 # Requires: JDK 17+, Android SDK 35
-git clone https://github.com/<org>/endless-sea.git
-cd endless-sea
+git clone https://github.com/j97970293-lang/endlesssea.git
+cd endlesssea
 ./gradlew :app:assembleDebug
 ```
+
+Version courante : **0.24.0** (versionCode 24) — APK de débogage :
+`app/build/outputs/apk/debug/app-debug.apk`.
 
 ### License
 
