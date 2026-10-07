@@ -50,6 +50,20 @@ class DownloadService : Service() {
                 }
             }
         }
+        // §service : arrêt automatique quand la file est au repos — plus de
+        // notification permanente quand il ne se passe rien.
+        scope.launch {
+            var idleSince = 0L
+            engine?.runningCount?.collectLatest { running ->
+                if (running > 0) { idleSince = 0L; return@collectLatest }
+                if (idleSince == 0L) idleSince = System.currentTimeMillis()
+                kotlinx.coroutines.delay(IDLE_STOP_MS)
+                if (idleSince != 0L && System.currentTimeMillis() - idleSince >= IDLE_STOP_MS) {
+                    ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
+        }
         scope.launch {
             engine?.notifications?.collectLatest { n ->
                 val nm = getSystemService(NotificationManager::class.java)
@@ -147,6 +161,8 @@ class DownloadService : Service() {
         const val ACTION_PAUSE = "dev.endlesssea.action.PAUSE"
         const val ACTION_RESUME = "dev.endlesssea.action.RESUME"
         const val ACTION_CANCEL = "dev.endlesssea.action.CANCEL"
+        /** §service : délai sans aucune tâche avant d'arrêter le service. */
+        const val IDLE_STOP_MS = 45_000L
 
         fun start(context: Context, engine: DownloadEngine) {
             // In the real app the engine is provided via a bound service; the static

@@ -92,6 +92,8 @@ data class DownloadTaskEntity(
     val error: String? = null,
     val priority: Int = 0,
     val etag: String? = null,
+    /** §integrite : empreinte SHA-256 du fichier terminé (vérifiable plus tard). */
+    val sha256: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 )

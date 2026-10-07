@@ -892,6 +892,23 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val swapVolumeBrightness: StateFlow<Boolean> = _swapVolumeBrightness
     fun setSwapVolumeBrightness(v: Boolean) { p.edit().putBoolean("gesture_swap_vb", v).apply(); _swapVolumeBrightness.value = v }
 
+    // ---------------------------------------------------------------- téléchargement avancé
+    /** §debit (conversation 10) : plafond de bande passante en Ko/s (0 = illimité). */
+    private val _downloadSpeedLimitKb = MutableStateFlow(p.getInt("dl_speed_limit_kb", 0))
+    val downloadSpeedLimitKb: StateFlow<Int> = _downloadSpeedLimitKb
+    fun setDownloadSpeedLimitKb(v: Int) {
+        val c = v.coerceIn(0, 50_000)
+        p.edit().putInt("dl_speed_limit_kb", c).apply(); _downloadSpeedLimitKb.value = c
+    }
+
+    /** §nettoyage (conversation 10) : supprime les téléchargements terminés après N jours (0 = jamais). */
+    private val _downloadAutoCleanDays = MutableStateFlow(p.getInt("dl_auto_clean_days", 0))
+    val downloadAutoCleanDays: StateFlow<Int> = _downloadAutoCleanDays
+    fun setDownloadAutoCleanDays(v: Int) {
+        val c = if (v in setOf(0, 3, 7, 30, 90)) v else 0
+        p.edit().putInt("dl_auto_clean_days", c).apply(); _downloadAutoCleanDays.value = c
+    }
+
     /** §stats : surimpression technique (résolution, débit, codec, images perdues). */
     private val _playerStats = MutableStateFlow(p.getBoolean("player_stats", false))
     val playerStats: StateFlow<Boolean> = _playerStats

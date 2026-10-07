@@ -23,7 +23,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -104,6 +106,9 @@ fun DownloadedFolderScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // §netto-automatique (conversation 10) : purge différée des
+                    // vieux épisodes pour ne pas remplir la carte SD.
+                    AutoCleanControls(viewModel)
                     Spacer(Modifier.height(8.dp))
                     if (episodes.isNotEmpty()) {
                         androidx.compose.material3.Button(
@@ -161,6 +166,41 @@ fun DownloadedFolderScreen(
                     Text("▶", style = MaterialTheme.typography.titleMedium)
                 }
             }
+        }
+    }
+}
+
+/**
+ * §netto-automatique (conversation 10) : règle de purge des téléchargements
+ * terminés, affichée sur la fiche — l'utilisateur voit ce qui disparaîtra et
+ * peut vérifier immédiatement l'espace récupéré.
+ */
+@Composable
+private fun AutoCleanControls(viewModel: LibraryViewModel) {
+    val days by viewModel.autoCleanDays.collectAsState()
+    var freeText by remember { mutableStateOf("") }
+    Column(Modifier.padding(top = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Nettoyage auto : ",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            listOf(0 to "jamais", 3 to "3 j", 7 to "7 j", 30 to "30 j").forEach { (value, label) ->
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (days == value) FontWeight.Bold else FontWeight.Normal,
+                    color = if (days == value) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp)
+                        .clickable { viewModel.setAutoCleanDays(value) },
+                )
+            }
+        }
+        TextButton(onClick = { freeText = viewModel.cleanNow() }) {
+            Text("Vérifier maintenant — " + freeText.ifBlank { "calculer l'espace" })
         }
     }
 }

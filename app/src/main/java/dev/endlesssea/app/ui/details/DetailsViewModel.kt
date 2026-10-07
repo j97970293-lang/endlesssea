@@ -523,6 +523,7 @@ class DetailsViewModel @Inject constructor(
             status = "QUEUED",
         )
         downloads.enqueue(task)
+        startDownloadService()
         _uiState.value = _uiState.value.copy(message = "Téléchargement ajouté : $fileName")
     }
 
@@ -613,6 +614,24 @@ class DetailsViewModel @Inject constructor(
             status = "QUEUED",
         )
         downloads.enqueue(task)
+        startDownloadService()
+    }
+
+    /**
+     * §service-telechargement (conversation 10) : la file était purement
+     * en mémoire — écran éteint, Android pouvait la geler. On remonte le moteur
+     * en service au premier plan (wake-lock + notifications) dès le premier
+     * épisode mis en file.
+     */
+    private fun startDownloadService() {
+        runCatching {
+            dev.endlesssea.downloader.DownloadService.start(context, downloads)
+        }.onFailure { e ->
+            dev.endlesssea.core.diag.EsLog.e(
+                "Download", "service", "Impossible de démarrer le service",
+                e.message ?: e.javaClass.simpleName,
+            )
+        }
     }
 
     fun clearMessage() { _uiState.value = _uiState.value.copy(message = null) }

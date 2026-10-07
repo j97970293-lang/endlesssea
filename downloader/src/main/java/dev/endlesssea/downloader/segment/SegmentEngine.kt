@@ -133,13 +133,16 @@ class SegmentEngine(private val client: OkHttpClient) {
         headers: Map<String, String>,
         segments: List<Segment>,
         target: java.io.File,
+        /** §debit : plafond partagé par toute la tâche (0 = illimité), en octets/s. */
+        throttleBytesPerSec: Long = 0L,
         onCheckpoint: (Segment) -> Unit,
     ) = coroutineScope {
+        val throttle = Throttle(throttleBytesPerSec)
         RandomAccessFile(target, "rw").use { raf ->
             raf.setLength(segments.last().end + 1) // preallocate
             val channel: FileChannel = raf.channel
             segments.filter { !it.done }.map { seg ->
-                async(Dispatchers.IO) { worker(url, headers, seg, channel, onCheckpoint) }
+                async(Dispatchers.IO) { worker(url, headers, seg, channel, onCheckpoint, throttle = throttle) }
             }.forEach { job ->
                 if (job.await().downloaded <= 0 && segments.sumOf { it.downloaded } <= 0) {
                     // server lied about ranges → whole-task single-connection fallback happens
@@ -151,6 +154,34 @@ class SegmentEngine(private val client: OkHttpClient) {
         verify(segments, target.length())
     }
 
+    /**
+     * §debit (conversation 10) — limitation de bande passante « seau à jetons »
+     * partagée par tous les segments de la tâche : sans partage, 4 segments à
+     * 500 Ko/s donneraient 2 Mo/s au lieu de 500 Ko/s.
+     */
+    class Throttle(private val bytesPerSec: Long) {
+        private val lock = Any()
+        private var windowStart = System.currentTimeMillis()
+        private var windowBytes = 0L
+
+        suspend fun consume(bytes: Int) {
+            if (bytesPerSec <= 0L || bytes <= 0) return
+            val waitMs: Long
+            synchronized(lock) {
+                val now = System.currentTimeMillis()
+                if (now - windowStart >= 1_000L) {
+                    windowStart = now
+                    windowBytes = 0L
+                }
+                windowBytes += bytes
+                waitMs = if (windowBytes > bytesPerSec) {
+                    (windowBytes - bytesPerSec) * 1_000L / bytesPerSec
+                } else 0L
+            }
+            if (waitMs > 0L) kotlinx.coroutines.delay(waitMs.coerceAtMost(1_000L))
+        }
+    }
+
     private tailrec suspend fun worker(
         url: String,
         headers: Map<String, String>,
@@ -158,6 +189,7 @@ class SegmentEngine(private val client: OkHttpClient) {
         channel: FileChannel,
         onCheckpoint: (Segment) -> Unit,
         attempt: Int = 0,
+        throttle: Throttle? = null,
     ): Segment {
         currentCoroutineContext().ensureActive()
         val from = seg.start + seg.downloaded
@@ -183,6 +215,7 @@ class SegmentEngine(private val client: OkHttpClient) {
                                 absolute += channel.write(wrapped, absolute)
                             }
                             seg.downloaded += read
+                            throttle?.consume(read)
                             val now = System.currentTimeMillis()
                             if (now - lastFlush >= CHECKPOINT_MS) {
                                 lastFlush = now
@@ -203,7 +236,7 @@ class SegmentEngine(private val client: OkHttpClient) {
             if (attempt >= MAX_RETRIES) throw e
             backoff(DEFAULT_BACKOFF[attempt].toLong() * 1000)
         }
-        return worker(url, headers, seg, channel, onCheckpoint, attempt + 1)
+        return worker(url, headers, seg, channel, onCheckpoint, attempt + 1, throttle)
     }
 
     private fun verify(segments: List<Segment>, fileLength: Long) {

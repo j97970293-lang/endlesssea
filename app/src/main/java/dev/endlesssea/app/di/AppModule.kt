@@ -74,10 +74,17 @@ object AppModule {
         }
     }
 
+    /** v5 → v6 : empreinte SHA-256 des téléchargements (conversation 10). */
+    private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE download_tasks ADD COLUMN sha256 TEXT")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 
@@ -100,6 +107,10 @@ object AppModule {
     ): DownloadEngine =
         DownloadManager(
             dao = dao, http = http, tempDirProvider = { context.filesDir },
+            // §debit (conversation 10) : plafond de débit réglable (0 = illimité).
+            throttleBytesPerSec = { prefs.downloadSpeedLimitKb.value.toLong() * 1024L },
+            // §espace-disque : refuser un téléchargement qui ne tiendra pas.
+            freeSpaceProvider = { context.filesDir.usableSpace },
             // §stockage-public : arborescence Aniyomi dans le dossier choisi
             // (downloads/<Source>/<Série>/<Épisode>/fichier) — jamais en privé.
             publisher = { task, file ->

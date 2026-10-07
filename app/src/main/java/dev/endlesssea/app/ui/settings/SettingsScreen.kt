@@ -639,6 +639,61 @@ fun SettingsScreen(
                     onClick = { showNumbersDialog = true },
                 )
             }
+            item {
+                // §debit (conversation 10) : plafond partagé par toute la file
+                val limit = viewModel.downloadSpeedLimitKb.collectAsState().value
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Limite de bande passante", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (limit == 0) "Illimité — le téléchargement prend toute la connexion disponible."
+                        else "Plafonné à ${if (limit >= 1024) "${limit / 1024} Mo/s" else "$limit Ko/s"} " +
+                            "(partagé entre les segments et les tâches).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(0 to "Illimité", 256 to "256 Ko/s", 512 to "512 Ko/s", 1024 to "1 Mo/s", 2048 to "2 Mo/s", 5120 to "5 Mo/s")
+                            .forEach { (kb, label) ->
+                                FilterChip(
+                                    selected = limit == kb,
+                                    onClick = { viewModel.setDownloadSpeedLimitKb(kb) },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
+                                )
+                            }
+                    }
+                }
+            }
+            item {
+                // §netto-automatique (conversation 10) : éviter la saturation du stockage
+                val days = viewModel.downloadAutoCleanDays.collectAsState().value
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Nettoyage automatique", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (days == 0) "Jamais — les épisodes téléchargés restent jusqu'à suppression manuelle."
+                        else "Les fichiers terminés depuis plus de $days jours sont supprimés au démarrage.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(0 to "Jamais", 3 to "3 jours", 7 to "7 jours", 30 to "30 jours", 90 to "90 jours")
+                            .forEach { (d, label) ->
+                                FilterChip(
+                                    selected = days == d,
+                                    onClick = { viewModel.setDownloadAutoCleanDays(d) },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
+                                )
+                            }
+                    }
+                }
+            }
                 item {
                     SettingRow(
                         title = "Dossier de stockage (téléchargements + hors ligne)",

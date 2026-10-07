@@ -45,6 +45,13 @@ interface DownloadEngine {
     /** §progression : progression de CHAQUE tâche active (clé = id de tâche). */
     val progressByTask: Flow<Map<String, DownloadProgress>>
     val notifications: Flow<DownloadNotice>
+
+    /**
+     * §service-telechargement (conversation 10) : nombre de tâches prises en
+     * charge par le moteur (0 = file au repos). Le service au premier plan s'en
+     * sert pour s'arrêter de lui-même au lieu de laisser une notification.
+     */
+    val runningCount: Flow<Int>
 }
 
 data class DownloadNotice(val taskId: String, val title: String, val message: String, val ok: Boolean)
@@ -62,12 +69,18 @@ class DownloadManager(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val maxParallel: Int = 2,
     private val partsPerTask: Int = 4,
+    /** §debit (conversation 10) : plafond de bande passante en octets/s (0 = illimité). */
+    private val throttleBytesPerSec: () -> Long = { 0L },
+    /** §espace-disque : octets libres sur le volume de travail (contrôle avant départ). */
+    private val freeSpaceProvider: (() -> Long)? = null,
 ) : DownloadEngine {
 
     private val engine = SegmentEngine(http)
     private val hlsEngine = dev.endlesssea.downloader.hls.HlsEngine(http)
     private val jobs = mutableMapOf<String, Job>()
     private val semaphore = Semaphore(maxParallel)
+    private val _runningCount = MutableStateFlow(0)
+    override val runningCount: Flow<Int> = _runningCount
     private val progressFlow = MutableStateFlow(DownloadProgress("", DownloadStatus.QUEUED, 0, 0, 0, 0))
     private val notices = Channel<DownloadNotice>(Channel.BUFFERED)
     override val progress = progressFlow
@@ -110,7 +123,27 @@ class DownloadManager(
     override suspend fun recoverQueue() {
         dao.schedulable().forEach { dao.updateStatus(it.id, DownloadStatus.QUEUED.name) }
         dao.schedulable().forEach { kick(it.id) }
+        // §nettoyage (conversation 10) : les .part sans tâche associée (annulation
+        // interrompue, changement de nom…) restaient à vie dans .tmp.
+        runCatching { purgeOrphanParts() }
     }
+
+    /** Supprime les fichiers temporaires qu'aucune tâche n'utilise plus. */
+    suspend fun purgeOrphanParts(deleteFiles: Boolean = true): Int =
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val tmp = tempDirProvider().resolve(".tmp")
+            val files = tmp.listFiles()?.filter { it.isFile && it.name.endsWith(".part") } ?: return@withContext 0
+            // On ne garde que les .part réellement utiles : tâches en file ou en pause.
+            val known = runCatching { dao.activeFileNames() }.getOrDefault(emptyList())
+                .map { "${it.removeSuffix(".part")}.part" }.toSet()
+            var removed = 0
+            files.forEach { file ->
+                if (file.name !in known) {
+                    if (deleteFiles && file.delete()) removed++
+                }
+            }
+            removed
+        }
 
     override suspend fun reorder(taskId: String, up: Boolean) {
         val queue = dao.schedulable()
@@ -127,10 +160,16 @@ class DownloadManager(
     private fun kick(taskId: String) {
         if (jobs.containsKey(taskId)) return
         jobs[taskId] = scope.launch {
-            semaphore.withPermit {
-                runTask(taskId)
+            try {
+                semaphore.withPermit { runTask(taskId) }
+            } finally {
+                // §service : la tâche quitte la file — le service au premier plan
+                // s'arrêtera une fois la dernière terminée.
+                jobs.remove(taskId)
+                _runningCount.value = jobs.size
             }
         }
+        _runningCount.value = jobs.size
     }
 
     private suspend fun runTask(taskId: String) {
@@ -156,6 +195,17 @@ class DownloadManager(
             val probe = engine.probe(task.url, task.headersMap())
             val expected = if (probe.contentLength > 0) probe.contentLength else task.totalBytes
             dao.upsert(task.copy(totalBytes = expected, etag = probe.etag))
+
+            // §espace-disque (conversation 10) : un téléchargement qui ne tient pas
+            // échoue AVANT de saturer la mémoire de stockage (et proprement).
+            val free = runCatching { freeSpaceProvider?.invoke() ?: -1L }.getOrDefault(-1L)
+            if (expected > 0 && free > 0 && expected + DISK_MARGIN_BYTES > free) {
+                val manque = (expected + DISK_MARGIN_BYTES - free) / (1024 * 1024)
+                throw SegmentEngine.SourceError(
+                    "Espace insuffisant : il manque environ $manque Mo sur l'appareil " +
+                        "(fichier de ${expected / (1024 * 1024)} Mo).",
+                )
+            }
 
             val parts = tempDirProvider().resolve(".tmp").apply { mkdirs() }
             val part = File(parts, "${task.fileName}.part")
@@ -183,6 +233,7 @@ class DownloadManager(
                 headers = task.headersMap(),
                 segments = table.map { SegmentEngine.Segment(it.idx, it.startByte, it.endByte, it.downloadedBytes) },
                 target = part,
+                throttleBytesPerSec = runCatching { throttleBytesPerSec() }.getOrDefault(0L),
             ) { seg ->
                 scope.launch(Dispatchers.IO) { dao.checkpoint(taskId, seg.idx, seg.downloaded, seg.done) }
                 speedWindowBytes += CHECKPOINT_EST
@@ -230,6 +281,10 @@ class DownloadManager(
                 notices.trySend(DownloadNotice(taskId, finalName, "Fichier suspect refusé", ok = false))
                 return
             }
+            // §integrite (conversation 10) : empreinte SHA-256 du fichier final,
+            // conservée pour permettre une vérification ultérieure.
+            val hash = runCatching { sha256(finalFile) }.getOrNull()
+            if (hash != null) dao.setHash(taskId, hash)
             publishFinal(taskId, task, finalFile)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             notices.trySend(DownloadNotice(taskId, finalName, "Téléchargement terminé", ok = true))
@@ -287,7 +342,14 @@ class DownloadManager(
             val finalName = task.fileName.removeSuffix(".part")
             val finalFile = part.parentFile?.resolve(finalName) ?: File(finalName)
             part.renameTo(finalFile)
-            dao.upsert(task.copy(totalBytes = bytes, updatedAt = System.currentTimeMillis()))
+            val hash = runCatching { sha256(finalFile) }.getOrNull()
+            dao.upsert(
+                task.copy(
+                    totalBytes = bytes,
+                    sha256 = hash,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
             publishFinal(taskId, dao.byId(taskId) ?: task, finalFile)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             notices.trySend(
@@ -343,6 +405,8 @@ class DownloadManager(
 
     companion object {
         private const val CHECKPOINT_EST = 256L * 1024       // speed-window granularity
+        /** §espace-disque : marge gardée libre en plus de la taille du fichier. */
+        private const val DISK_MARGIN_BYTES = 64L * 1024 * 1024
         fun sha256(file: File): String =
             file.inputStream().use { input ->
                 val md = MessageDigest.getInstance("SHA-256")

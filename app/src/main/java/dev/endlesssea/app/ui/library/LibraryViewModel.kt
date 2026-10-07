@@ -255,6 +255,43 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch { applyFilter() }
     }
 
+    // ------------------------------------------------ §netto-automatique (conversation 10)
+
+    /** Délai de purge des téléchargements terminés (jours, 0 = jamais). */
+    val autoCleanDays: StateFlow<Int> = prefs.downloadAutoCleanDays
+    fun setAutoCleanDays(days: Int) = prefs.setDownloadAutoCleanDays(days)
+
+    /**
+     * §nettoyage : supprime tout de suite les fichiers terminés au-delà du délai.
+     * Renvoie un compte rendu lisible (« 3 fichiers · 1.2 Go libérés ») ; sans
+     * délai configuré, la vérification reste possible (c'est un bouton, pas une
+     * suppression surprise).
+     */
+    fun cleanNow(): String {
+        val days = prefs.downloadAutoCleanDays.value
+        val cutoff = if (days <= 0) 0L
+        else System.currentTimeMillis() - days * 24L * 60L * 60L * 1000L
+        return try {
+            val tasks = kotlinx.coroutines.runBlocking {
+                downloadsDao.completedOlderThan(if (cutoff == 0L) Long.MAX_VALUE else cutoff)
+            }
+            var bytes = 0L
+            val freed = tasks.also {
+                it.forEach { task ->
+                    val uri = task.targetUri
+                    val ok = runCatching {
+                        context.contentResolver.delete(android.net.Uri.parse(uri), null, null) > 0
+                    }.getOrDefault(false)
+                    if (ok) bytes += task.totalBytes
+                }
+            }.count()
+            if (freed == 0) "aucun fichier à supprimer"
+            else "$freed fichier(s) · " + dev.endlesssea.app.local.LocalVideos.humanSize(bytes) + " libérés"
+        } catch (e: Exception) {
+            "erreur : ${e.message ?: "inconnue"}"
+        }
+    }
+
     /** Onglets de progression : ALL · WATCHING · COMPLETED (conversation 6). */
     fun setStatusTab(tab: String) {
         _uiState.value = _uiState.value.copy(statusTab = tab)

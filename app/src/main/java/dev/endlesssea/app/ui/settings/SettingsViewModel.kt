@@ -203,6 +203,14 @@ class SettingsViewModel @Inject constructor(
     fun setLiquidGlass(v: Int) { prefs.setLiquidGlass(v) }
     /** §mégaskip / §auto-skip / §orientation-lecteur */
     val megaSkipSeconds: StateFlow<Int> = prefs.megaSkipSeconds
+
+    /** §debit (conversation 10) : plafond de bande passante des téléchargements. */
+    val downloadSpeedLimitKb: StateFlow<Int> = prefs.downloadSpeedLimitKb
+    fun setDownloadSpeedLimitKb(kb: Int) = prefs.setDownloadSpeedLimitKb(kb)
+
+    /** §netto-automatique (conversation 10) : purge des fichiers terminés (jours). */
+    val downloadAutoCleanDays: StateFlow<Int> = prefs.downloadAutoCleanDays
+    fun setDownloadAutoCleanDays(days: Int) = prefs.setDownloadAutoCleanDays(days)
     val autoSkipMarkers: StateFlow<Boolean> = prefs.autoSkipMarkers
     val playerOrientation: StateFlow<String> = prefs.playerOrientation
     fun setMegaSkipSeconds(v: Int) { prefs.setMegaSkipSeconds(v) }

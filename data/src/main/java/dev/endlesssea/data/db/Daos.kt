@@ -94,6 +94,14 @@ interface DownloadsDao {
     @Query("SELECT EXISTS(SELECT 1 FROM download_tasks WHERE episodeId = :episodeId AND quality = :quality AND status = 'COMPLETED')")
     suspend fun alreadyDownloaded(episodeId: String, quality: String): Boolean
     @Query("UPDATE download_tasks SET priority = :p WHERE id = :id") suspend fun setPriority(id: String, p: Int)
+    /** §nettoyage : noms de fichiers encore utiles (file + pause) — le reste est orphelin. */
+    @Query("SELECT fileName FROM download_tasks WHERE status IN ('QUEUED','PROBING','DOWNLOADING','PAUSED')")
+    suspend fun activeFileNames(): List<String>
+    /** §integrite : mémorise l'empreinte SHA-256 calculée après téléchargement. */
+    @Query("UPDATE download_tasks SET sha256 = :hash WHERE id = :id") suspend fun setHash(id: String, hash: String?)
+    /** §nettoyage : tâches terminées plus vieilles que :before (purge automatique). */
+    @Query("SELECT * FROM download_tasks WHERE status = 'COMPLETED' AND updatedAt < :before")
+    suspend fun completedOlderThan(before: Long): List<DownloadTaskEntity>
     /** §hors-ligne : fichiers téléchargés d'un média (fiche « Sur l'appareil »). */
     @Query("SELECT * FROM download_tasks WHERE mediaId = :mediaId AND status = 'COMPLETED'")
     suspend fun completedForMedia(mediaId: String): List<DownloadTaskEntity>

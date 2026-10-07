@@ -18,7 +18,7 @@ import androidx.room.RoomDatabase
         SkipCacheEntity::class,
         SkipButtonEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class EsDatabase : RoomDatabase() {
