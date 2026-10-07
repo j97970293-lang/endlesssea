@@ -241,12 +241,17 @@ object LocalVideos {
      */
     fun episodeNumber(fileName: String): Int? {
         val base = fileName.substringBeforeLast('.')
+        if (Regex("(?i)(?:e(?:p(?:isode)?)?[ ._-]?|^|[ _-])\\d+[.,]\\d+(?![A-Za-z0-9])").containsMatchIn(base)) return null
         Regex("(?i)s(\\d{1,2})[ ._-]*e(\\d{1,3})").find(base)?.let { return it.groupValues[2].toInt() }
         Regex("(?i)\\bep?(?:isode)?[ ._-]?(\\d{1,3})\\b").find(base)?.let { return it.groupValues[1].toInt() }
         Regex("(?i)^(\\d{1,3})[ ._-]").find(base)?.let { return it.groupValues[1].toInt() }
         Regex("(?i)[ ._-](\\d{1,3})\\s*$").find(base)?.let { return it.groupValues[1].toInt() }
         return null
     }
+
+    /** Saison conservée pour éviter de synchroniser S02E03 sur une entrée de saison 1. */
+    fun episodeSeason(fileName: String): Int? =
+        Regex("(?i)s(\\d{1,2})[ ._-]*e\\d{1,3}").find(fileName)?.groupValues?.get(1)?.toIntOrNull()
 
     /** Titre lisible d'un fichier une fois le numéro retiré (« Le début »). */
     fun episodeTitleFromFileName(fileName: String): String = fileName.substringBeforeLast('.')

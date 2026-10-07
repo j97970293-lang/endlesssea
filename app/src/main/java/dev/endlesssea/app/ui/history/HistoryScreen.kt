@@ -9,6 +9,10 @@ import dev.endlesssea.data.db.MediaDao
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,7 +31,10 @@ class HistoryViewModel @Inject constructor(private val dao: WatchHistoryDao, pri
         viewModelScope.launch {
             dao.observeAll().collect { entries ->
                 _titles.value = entries.map { it.mediaId }.distinct().filter { it.isNotBlank() }.associateWith {
-                    mediaDao.byId(it)?.title ?: it
+                    mediaDao.byId(it)?.title ?: if (it.startsWith("local:")) {
+                        dev.endlesssea.app.local.LocalVideos.seriesMeta[it.removePrefix("local:")]?.title
+                            ?: dev.endlesssea.app.local.LocalNames.pretty(it.removePrefix("local:"))
+                    } else it
                 }
             }
         }
@@ -46,6 +53,7 @@ class HistoryViewModel @Inject constructor(private val dao: WatchHistoryDao, pri
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(onBack: () -> Unit, viewModel: HistoryViewModel = androidx.hilt.navigation.compose.hiltViewModel()) {
     val entries by viewModel.entries.collectAsState()
@@ -62,7 +70,7 @@ fun HistoryScreen(onBack: () -> Unit, viewModel: HistoryViewModel = androidx.hil
             }
             Text("Effacer l'historique ne supprime ni les vidéos ni le suivi envoyé aux trackers.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { pending = "Tout effacer ?" to { viewModel.clear("all") } }) { Text("Tout effacer") }
-            TextButton(onClick = { pending = "Effacer les épisodes vus à 95 % ?" to { viewModel.clear("completed") } }) { Text("Effacer les vus (95 %) ") }
+            TextButton(onClick = { pending = "Effacer les épisodes marqués vus ou lus à 95 % ?" to { viewModel.clear("completed") } }) { Text("Effacer les vus") }
             Row {
                 listOf(7, 30, 90).forEach { days ->
                     TextButton(onClick = { pending = "Effacer les entrées de plus de $days jours ?" to { viewModel.clear(days.toString()) } }) { Text("$days jours") }
@@ -70,7 +78,18 @@ fun HistoryScreen(onBack: () -> Unit, viewModel: HistoryViewModel = androidx.hil
             }
         }
         items(entries, key = { it.episodeId }) { entry ->
-            Column {
+            val dismissState = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
+                if (value != SwipeToDismissBoxValue.Settled) {
+                    pending = "Supprimer cette entrée ?" to { viewModel.deleteEpisode(entry.episodeId) }
+                }
+                false
+            })
+            SwipeToDismissBox(state = dismissState, backgroundContent = {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(16.dp),
+                    contentAlignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd) {
+                    Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = MaterialTheme.colorScheme.onErrorContainer)
+                }
+            }) { Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
                 Text(titles[entry.mediaId] ?: "Vidéo locale", style = MaterialTheme.typography.titleSmall)
                 Text(entry.episodeId.substringAfterLast('/'), maxLines = 1)
                 Text("${dev.endlesssea.app.ui.player.themes.fmtTime(entry.positionMs)} / ${dev.endlesssea.app.ui.player.themes.fmtTime(entry.durationMs)}")
@@ -78,7 +97,7 @@ fun HistoryScreen(onBack: () -> Unit, viewModel: HistoryViewModel = androidx.hil
                     TextButton(onClick = { pending = "Supprimer cette entrée ?" to { viewModel.deleteEpisode(entry.episodeId) } }) { Text("Supprimer") }
                     if (entry.mediaId.isNotBlank()) TextButton(onClick = { pending = "Supprimer l'historique de cette série ?" to { viewModel.deleteMedia(entry.mediaId) } }) { Text("Toute la série") }
                 }
-            }
+            } }
         }
     }
     pending?.let { (label, action) ->

@@ -1,5 +1,7 @@
 package dev.endlesssea.app.ui.player
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -124,6 +126,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         viewModel.engine.pause()
+        lifecycleScope.launch { viewModel.persistPosition() }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +61,8 @@ fun LocalDetailsScreen(
 ) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
+    val history by viewModel.localHistory.collectAsState()
+    var confirmAllWatched by remember(folderUri) { mutableStateOf(false) }
     val cached by LocalLibraryCache.files.collectAsState()
 
     // La fiche fonctionne que l'on vienne de la bibliothèque (état chargé) ou
@@ -70,7 +74,8 @@ fun LocalDetailsScreen(
             // puis par nom — au lieu du tri alphabétique « épisode 10, épisode 2 ».
             .sortedWith(
                 compareBy(
-                    { LocalVideos.episodeNumber(it.displayName) ?: Int.MAX_VALUE },
+                    { LocalVideos.episodeSeason(it.name) ?: 0 },
+                    { LocalVideos.episodeNumber(it.name) ?: Int.MAX_VALUE },
                     { it.displayName.lowercase() },
                 ),
             )
@@ -82,6 +87,16 @@ fun LocalDetailsScreen(
     } ?: "Dossier"
     val cover = meta?.coverUri ?: files.firstOrNull { it.customCoverUri != null }?.customCoverUri
         ?: first?.uri
+
+    val seriesHistory = history.filter { entry -> files.any { it.uri == entry.episodeId } }
+    val watchedCount = seriesHistory.count { it.watched }
+    if (confirmAllWatched) {
+        AlertDialog(onDismissRequest = { confirmAllWatched = false },
+            title = { Text("Tout marquer vu ?") },
+            text = { Text("Les ${files.size} vidéos de ce dossier seront marquées vues dans l'historique local, sans modifier le tracker.") },
+            confirmButton = { TextButton(onClick = { viewModel.markLocalFolderWatched(folderUri, files); confirmAllWatched = false }) { Text("Confirmer") } },
+            dismissButton = { TextButton(onClick = { confirmAllWatched = false }) { Text("Annuler") } })
+    }
 
     // Repères communs au dossier : pré-remplis avec ce qui existe déjà.
     var introStart by remember(folderUri, files.size) {
@@ -183,6 +198,14 @@ fun LocalDetailsScreen(
             }
         }
 
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text("Progression : $watchedCount / ${files.size}", style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { confirmAllWatched = true }, enabled = files.isNotEmpty()) { Text("Tout marquer vu") }
+                LocalTrackerCard(folderUri = folderUri, title = title, files = files)
+            }
+        }
+
         // ---- Intro / outro valables pour TOUT le dossier
         item {
             GlassCard(
@@ -267,10 +290,10 @@ fun LocalDetailsScreen(
                     Column(Modifier.weight(1f)) {
                         // §episodes-json : « Ép. 3 · Le début » quand le dossier
                         // publie episodes.json, sinon le nom de fichier nettoyé.
-                        val number = LocalVideos.episodeNumber(video.displayName)
+                        val number = LocalVideos.episodeNumber(video.name)
                         val metaTitle = number?.let { meta?.episodeTitles?.get(it) }
                         val shownTitle = metaTitle
-                            ?: LocalVideos.episodeTitleFromFileName(video.displayName)
+                            ?: LocalVideos.episodeTitleFromFileName(video.name)
                                 .ifBlank { video.displayName }
                         Text(
                             if (number != null) "Ép. $number · $shownTitle" else shownTitle,
@@ -284,7 +307,12 @@ fun LocalDetailsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text("▶", style = MaterialTheme.typography.titleMedium)
+                    val watched = seriesHistory.any { it.episodeId == video.uri && it.watched }
+                    androidx.compose.material3.Icon(
+                        if (watched) androidx.compose.material.icons.Icons.Default.Check
+                        else androidx.compose.material.icons.Icons.Default.PlayArrow,
+                        contentDescription = if (watched) "Vu" else "Lire",
+                    )
                 }
             }
         }

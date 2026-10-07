@@ -23,6 +23,7 @@ interface MediaDao {
 
 @Dao
 interface EpisodeDao {
+    @Query("SELECT * FROM episodes WHERE id = :id") suspend fun byId(id: String): EpisodeEntity?
     @Upsert suspend fun upsertAll(items: List<EpisodeEntity>)
     @Query("SELECT * FROM episodes WHERE mediaId = :mediaId ORDER BY season, number")
     fun ofMedia(mediaId: String): Flow<List<EpisodeEntity>>
@@ -51,11 +52,13 @@ interface WatchHistoryDao {
     fun observeAll(): Flow<List<WatchHistoryEntity>>
     @Query("DELETE FROM watch_history WHERE episodeId = :id") suspend fun deleteEpisode(id: String)
     @Query("DELETE FROM watch_history WHERE mediaId = :id") suspend fun deleteMedia(id: String)
-    @Query("DELETE FROM watch_history WHERE durationMs > 0 AND positionMs * 1.0 / durationMs >= 0.95") suspend fun deleteCompleted(): Int
+    @Query("DELETE FROM watch_history WHERE watched = 1 OR (durationMs > 0 AND positionMs * 1.0 / durationMs >= 0.95)") suspend fun deleteCompleted(): Int
     @Query("DELETE FROM watch_history WHERE updatedAt < :before") suspend fun deleteOlderThan(before: Long): Int
     @Query("DELETE FROM watch_history") suspend fun deleteAll(): Int
 
     @Upsert suspend fun upsert(entry: WatchHistoryEntity)
+    @androidx.room.Transaction
+    @Upsert suspend fun upsertAll(entries: List<WatchHistoryEntity>)
     @Query("SELECT * FROM watch_history WHERE episodeId = :id") suspend fun byEpisode(id: String): WatchHistoryEntity?
     /** "Continue watching": started, not finished (spec §10). */
     @Query("SELECT * FROM watch_history WHERE watched = 0 AND positionMs > 0 ORDER BY updatedAt DESC LIMIT :limit")

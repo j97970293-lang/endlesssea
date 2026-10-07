@@ -387,7 +387,7 @@ class DetailsViewModel @Inject constructor(
 
     private fun refreshTracker() = viewModelScope.launch {
         _trackerLink.value = trackers.linkOf(mediaId)
-        _connectedServices.value = trackers.accounts.first().filter { it.enabled }
+        _connectedServices.value = trackers.accounts.first().filter { it.enabled && it.userName.isNotBlank() && it.service != "TMDB" }
             .map { it.service }
     }
 
@@ -407,14 +407,38 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    fun linkTracker(service: String, hit: dev.endlesssea.app.tracking.TrackerSearchHit) {
+    fun linkTracker(
+        service: String, hit: dev.endlesssea.app.tracking.TrackerSearchHit,
+        autoMatch: Boolean = false, season: Int? = null,
+    ) {
         viewModelScope.launch {
-            trackers.link(mediaId, service, hit, status = "WATCHING")
+            trackers.link(mediaId, service, hit, status = "WATCHING", autoMatchEpisodes = autoMatch, autoMatchSeason = season)
             _trackerSearch.value = TrackerSearchState()
             refreshTracker()
             trackerTick.value += 1
             _uiState.value = _uiState.value.copy(message = "Rattaché : ${hit.title}")
         }
+    }
+
+    fun setEpisodeMatching(enabled: Boolean, season: Int?) = viewModelScope.launch {
+        trackers.setEpisodeMatching(mediaId, enabled, season)
+        refreshTracker()
+    }
+
+    /** Action explicite sur l'historique local ; ne modifie pas le compte distant. */
+    fun markAllWatched() = viewModelScope.launch {
+        val episodes = _uiState.value.episodes
+        historyDao.upsertAll(episodes.map { ep ->
+            val old = historyDao.byEpisode(ep.id)
+            dev.endlesssea.data.db.WatchHistoryEntity(
+                episodeId = ep.id, mediaId = mediaId,
+                positionMs = old?.positionMs ?: 0L,
+                durationMs = ep.durationMs ?: old?.durationMs ?: 0L, watched = true,
+            )
+        })
+        watchedCount.value = historyDao.watchedCount(mediaId)
+        resumeEpisodeId.value = null
+        _uiState.value = _uiState.value.copy(message = "Épisodes marqués vus dans l'historique local")
     }
 
     fun unlinkTracker() = viewModelScope.launch {

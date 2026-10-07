@@ -3,6 +3,7 @@ package dev.endlesssea.app.tracking
 import dev.endlesssea.data.db.TrackerAccountEntity
 import dev.endlesssea.data.db.TrackerDao
 import dev.endlesssea.data.db.TrackerLinkEntity
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -57,15 +58,15 @@ class TrackerRepository @Inject constructor(
         )
         val name = runCatching { svc.whoAmI(entity) }.getOrElse { e ->
             // Message court et actionnable : « Jeton refusé », « HTTP 500 »…
-            dao.upsertAccount(entity.copy(lastError = e.message))
+            dao.account(id)?.let { dao.setLastError(id, e.message) }
             TrackerRegistry.log("connect", "$id : ${e.message}")
             return@withContext null
         } ?: run {
-            dao.upsertAccount(entity.copy(lastError = "Identifiants refusés"))
+            dao.account(id)?.let { dao.setLastError(id, "Identifiants refusés") }
             return@withContext null
         }
-        // MAL : échéance connue (~1 h) → le rafraîchissement devient automatique.
-        val expires = if (id == "MAL") System.currentTimeMillis() + 55L * 60L * 1000L else 0L
+        // Un jeton collé n'indique pas sa date d'expiration : ne pas l'inventer.
+        val expires = 0L
         dao.upsertAccount(entity.copy(userName = name, expiresAt = expires, lastError = null))
         name
     }
@@ -83,18 +84,26 @@ class TrackerRepository @Inject constructor(
 
     /** Compte connecté ET actif (un compte désactivé n'envoie rien). */
     private suspend fun activeAccount(id: String): TrackerAccountEntity? =
-        dao.account(id)?.takeIf { it.enabled }
+        dao.account(id)?.takeIf { it.enabled && it.userName.isNotBlank() }
 
-    /** Renouvelle le jeton MAL s'il est sur le point d'expirer. */
-    private suspend fun freshAccount(account: TrackerAccountEntity): TrackerAccountEntity {
-        if (account.service != "MAL") return account
-        if (account.expiresAt == 0L || account.expiresAt > System.currentTimeMillis() + 60_000L) {
-            return account
+    private suspend fun renewMal(account: TrackerAccountEntity): TrackerAccountEntity? {
+        val mal = service("MAL") as? MalService ?: return null
+        val token = mal.refresh(account) ?: return null
+        dao.updateTokens("MAL", token.accessToken, token.refreshToken, token.expiresAt)
+        return account.copy(accessToken = token.accessToken, refreshToken = token.refreshToken, expiresAt = token.expiresAt)
+    }
+
+    /** Une échéance inconnue est renouvelée sur HTTP 401, pas sur une durée inventée. */
+    private suspend fun <T> withFreshAccount(account: TrackerAccountEntity, action: suspend (TrackerAccountEntity) -> T): T {
+        val fresh = if (account.service == "MAL" && account.expiresAt > 0L &&
+            account.expiresAt <= System.currentTimeMillis() + 60_000L) renewMal(account) ?: account else account
+        return try {
+            action(fresh)
+        } catch (error: TrackerError) {
+            if (fresh.service != "MAL" || error.httpCode != 401) throw error
+            val renewed = renewMal(fresh) ?: throw error
+            action(renewed)
         }
-        val mal = service("MAL") as? MalService ?: return account
-        val token = mal.refresh(account) ?: return account
-        dao.updateTokens("MAL", token, account.refreshToken, System.currentTimeMillis() + 55L * 60L * 1000L)
-        return account.copy(accessToken = token)
     }
 
     // ---------------------------------------------------------------- recherche
@@ -103,7 +112,7 @@ class TrackerRepository @Inject constructor(
     suspend fun search(id: String, query: String): List<TrackerSearchHit> = withContext(Dispatchers.IO) {
         val svc = service(id) ?: return@withContext emptyList()
         val account = activeAccount(id) ?: return@withContext emptyList()
-        runCatching { svc.search(freshAccount(account), query) }.getOrElse { e ->
+        runCatching { withFreshAccount(account) { svc.search(it, query) } }.getOrElse { e ->
             TrackerRegistry.log("search", "$id : ${e.message}")
             emptyList()
         }
@@ -111,7 +120,10 @@ class TrackerRepository @Inject constructor(
 
     // ---------------------------------------------------------------- rattachement
 
-    suspend fun link(mediaId: String, service: String, hit: TrackerSearchHit, status: String = "PLANNING") =
+    suspend fun link(
+        mediaId: String, service: String, hit: TrackerSearchHit, status: String = "PLANNING",
+        autoMatchEpisodes: Boolean = false, autoMatchSeason: Int? = null,
+    ) =
         withContext(Dispatchers.IO) {
             dao.upsertLink(
                 TrackerLinkEntity(
@@ -122,6 +134,8 @@ class TrackerRepository @Inject constructor(
                     totalEpisodes = hit.totalEpisodes ?: 0,
                     progress = 0,
                     status = status,
+                    autoMatchEpisodes = autoMatchEpisodes,
+                    autoMatchSeason = autoMatchSeason,
                 ),
             )
         }
@@ -131,45 +145,53 @@ class TrackerRepository @Inject constructor(
     suspend fun linkOf(mediaId: String): TrackerLinkEntity? =
         withContext(Dispatchers.IO) { dao.link(mediaId) }
 
-    /**
-     * §suivi-automatique : marque l'épisode courant comme vu (progression +1).
-     * Idempotent : repasser la fin du même épisode ne le compte pas deux fois.
-     * Toujours écrit en local, même si le service est injoignable.
-     */
-    suspend fun markEpisodeWatched(mediaId: String, episodeId: String): Boolean =
+    private val progressMutex = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun setEpisodeMatching(mediaId: String, enabled: Boolean, season: Int?) =
         withContext(Dispatchers.IO) {
-            val link = dao.link(mediaId) ?: return@withContext false
-            if (link.lastEpisodeId == episodeId) return@withContext false
-            val next = link.progress + 1
-            val total = link.totalEpisodes.takeIf { it > 0 }
-            val status = if (total != null && next >= total) "COMPLETED" else "WATCHING"
-            dao.upsertLink(
-                link.copy(
-                    progress = next,
-                    status = status,
-                    lastEpisodeId = episodeId,
-                    pendingSync = true,
-                    updatedAt = System.currentTimeMillis(),
-                ),
-            )
-            push(link.copy(progress = next, status = status), next, total, status)
+            progressMutex.withLock {
+                dao.link(mediaId)?.let {
+                    dao.upsertLink(it.copy(autoMatchEpisodes = enabled, autoMatchSeason = season))
+                }
+            }
         }
+
+    /** À 90 %, applique le numéro de la saison choisie ; une relecture ne compte jamais deux fois. */
+    suspend fun markEpisodeWatched(
+        mediaId: String, episodeId: String, number: Float?, season: Int?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        progressMutex.withLock {
+            val link = dao.link(mediaId) ?: return@withLock false
+            val next = EpisodeMatching.nextProgress(
+                link.autoMatchEpisodes, link.autoMatchSeason, season, number,
+                link.progress, link.totalEpisodes,
+            ) ?: return@withLock false
+            val total = link.totalEpisodes.takeIf { it > 0 }
+            val status = if (total != null && next == total) "COMPLETED" else "WATCHING"
+            val updated = link.copy(
+                progress = next, status = status, lastEpisodeId = episodeId,
+                pendingSync = true, updatedAt = System.currentTimeMillis(),
+            )
+            dao.upsertLink(updated)
+            push(updated, next, total, status)
+        }
+    }
 
     /** Suivi manuel : « marquer l'épisode suivant vu » et changement de statut. */
     suspend fun setProgress(mediaId: String, progress: Int, status: String? = null): Boolean =
         withContext(Dispatchers.IO) {
-            val link = dao.link(mediaId) ?: return@withContext false
-            val total = link.totalEpisodes.takeIf { it > 0 }
-            val newStatus = status ?: if (total != null && progress >= total) "COMPLETED" else "WATCHING"
-            dao.upsertLink(
-                link.copy(
-                    progress = progress,
-                    status = newStatus,
-                    pendingSync = true,
+            progressMutex.withLock {
+                val link = dao.link(mediaId) ?: return@withLock false
+                if (progress < 0 || (link.totalEpisodes > 0 && progress > link.totalEpisodes)) return@withLock false
+                val total = link.totalEpisodes.takeIf { it > 0 }
+                val newStatus = status ?: if (total != null && progress >= total) "COMPLETED" else "WATCHING"
+                val updated = link.copy(
+                    progress = progress, status = newStatus, pendingSync = true,
                     updatedAt = System.currentTimeMillis(),
-                ),
-            )
-            push(link.copy(progress = progress, status = newStatus), progress, total, newStatus)
+                )
+                dao.upsertLink(updated)
+                push(updated, progress, total, newStatus)
+            }
         }
 
     /** Pousse l'état vers le service ; en cas d'échec le drapeau reste levé. */
@@ -182,7 +204,7 @@ class TrackerRepository @Inject constructor(
         val account = activeAccount(link.service) ?: return false
         val svc = service(link.service) ?: return false
         val ok = runCatching {
-            svc.pushProgress(freshAccount(account), link.remoteId, progress, total, status)
+            withFreshAccount(account) { svc.pushProgress(it, link.remoteId, progress, total, status) }
         }.getOrElse { e ->
             dao.setLastError(link.service, e.message)
             TrackerRegistry.log("push", "${link.service} : ${e.message}")
@@ -190,7 +212,7 @@ class TrackerRepository @Inject constructor(
         }
         if (ok) {
             dao.setLastError(link.service, null)
-            dao.link(link.mediaId)?.let { dao.upsertLink(it.copy(pendingSync = false)) }
+            dao.acknowledge(link.mediaId, link.remoteId, link.service, progress, status, link.updatedAt)
         }
         return ok
     }
@@ -202,9 +224,11 @@ class TrackerRepository @Inject constructor(
      */
     suspend fun syncPending(): Int = withContext(Dispatchers.IO) {
         var done = 0
-        dao.pendingLinks().forEach { link ->
-            val total = link.totalEpisodes.takeIf { it > 0 }
-            if (push(link, link.progress, total, link.status)) done++
+        progressMutex.withLock {
+            dao.pendingLinks().forEach { link ->
+                val total = link.totalEpisodes.takeIf { it > 0 }
+                if (push(link, link.progress, total, link.status)) done++
+            }
         }
         done
     }
@@ -220,7 +244,7 @@ class TrackerRepository @Inject constructor(
     ): TrackerDetails? = withContext(Dispatchers.IO) {
         val account = activeAccount("TMDB") ?: return@withContext null
         val svc = service("TMDB") ?: return@withContext null
-        runCatching { svc.details(freshAccount(account), remoteIdWithKind) }.getOrNull()
+        runCatching { svc.details(account, remoteIdWithKind) }.getOrNull()
     }
 
     /** Recherche TMDB (sert à trouver l'identifiant à partir du titre). */

@@ -362,7 +362,8 @@ fun LibraryScreen(
                                     card = card,
                                     onClick = {
                                         // une fiche connue s'ouvre ; sinon on reprend le média
-                                        if (card.mediaId.isNotBlank()) onMediaClick(card.mediaId)
+                                        if (card.mediaId.startsWith("local:")) onLocalFolderClick(card.mediaId.removePrefix("local:"))
+                                        else if (card.mediaId.isNotBlank()) onMediaClick(card.mediaId)
                                     },
                                 )
                             }
@@ -823,47 +824,7 @@ private fun LocalFilesPanel(
                                 )
                             }
                             androidx.compose.material3.Button(onClick = {
-                                // §épisode-suivant : toutes les vidéos du dossier
-                                // forment la file de lecture (précédent / suivant).
-                                dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
-                                dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
-                                    visibleFiles.map { f ->
-                                        dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
-                                            title = f.displayName,
-                                            episodeId = f.uri,
-                                            links = listOf(
-                                                dev.endlesssea.extensions.api.model.VideoLink(
-                                                    url = f.uri,
-                                                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                                                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
-                                                    server = "Fichier local",
-                                                ),
-                                            ),
-                                        )
-                                    },
-                                    visibleFiles.indexOfFirst { it.uri == video.uri },
-                                )
-                                dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
-                                    title = video.displayName,
-                                    mediaId = null, episodeId = video.uri,
-                                    links = listOf(
-                                        dev.endlesssea.extensions.api.model.VideoLink(
-                                            url = video.uri,
-                                            streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                                            quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
-                                            server = "Fichier local",
-                                        ),
-                                    ),
-                                    startIndex = 0,
-                                    markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
-                                        introStartSec = video.introStartSec,
-                                        introEndSec = video.introEndSec,
-                                        outroStartSec = video.outroStartSec,
-                                    ),
-                                )
-                                context.startActivity(
-                                    android.content.Intent(context, dev.endlesssea.app.ui.player.PlayerActivity::class.java),
-                                )
+                                playLocal(context, visibleFiles, video)
                             }) { Text("Lire") }
                         }
                     }
@@ -1069,45 +1030,7 @@ private fun CustomCategoryPanel(
                             onClick = { viewModel.toggleCategoryItem(name, video.uri) },
                         ) { Text("Retirer") }
                         androidx.compose.material3.Button(onClick = {
-                            dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
-                            dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
-                                files.map { f ->
-                                    dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
-                                        title = f.displayName,
-                                        episodeId = f.uri,
-                                        links = listOf(
-                                            dev.endlesssea.extensions.api.model.VideoLink(
-                                                url = f.uri,
-                                                streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                                                quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
-                                                server = "Fichier local",
-                                            ),
-                                        ),
-                                    )
-                                },
-                                files.indexOfFirst { it.uri == video.uri },
-                            )
-                            dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
-                                title = video.displayName,
-                                mediaId = null, episodeId = video.uri,
-                                links = listOf(
-                                    dev.endlesssea.extensions.api.model.VideoLink(
-                                        url = video.uri,
-                                        streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                                        quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
-                                        server = "Fichier local",
-                                    ),
-                                ),
-                                startIndex = 0,
-                                markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
-                                    introStartSec = video.introStartSec,
-                                    introEndSec = video.introEndSec,
-                                    outroStartSec = video.outroStartSec,
-                                ),
-                            )
-                            context.startActivity(
-                                android.content.Intent(context, dev.endlesssea.app.ui.player.PlayerActivity::class.java),
-                            )
+                            playLocal(context, files, video)
                         }) { Text("Lire") }
                     }
                 }
@@ -1135,6 +1058,8 @@ internal fun playLocal(
                 title = it.displayName, episodeId = it.uri, links = listOf(link(it)),
                 thumbnailUrl = it.customCoverUri ?: it.uri,
                 durationMs = it.durationMs ?: 0L, episodeNumber = it.episodeNumber?.toFloat(),
+                season = dev.endlesssea.app.local.LocalVideos.episodeSeason(it.name),
+                mediaId = dev.endlesssea.app.local.LocalMediaIds.series(it.parentUri), downloaded = true,
                 markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(it.introStartSec, it.introEndSec, it.outroStartSec),
             )
         },
@@ -1142,7 +1067,7 @@ internal fun playLocal(
     )
     dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
         title = video.displayName,
-        mediaId = null, episodeId = video.uri,
+        mediaId = dev.endlesssea.app.local.LocalMediaIds.series(video.parentUri), episodeId = video.uri,
         links = listOf(link(video)),
         startIndex = 0,
         markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(

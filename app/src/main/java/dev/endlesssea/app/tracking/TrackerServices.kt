@@ -74,14 +74,14 @@ private val JSON = "application/json; charset=utf-8".toMediaType()
 private fun OkHttpClient.call(request: Request): String {
     return newCall(request).execute().use { res ->
         val body = res.body?.string().orEmpty()
-        if (res.code == 401 || res.code == 403) throw TrackerError("Jeton refusé (HTTP ${res.code})")
+        if (res.code == 401 || res.code == 403) throw TrackerError("Jeton refusé (HTTP ${res.code})", res.code)
         if (res.code == 429) throw TrackerError("Quota atteint (HTTP 429) — réessaie plus tard")
         if (res.code !in 200..299) throw TrackerError("HTTP ${res.code} : ${body.take(160)}")
         body
     }
 }
 
-class TrackerError(message: String) : Exception(message)
+class TrackerError(message: String, val httpCode: Int? = null) : Exception(message)
 
 private fun OkHttpClient.getJson(url: String, bearer: String? = null, extra: Map<String, String> = emptyMap()): String {
     val b = Request.Builder().url(url)
@@ -209,8 +209,8 @@ class AniListService(private val http: OkHttpClient) : TrackerService {
 /**
  * MyAnimeList (API v2). Le jeton d'accès s'obtient via OAuth2 avec PKCE ;
  * l'utilisateur colle ici l'`access_token` (et, s'il l'a, le `refresh_token`
- * pour que l'application puisse le renouveler toute seule — le jeton MAL ne
- * dure qu'une heure).
+ * pour le renouveler avec un client enregistré). La durée réelle est fournie
+ * par le serveur OAuth ; un jeton collé seul ne permet pas de la connaître).
  */
 class MalService(private val http: OkHttpClient) : TrackerService {
     override val id = "MAL"
@@ -253,7 +253,12 @@ class MalService(private val http: OkHttpClient) : TrackerService {
         val token = account.accessToken ?: return@withContext false
         val effective = if (totalEpisodes != null && totalEpisodes > 0 && progress >= totalEpisodes) {
             "completed"
-        } else status.lowercase()
+        } else when (status) {
+            "COMPLETED" -> "completed"
+            "DROPPED" -> "dropped"
+            "PLANNING" -> "plan_to_watch"
+            else -> "watching"
+        }
         val form = "num_watched_episodes=$progress&status=$effective"
         val request = Request.Builder()
             .url("$API/anime/$remoteId/my_list_status")
@@ -261,22 +266,32 @@ class MalService(private val http: OkHttpClient) : TrackerService {
             .header("Authorization", "Bearer $token")
             .header("User-Agent", "EndlessSea/0.23")
             .build()
-        runCatching { http.call(request) }.isSuccess
+        http.call(request)
+        true
     }
 
-    /** Renouvelle un jeton expiré (MAL expire après 1 h). */
-    suspend fun refresh(account: dev.endlesssea.data.db.TrackerAccountEntity): String? =
+    data class RefreshedToken(val accessToken: String, val refreshToken: String?, val expiresAt: Long)
+
+    /** Renouvellement d'un client natif public, sans secret ; conserve les données du serveur. */
+    suspend fun refresh(account: dev.endlesssea.data.db.TrackerAccountEntity): RefreshedToken? =
         withContext(Dispatchers.IO) {
             val clientId = account.clientId ?: return@withContext null
             val refresh = account.refreshToken ?: return@withContext null
-            val form = "client_id=$clientId&grant_type=refresh_token&refresh_token=" +
+            val form = "client_id=" + URLEncoder.encode(clientId, "UTF-8") + "&grant_type=refresh_token&refresh_token=" +
                 URLEncoder.encode(refresh, "UTF-8")
             val request = Request.Builder()
                 .url("https://myanimelist.net/v1/oauth2/token")
                 .post(form.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                 .build()
             runCatching {
-                JSONObject(http.call(request)).optString("access_token").takeIf { it.isNotBlank() }
+                val response = JSONObject(http.call(request))
+                val token = response.optString("access_token").takeIf { it.isNotBlank() } ?: return@runCatching null
+                val seconds = response.optLong("expires_in").coerceIn(0L, 365L * 24 * 3600)
+                RefreshedToken(
+                    accessToken = token,
+                    refreshToken = response.optString("refresh_token").takeIf { it.isNotBlank() } ?: account.refreshToken,
+                    expiresAt = if (seconds > 0L) System.currentTimeMillis() + seconds * 1000L else 0L,
+                )
             }.getOrNull()
         }
 
@@ -290,7 +305,8 @@ class MalService(private val http: OkHttpClient) : TrackerService {
 /**
  * Shikimori — utile quand un titre est absent du catalogue MAL ou pour les
  * utilisateurs hispanophones/russophones. Jeton collé après autorisation sur
- * https://shikimori.one/oauth (le client doit être public, redirect vide).
+ * une application enregistrée avec une URI de retour correspondante. Aucun
+ * secret client ne doit être embarqué dans cette application Android.
  */
 class ShikimoriService(private val http: OkHttpClient) : TrackerService {
     override val id = "SHIKIMORI"
@@ -337,21 +353,23 @@ class ShikimoriService(private val http: OkHttpClient) : TrackerService {
             status.equals("PLANNING", true) -> "planned"
             else -> "watching"
         }
-        // Shikimori crée/écrase le taux de visionnage (upsert métier).
-        val payload = JSONObject()
-            .put("user_rate", JSONObject()
-                .put("target_id", remoteId)
-                .put("target_type", "Anime")
-                .put("episodes", progress)
-                .put("status", shikiStatus))
-            .toString()
+        val user = JSONObject(http.getJson("$API/users/whoami", token)).optLong("id")
+        if (user <= 0 || remoteId.toLongOrNull() == null) return@withContext false
+        val rates = JSONArray(http.getJson("$API/v2/user_rates?user_id=$user&target_id=$remoteId&target_type=Anime", token))
+        val rateId = (0 until rates.length()).mapNotNull { index -> rates.optJSONObject(index) }
+            .firstOrNull { it.optString("target_id") == remoteId && it.optString("target_type") == "Anime" }
+            ?.optLong("id")?.takeIf { it > 0 }
+        val fields = JSONObject().put("episodes", progress).put("status", shikiStatus)
+        if (rateId == null) fields.put("user_id", user).put("target_id", remoteId.toLong()).put("target_type", "Anime")
+        val payload = JSONObject().put("user_rate", fields).toString().toRequestBody(JSON)
         val request = Request.Builder()
-            .url("$API/v2/user_rates")
-            .post(payload.toRequestBody(JSON))
+            .url(if (rateId != null) "$API/v2/user_rates/$rateId" else "$API/v2/user_rates")
+            .method(if (rateId != null) "PATCH" else "POST", payload)
             .header("Authorization", "Bearer $token")
-            .header("User-Agent", "EndlessSea/0.23")
+            .header("User-Agent", "EndlessSea/0.25")
             .build()
-        runCatching { http.call(request) }.isSuccess
+        http.call(request)
+        true
     }
 
     companion object {
@@ -472,12 +490,12 @@ object TrackerRegistry {
 
     /** Aide affichée sous chaque service (où trouver le jeton/la clé). */
     val HINTS: Map<String, String> = mapOf(
-        "ANILIST" to "anilist.co/settings/developer → crée une application, autorise-la, " +
-            "puis copie le jeton de l'URL de redirection.",
-        "MAL" to "myanimelist.net/apiconfig → crée une application, récupère un " +
-            "access_token (OAuth2 PKCE) et colle-le ici.",
-        "SHIKIMORI" to "shikimori.one/oauth → autorise l'application, puis copie le jeton " +
-            "reçu (l'API est ouverte en lecture, le jeton sert à écrire la progression).",
+        "ANILIST" to "Connexion par jeton obtenu via une application OAuth enregistrée sur AniList. " +
+            "La connexion navigateur intégrée nécessite un client ID et une URI de retour enregistrée.",
+        "MAL" to "Colle un access_token obtenu via OAuth2 PKCE avec un client natif enregistré sur MAL. " +
+            "Aucun secret client n'est demandé ni stocké.",
+        "SHIKIMORI" to "Colle un jeton autorisé par une application OAuth enregistrée. " +
+            "L'échange nécessitant un secret doit se faire sur un serveur de confiance, pas dans l'app.",
         "TMDB" to "themoviedb.org/settings/api → clé gratuite (v3). Utilisée uniquement " +
             "pour compléter affiches et bandes-annonces manquantes.",
     )

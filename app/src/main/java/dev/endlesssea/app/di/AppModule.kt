@@ -104,10 +104,18 @@ object AppModule {
         }
     }
 
+    /** v7 → v8 : correspondance explicite, désactivée pour les anciens liens. */
+    private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tracker_links` ADD COLUMN `autoMatchEpisodes` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `tracker_links` ADD COLUMN `autoMatchSeason` INTEGER")
+        }
+    }
+
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): EsDatabase =
         Room.databaseBuilder(context, EsDatabase::class.java, EsDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigration() // garde-fou uniquement (jamais emprunté pour 1→2)
             .build()
 

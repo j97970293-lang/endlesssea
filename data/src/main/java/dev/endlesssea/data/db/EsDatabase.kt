@@ -20,7 +20,7 @@ import androidx.room.RoomDatabase
         TrackerAccountEntity::class,
         TrackerLinkEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class EsDatabase : RoomDatabase() {

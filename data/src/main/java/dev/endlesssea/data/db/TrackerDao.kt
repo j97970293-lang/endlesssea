@@ -44,6 +44,10 @@ interface TrackerDao {
     @Query("DELETE FROM tracker_links WHERE mediaId = :mediaId")
     suspend fun deleteLink(mediaId: String)
 
+    /** Ne pas effacer une mise à jour plus récente après une réponse réseau tardive. */
+    @Query("UPDATE tracker_links SET pendingSync = 0 WHERE mediaId = :mediaId AND remoteId = :remoteId AND service = :service AND progress = :progress AND status = :status AND updatedAt = :updatedAt")
+    suspend fun acknowledge(mediaId: String, remoteId: String, service: String, progress: Int, status: String, updatedAt: Long)
+
     /** Rattachements dont la mise à jour distante a échoué (à rejouer). */
     @Query("SELECT * FROM tracker_links WHERE pendingSync = 1")
     suspend fun pendingLinks(): List<TrackerLinkEntity>

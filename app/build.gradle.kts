@@ -101,6 +101,7 @@ dependencies {
     // HLS/DASH + Media3 session for background local playback
     implementation(libs.bundles.media3)
 
+    testImplementation("org.json:json:20240303")
     testImplementation(libs.test.junit)
     testImplementation(libs.test.truth)
     androidTestImplementation(libs.androidx.test.junit)

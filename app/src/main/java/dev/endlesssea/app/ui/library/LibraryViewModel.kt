@@ -9,6 +9,8 @@ import dev.endlesssea.data.db.MediaDao
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -116,6 +118,10 @@ data class DownloadedEpisodeUi(
     val episodeId: String?,
     /** §gestion : identifiant de la tâche — permet de supprimer le fichier. */
     val taskId: String = "",
+    val season: Int? = null,
+    val exactEpisodeNumber: Float? = null,
+    val durationMs: Long = 0L,
+    val thumbnailUrl: String? = null,
 ) {
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(sizeBytes)
 
@@ -172,11 +178,36 @@ data class LocalVideoUi(
 class LibraryViewModel @Inject constructor(
     private val libraryDao: LibraryDao,
     private val mediaDao: MediaDao,
+    private val episodeDao: dev.endlesssea.data.db.EpisodeDao,
     private val downloadsDao: dev.endlesssea.data.db.DownloadsDao,
     private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
+
+    val localHistory = historyDao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun markLocalFolderWatched(folderUri: String, files: List<LocalVideoUi>) = viewModelScope.launch {
+        historyDao.upsertAll(files.map { file ->
+            val old = historyDao.byEpisode(file.uri)
+            dev.endlesssea.data.db.WatchHistoryEntity(
+                episodeId = file.uri, mediaId = dev.endlesssea.app.local.LocalMediaIds.series(folderUri),
+                positionMs = old?.positionMs ?: 0L, durationMs = file.durationMs ?: old?.durationMs ?: 0L,
+                watched = true,
+            )
+        })
+    }
+
+    fun markDownloadedWatched(files: List<DownloadedEpisodeUi>) = viewModelScope.launch {
+        historyDao.upsertAll(files.map { file ->
+            val id = file.episodeId ?: file.uri
+            val old = historyDao.byEpisode(id)
+            dev.endlesssea.data.db.WatchHistoryEntity(
+                episodeId = id, mediaId = file.mediaId.orEmpty(), positionMs = old?.positionMs ?: 0L,
+                durationMs = file.durationMs.takeIf { it > 0L } ?: old?.durationMs ?: 0L, watched = true,
+            )
+        })
+    }
 
     private val category = MutableStateFlow("FAV")
     private val _uiState = MutableStateFlow(LibraryUiState())
@@ -233,9 +264,10 @@ class LibraryViewModel @Inject constructor(
         }
         // §multi-sources : statistiques de visionnage (une requête groupée)
         viewModelScope.launch {
-            rawStats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList())
-                .associateBy { it.mediaId }
-            applyFilter()
+            historyDao.observeAll().collect {
+                rawStats = runCatching { historyDao.statsAll() }.getOrDefault(emptyList()).associateBy { it.mediaId }
+                applyFilter()
+            }
         }
         // §bibliotheque-sections : « Reprendre la lecture » (progression réelle,
         // < 95 % — un épisode presque fini n'encombre pas la rangée).
@@ -256,8 +288,12 @@ class LibraryViewModel @Inject constructor(
             ContinueCardUi(
                 episodeId = entry.episodeId,
                 mediaId = entry.mediaId,
-                title = media?.customTitle ?: media?.title ?: entry.episodeId,
-                thumbUrl = media?.customCoverUri ?: media?.bannerUrl ?: media?.posterUrl,
+                title = media?.customTitle ?: media?.title ?: if (entry.mediaId.startsWith("local:")) {
+                    dev.endlesssea.app.local.LocalVideos.seriesMeta[entry.mediaId.removePrefix("local:")]?.title
+                        ?: dev.endlesssea.app.local.LocalNames.pretty(entry.mediaId.removePrefix("local:"))
+                } else entry.episodeId,
+                thumbUrl = media?.customCoverUri ?: media?.bannerUrl ?: media?.posterUrl
+                    ?: entry.episodeId.takeIf { it.startsWith("content://") },
                 progress = fraction.coerceIn(0f, 1f),
                 remainingLabel = dev.endlesssea.app.local.LocalVideos.humanDuration(remainingMs) + " restantes",
                 updatedLabel = humanSinceShort(entry.updatedAt),
@@ -292,6 +328,7 @@ class LibraryViewModel @Inject constructor(
             // (displayPath = « Source/Série/fichier » → « Source/Série »).
             val key = task.mediaId?.takeIf { it.isNotBlank() }
                 ?: task.displayPath.substringBeforeLast('/', "").ifBlank { "téléchargements" }
+            val ep = task.episodeId?.let { episodeDao.byId(it) }
             DownloadedEpisodeUi(
                 groupKey = key,
                 uri = uri,
@@ -304,6 +341,9 @@ class LibraryViewModel @Inject constructor(
                 mediaId = task.mediaId,
                 episodeId = task.episodeId,
                 taskId = task.id,
+                season = ep?.season ?: dev.endlesssea.app.local.LocalVideos.episodeSeason(fileName),
+                exactEpisodeNumber = ep?.number ?: dev.endlesssea.app.local.LocalVideos.episodeNumber(fileName)?.toFloat(),
+                durationMs = ep?.durationMs ?: 0L, thumbnailUrl = ep?.thumbnailUrl,
             )
         }
         val groups = episodes.groupBy { it.groupKey }.map { (key, list) ->
@@ -400,7 +440,7 @@ class LibraryViewModel @Inject constructor(
     fun downloadedEpisodesOf(key: String): List<DownloadedEpisodeUi> =
         _uiState.value.downloadedEpisodes.filter { it.groupKey == key }
             .sortedWith(
-                compareBy({ it.episodeNumber ?: Int.MAX_VALUE }, { it.displayName.lowercase() }),
+                compareBy({ it.season ?: 0 }, { it.exactEpisodeNumber ?: Float.MAX_VALUE }, { it.displayName.lowercase() }),
             )
 
     /** Re-applique le filtre courant sur les éléments bruts. */
@@ -571,6 +611,7 @@ class LibraryViewModel @Inject constructor(
                             snap[v.uri]?.let { d -> v.copy(durationMs = d) } ?: v
                         },
                     )
+                    dev.endlesssea.app.local.LocalLibraryCache.publish(_uiState.value.localFiles)
                 }
             }
         }

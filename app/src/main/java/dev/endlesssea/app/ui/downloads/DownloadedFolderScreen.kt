@@ -17,6 +17,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,6 +65,14 @@ fun DownloadedFolderScreen(
         viewModel.downloadedEpisodesOf(folderKey)
     }
     /** §gestion : épisode en attente de confirmation de suppression. */
+    var confirmAllWatched by remember(folderKey) { mutableStateOf(false) }
+    if (confirmAllWatched) {
+        androidx.compose.material3.AlertDialog(onDismissRequest = { confirmAllWatched = false },
+            title = { Text("Tout marquer vu ?") },
+            text = { Text("Les ${episodes.size} épisodes téléchargés seront marqués vus dans l'historique local, sans modifier le tracker.") },
+            confirmButton = { TextButton(onClick = { viewModel.markDownloadedWatched(episodes); confirmAllWatched = false }) { Text("Confirmer") } },
+            dismissButton = { TextButton(onClick = { confirmAllWatched = false }) { Text("Annuler") } })
+    }
     var deleteCandidate by remember { mutableStateOf<DownloadedEpisodeUi?>(null) }
 
     LazyColumn(
@@ -122,6 +135,7 @@ fun DownloadedFolderScreen(
             }
         }
         item {
+            TextButton(onClick = { confirmAllWatched = true }, enabled = episodes.isNotEmpty(), modifier = Modifier.padding(horizontal = 16.dp)) { Text("Tout marquer vu") }
             Text(
                 "Épisodes téléchargés",
                 style = MaterialTheme.typography.titleMedium,
@@ -171,19 +185,13 @@ fun DownloadedFolderScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(
-                        "▶",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier
-                            .clickable { playDownloaded(context, episodes, episode) }
-                            .padding(horizontal = 8.dp),
-                    )
+                    IconButton(onClick = { playDownloaded(context, episodes, episode) }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Lire")
+                    }
                     // §gestion (conversation 7) : libérer l'espace d'un épisode
-                    Text(
-                        "🗑",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.clickable { deleteCandidate = episode }.padding(6.dp),
-                    )
+                    IconButton(onClick = { deleteCandidate = episode }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Supprimer le téléchargement")
+                    }
                 }
             }
         }
@@ -275,7 +283,8 @@ internal fun playDownloaded(
                 // clé d'historique stable : l'id d'épisode de la fiche quand il existe
                 episodeId = it.episodeId ?: it.uri,
                 links = links(it),
-                downloaded = true, mediaId = it.mediaId, thumbnailUrl = it.uri, episodeNumber = it.episodeNumber?.toFloat(),
+                downloaded = true, mediaId = it.mediaId, thumbnailUrl = it.thumbnailUrl ?: it.uri,
+                episodeNumber = it.exactEpisodeNumber, season = it.season, durationMs = it.durationMs,
             )
         },
         all.indexOfFirst { it.uri == current.uri }.coerceAtLeast(0),

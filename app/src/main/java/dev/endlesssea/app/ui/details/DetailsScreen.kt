@@ -124,6 +124,14 @@ fun DetailsScreen(
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
     var synopsisExpanded by remember { mutableStateOf(false) }
+    var confirmAllWatched by remember { mutableStateOf(false) }
+    if (confirmAllWatched) {
+        AlertDialog(onDismissRequest = { confirmAllWatched = false },
+            title = { Text("Tout marquer vu ?") },
+            text = { Text("Les ${state.episodes.size} épisodes chargés seront marqués vus dans l'historique local. Le tracker n'est pas modifié.") },
+            confirmButton = { TextButton(onClick = { viewModel.markAllWatched(); confirmAllWatched = false }) { Text("Confirmer") } },
+            dismissButton = { TextButton(onClick = { confirmAllWatched = false }) { Text("Annuler") } })
+    }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
@@ -627,6 +635,9 @@ fun DetailsScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        TextButton(onClick = { confirmAllWatched = true }, modifier = Modifier.padding(horizontal = 16.dp)) {
+                            Text("Tout marquer vu")
                         }
                         if (seasons.size > 1) {
                             LazyRow(
@@ -1301,6 +1312,10 @@ private fun TrackerCard(
     onOpenTrackers: () -> Unit,
 ) {
     var matchQuery by remember { mutableStateOf("") }
+    val detailsState by viewModel.uiState.collectAsState()
+    val matchSeasons = detailsState.episodes.map { it.season }.distinct().ifEmpty { listOf(null) }
+    var autoMatch by remember { mutableStateOf(false) }
+    var matchSeason by remember(matchSeasons) { mutableStateOf(matchSeasons.firstOrNull()) }
     var selectedMatch by remember { mutableStateOf<dev.endlesssea.app.tracking.TrackerSearchHit?>(null) }
     val link by viewModel.trackerLink.collectAsState()
     val services by viewModel.connectedServices.collectAsState()
@@ -1312,8 +1327,13 @@ private fun TrackerCard(
     selectedMatch?.let { hit ->
         AlertDialog(onDismissRequest = { selectedMatch = null },
             title = { Text("Confirmer le rattachement") },
-            text = { Text("Lier cette fiche à ${hit.title}" + (hit.year?.let { " ($it)" } ?: "") + " ? Les épisodes seront associés par leur numéro.") },
-            confirmButton = { TextButton(onClick = { search.service?.let { viewModel.linkTracker(it, hit) }; selectedMatch = null }) { Text("Confirmer") } },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Lier cette fiche à ${hit.title}" + (hit.year?.let { " ($it)" } ?: "") + " ?")
+                dev.endlesssea.app.ui.tracking.EpisodeMatchingControls(autoMatch, matchSeason, matchSeasons) { enabled, season ->
+                    autoMatch = enabled; matchSeason = season
+                }
+            } },
+            confirmButton = { TextButton(onClick = { search.service?.let { viewModel.linkTracker(it, hit, autoMatch, matchSeason) }; selectedMatch = null }) { Text("Confirmer") } },
             dismissButton = { TextButton(onClick = { selectedMatch = null }) { Text("Annuler") } })
     }
     GlassCard(
@@ -1357,6 +1377,9 @@ private fun TrackerCard(
                                     label = { Text(label, maxLines = 1, softWrap = false) },
                                 )
                             }
+                    }
+                    dev.endlesssea.app.ui.tracking.EpisodeMatchingControls(l.autoMatchEpisodes, l.autoMatchSeason, matchSeasons) { enabled, season ->
+                        viewModel.setEpisodeMatching(enabled, season)
                     }
                     TextButton(onClick = { viewModel.unlinkTracker() }) { Text("Ne plus suivre") }
                 }

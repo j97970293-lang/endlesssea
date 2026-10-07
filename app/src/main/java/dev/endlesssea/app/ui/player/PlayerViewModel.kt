@@ -521,7 +521,7 @@ class PlayerViewModel @Inject constructor(
         this@PlayerViewModel.mediaId = mediaId
         this@PlayerViewModel.episodeId = episodeId
         _uiState.value = _uiState.value.copy(links = links, currentLinkIndex = startIndex.coerceAtLeast(0))
-        val resumeMs = episodeId?.let { historyDao.byEpisode(it)?.positionMs } ?: 0L
+        val resumeMs = episodeId?.let { historyDao.byEpisode(it)?.takeUnless { h -> h.watched }?.positionMs } ?: 0L
         runCatching {
             engine.prepare(links, startPositionMs = resumeMs)
             engine.player.seekTo(startIndex.coerceAtLeast(0), resumeMs)
@@ -580,7 +580,7 @@ class PlayerViewModel @Inject constructor(
             playlist = q.map { item ->
                 val saved = item.episodeId?.let { historyDao.byEpisode(it) }
                 item.copy(positionMs = saved?.positionMs ?: item.positionMs,
-                    durationMs = saved?.durationMs ?: item.durationMs, watched = saved?.watched ?: item.watched)
+                    durationMs = saved?.durationMs?.takeIf { it > 0L } ?: item.durationMs, watched = saved?.watched ?: item.watched)
             },
             playlistIndex = i,
             hasPrev = i > 0 && q.isNotEmpty(),
@@ -849,7 +849,8 @@ class PlayerViewModel @Inject constructor(
         if (watched && prefs.autoMarkWatched.value) {
             val id = mediaId
             if (!id.isNullOrBlank()) {
-                runCatching { trackers.markEpisodeWatched(id, ep) }
+                val item = PlayerLaunchStore.queue.firstOrNull { it.episodeId == ep }
+                runCatching { trackers.markEpisodeWatched(id, ep, item?.episodeNumber, item?.season) }
             }
         }
     }

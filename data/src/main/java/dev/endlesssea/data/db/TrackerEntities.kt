@@ -50,5 +50,10 @@ data class TrackerLinkEntity(
     val lastEpisodeId: String = "",
     /** Vrai si le service n'a pas pu être mis à jour (à rejouer). */
     val pendingSync: Boolean = false,
+    /** Autorisation explicite : progression par numéro, jamais par compteur de lectures. */
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val autoMatchEpisodes: Boolean = false,
+    /** Saison liée ; null désigne exclusivement les épisodes sans saison renseignée. */
+    val autoMatchSeason: Int? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 )
