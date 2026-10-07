@@ -27,4 +27,9 @@ dependencies {
     implementation(libs.bundles.media3)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.squareup.okhttp)
+
+    // Tests unitaires JVM (décalage des sous-titres, niveaux d'upscaling) :
+    // exécutés par la CI (`:player:testDebugUnitTest`).
+    testImplementation(libs.test.junit)
+    testImplementation(libs.test.truth)
 }
