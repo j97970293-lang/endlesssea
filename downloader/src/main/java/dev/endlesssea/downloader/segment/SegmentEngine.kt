@@ -45,7 +45,12 @@ class SegmentEngine(private val client: OkHttpClient) {
                 client.newCall(request(url, "HEAD", headers)).execute().use { res ->
                     if (res.isSuccessful) return@withContext toProbe(url, res::header)
                 }
-            } catch (_: IOException) { /* fall through */ }
+            } catch (e: SourceError) {
+                // §6 : verdict clair (page de site, taille dérisoire) — on le remonte,
+                // sinon il serait avalé par le `catch (IOException)` ci-dessous
+                // (SourceError est un IOException) et noyé dans un repli inutile.
+                throw e
+            } catch (_: IOException) { /* HEAD refusé → repli sur GET avec Range */ }
             // 2) …fallback: ranged GET (some CDNs reject HEAD)
             client.newCall(request(url, "GET", headers + ("Range" to "bytes=0-0"))).execute()
                 .use { res ->
@@ -111,6 +116,9 @@ class SegmentEngine(private val client: OkHttpClient) {
         if (contentLength <= 0) return emptyList()
         val parts = when {
             !acceptRanges || contentLength < MIN_SPLIT_BYTES -> 1
+            // §debit : les Réglages proposent « 1 segment par fichier » ; honorer ce
+            // choix (une seule connexion) au lieu de planter sur coerceIn(2, 1).
+            maxParts == 1 -> 1
             else -> (contentLength / PART_TARGET_BYTES).toInt()
                 .coerceIn(2, if (maxParts > 0) maxParts else DEFAULT_MAX_PARTS)
         }

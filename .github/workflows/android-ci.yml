@@ -27,7 +27,7 @@ jobs:
 
       # Unit tests of pure-Kotlin modules (engine math, parsers, API contract)
       - name: Unit tests
-        run: ./gradlew :core:testDebugUnitTest :extensions-api:testDebugUnitTest :downloader:testDebugUnitTest :data:testDebugUnitTest :player:testDebugUnitTest
+        run: ./gradlew :core:testDebugUnitTest :extensions-api:testDebugUnitTest :downloader:testDebugUnitTest :data:testDebugUnitTest :player:testDebugUnitTest :extensions-loader:testDebugUnitTest :app:testDebugUnitTest
 
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug

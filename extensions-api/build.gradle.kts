@@ -34,4 +34,8 @@ android {
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+
+    // §tests : parsing des manifestes/dépôts (JVM pur, aucun appareil requis)
+    testImplementation(libs.test.junit)
+    testImplementation(libs.test.truth)
 }

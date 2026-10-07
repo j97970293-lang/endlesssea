@@ -50,4 +50,7 @@ Tools: JUnit4 + Truth + kotlinx-coroutines-test + Turbine (Flow assertions) + **
 
 ## 6. CI
 
-GitHub Actions (`android-ci.yml`): JDK 17 · unit tests (`:core :extensions-api :downloader :data :player`) · `assembleDebug` · APK artifact. Nightly: API 26/34 instrumentation on emulator runner. Static analysis: `lint` + Detekt (next milestone).
+GitHub Actions (`android-ci.yml`): JDK 17 · unit tests (`:core :extensions-api :downloader :data :player :extensions-loader :app`) · `assembleDebug` · APK artifact.
+
+**Implemented and green (0.25)** — every test below is plain JVM, no device/emulator required:
+`FileNames` (sanitize/normalisation/gabarits de renommage, `:core`) · `ManifestParser` manifestes et index de dépôt (`:extensions-api`) · `SegmentEngine.plan` (plages, plafond de segments, réglage « 1 segment »), `HlsEngine` (variante la mieux servie, AES-128, init fMP4, erreurs) et SHA-256 des fichiers (`:downloader`) · fournisseur déclaratif + empreinte de paquet (`:extensions-loader`) · modèles Megaskip et conventions de nommage de la bibliothèque locale (`:app`) · décalage SRT/VTT et niveaux d'upscaling (`:player`). Nightly: API 26/34 instrumentation on emulator runner. Static analysis: `lint` + Detekt (next milestone).

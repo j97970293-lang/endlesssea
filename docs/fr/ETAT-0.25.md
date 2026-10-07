@@ -23,15 +23,29 @@ et ce qui a été fait concrètement (adapté, jamais copié tel quel).
 Les 11 conversations sont **livrées** ; ce qui suit est le contrôle qualité en cours,
 pas des fonctionnalités manquantes.
 
-1. **CI GitHub Actions** (`:core`, `:extensions-api`, `:downloader`, `:data`, `:player`
-   en tests unitaires, puis `:app:assembleDebug` et publication de l'APK) : chaque
-   commit poussé doit être vert ; les anciennes exécutions rouges d'avant correctif
-   ont été supprimées du dépôt.
-2. **Tests unitaires du module `:player`** : 11 tests ajoutés le 07/10
-   (`SubtitleShiftTest` — décalage SRT/VTT dans les deux sens, bornage à zéro,
-   horodatages intacts ; `UpscalingLevelTest` — ordre des niveaux, identifiant
-   inconnu, descente thermique cran par cran, plancher « désactivé »).
-3. **Contrôles qui exigent un appareil** (impossibles ici : pas d'émulateur) :
+1. **CI GitHub Actions** : tests unitaires JVM de `:core`, `:extensions-api`,
+   `:downloader`, `:data`, `:player`, `:extensions-loader` et `:app`, puis
+   `:app:assembleDebug` et publication de l'APK. Chaque commit poussé doit être
+   vert ; les anciennes exécutions rouges d'avant correctif ont été supprimées
+   du dépôt.
+2. **Tests unitaires (≈ 90, tous sur JVM — aucun appareil requis)** :
+   `:player` — décalage SRT/VTT dans les deux sens, bornage à zéro, ordre des
+   niveaux d'upscaling, descente thermique ; `:core` — noms de fichiers
+   (caractères interdits, accents, troncature) et gabarits de renommage ;
+   `:extensions-api` — manifestes et index de dépôt (défauts, champs inconnus
+   ignorés, champ obligatoire manquant refusé) ; `:downloader` — plan de
+   segmentation et couverture exacte des plages, variante HLS la mieux servie,
+   clé AES-128/IV, init fMP4, refus des flux SAMPLE-AES et des pages HTML,
+   SHA-256 des fichiers ; `:extensions-loader` — fournisseur déclaratif (types
+   inconnus ignorés) et empreinte de paquet ; `:app` — modèles Megaskip
+   (saison/épisode, clés de cache, segments) et conventions de nommage de la
+   bibliothèque locale.
+3. **Deux défauts réels trouvés par ces tests et corrigés** (07/10) :
+   le réglage « 1 segment par fichier » des Paramètres faisait planter tout
+   téléchargement de plus de 8 Mio (`coerceIn(2, 1)`) ; et le verdict
+   « page de site / taille dérisoire » renvoyé par une requête HEAD était avalé
+   par le repli sur GET (les deux cas sont désormais couverts par des tests).
+4. **Contrôles qui exigent un appareil** (impossibles ici : pas d'émulateur) :
    rendu des 8 thèmes du lecteur, Megaskip en conditions réelles, montée en
    température et rendu de l'upscaling, lecture hors-ligne depuis la bibliothèque.
 
