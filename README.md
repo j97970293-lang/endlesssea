@@ -76,7 +76,7 @@ endless-sea/
 │       ├── 00-resume.md                        ← résumé complet en français
 │       ├── AUDIT.md                            ← audit vivant par composant
 │       ├── conversations-0.22.md               ← suivi des 11 conversations (ligne par ligne)
-│       └── ETAT-0.24.md                        ← état livré 0.24.0 (suivi, téléchargements, lecteur)
+│       └── ETAT-0.25.md                        ← état livré 0.25.0 (lecteur 8 thèmes, suivi, téléchargements)
 │
 ├── core/                            ← modèles partagés, erreurs, réseau commun
 │   └── src/main/java/dev/endlesssea/core/
@@ -181,7 +181,7 @@ Full design docs live in [`docs/en`](docs/en) (a French summary is in [`docs/fr/
 
 🇫🇷 Documentation complémentaire : [résumé complet](docs/fr/00-resume.md) ·
 [audit par composant](docs/fr/AUDIT.md) · [suivi des 11 conversations](docs/fr/conversations-0.22.md) ·
-[état livré 0.24.0](docs/fr/ETAT-0.24.md).
+[état livré 0.25.0](docs/fr/ETAT-0.25.md).
 
 ### Build
 
@@ -192,7 +192,7 @@ cd endlesssea
 ./gradlew :app:assembleDebug
 ```
 
-Version courante : **0.24.0** (versionCode 24) — APK de débogage :
+Version courante : **0.25.0** (versionCode 25) — APK de débogage :
 `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### License

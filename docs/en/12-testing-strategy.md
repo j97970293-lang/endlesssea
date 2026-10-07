@@ -25,6 +25,7 @@
 | `:extensions-loader` | `JsonProviderEngine` against recorded HTML fixtures (search/details/links); selector mistakes → `ParseError` (not crash) |
 | `:data` | genre reorder/hide logic; dedup search aggregation by (title, year, type); "already downloaded" detection |
 | `:core` | file-name sanitizer; naming-template rendering |
+| `:player` | SRT/VTT subtitle shift (both directions, clamped at zero, timestamps/markup untouched); upscaling levels (order, unknown id → off, thermal down-shift step by step, never below off) |
 
 Tools: JUnit4 + Truth + kotlinx-coroutines-test + Turbine (Flow assertions) + **MockWebServer** for all HTTP.
 
@@ -49,4 +50,4 @@ Tools: JUnit4 + Truth + kotlinx-coroutines-test + Turbine (Flow assertions) + **
 
 ## 6. CI
 
-GitHub Actions (`android-ci.yml`): JDK 17 · unit tests (`:core :extensions-api :downloader :data`) · `assembleDebug` · APK artifact. Nightly: API 26/34 instrumentation on emulator runner. Static analysis: `lint` + Detekt (next milestone).
+GitHub Actions (`android-ci.yml`): JDK 17 · unit tests (`:core :extensions-api :downloader :data :player`) · `assembleDebug` · APK artifact. Nightly: API 26/34 instrumentation on emulator runner. Static analysis: `lint` + Detekt (next milestone).

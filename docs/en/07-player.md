@@ -57,3 +57,15 @@ Typed mapping: `VideoUnavailable`, `NetworkError` (with retry), `SourceUnavailab
 - `ExoPlayer` created per playback activity, released on destroy; default buffer tuned for mobile (`DefaultLoadControl` 25 MB cap on ≤2 GB RAM devices).
 - TextureView vs SurfaceView auto (SurfaceView default; TextureView when animated transitions needed).
 - Hardware decoding left to the platform (no forced software disable) + codec fallback logging for diagnostics.
+## 6. Skins, gestures and picture/sound tuning (0.25)
+
+| Area | Implementation |
+|---|---|
+| Themes | Real theme system, not a colour list: `ui/player/themes/PlayerTheme.kt` declares `TopControls` / `CenterControls` / `BottomControls`; `ThemeProvider` maps 8 skins (Endless Sea, Netflix, Crunchyroll, YouTube, VLC, Plex, Apple TV+, Gaming) — each one has its own layout, shapes, control sizes and scrubber height |
+| Gestures | Centralised in `player/…/GestureConfig.kt`: double-tap window (chained jumps), skip seconds, pinch-zoom ceiling, long-press speed, vertical swipe step, dead zone, swappable brightness/volume sides — no magic number left in `PlayerActivity` |
+| Subtitles | Shifted ±0.5 s in 0.5 s steps by rewriting the external SRT/VTT into the cache (`SubtitleShift`, `player:testDebugUnitTest` covers both encodings and the clamp at zero) |
+| Audio boost | Up to 200 %, implemented with `LoudnessEnhancer` (mB = 2000·log10(p/100)) and exposed as `EsPlayer.audioBoostPercent` |
+| Upscaling | Levels `OFF / AUTO / PERFORMANCE / QUALITY` (scale 1×–2× + edge enhancement) applied through Media3 `setVideoEffects`; a `ThermalMonitor` polls the power manager every 10 s and down-shifts the level when the device heats up |
+| Megaskip | Segment providers TheIntroDB v2 → IntroDB → AniSkip v2 (AniSkip requires `episodeLength`), Room cache, offline custom skip buttons — see [megaskip.md](../fr/megaskip.md) |
+
+Player preferences: `player_theme`, `player_sub_delay_ms`, `player_audio_boost`, `upscale_level`, `thermal_guard`.
