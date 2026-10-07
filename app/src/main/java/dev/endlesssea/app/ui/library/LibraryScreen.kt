@@ -1,5 +1,6 @@
 package dev.endlesssea.app.ui.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -324,6 +325,53 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
+                // ---- §bibliotheque-sections (conversation 6) : « Reprendre la lecture »
+                // puis « Récemment ajoutés », au-dessus de la grille, et seulement
+                // dans la vue principale (pas en mode fichiers ni téléchargements).
+                if (!state.localMode && !state.downloadsOnly && state.continueWatching.isNotEmpty()) {
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            "Reprendre la lecture",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                        )
+                    }
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(state.continueWatching, key = { it.episodeId }) { card ->
+                                ContinueCard(
+                                    card = card,
+                                    onClick = {
+                                        // une fiche connue s'ouvre ; sinon on reprend le média
+                                        if (card.mediaId.isNotBlank()) onMediaClick(card.mediaId)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                if (!state.localMode && !state.downloadsOnly && state.recentlyAdded.isNotEmpty() && state.items.size > 12) {
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            "Récemment ajoutés",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                        )
+                    }
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(state.recentlyAdded, key = { it.id }) { item ->
+                                androidx.compose.foundation.layout.Box(Modifier.width(110.dp)) {
+                                    MediaCard(item = item, onClick = { onMediaClick(item.id) })
+                                }
+                            }
+                        }
+                    }
+                }
                 items(shownItems, key = { it.id }) { item ->
                     MediaCard(
                         item = item,
@@ -398,6 +446,73 @@ fun LibraryScreen(
                     }
                 },
             )
+        }
+    }
+}
+
+/**
+ * §bibliotheque-sections (conversation 6) — carte « Reprendre » : miniature 16:9,
+ * barre de progression, temps restant et date relative. Même langage visuel que
+ * les cartes d'historique de l'accueil (conversation 9).
+ */
+@Composable
+private fun ContinueCard(
+    card: dev.endlesssea.app.ui.library.ContinueCardUi,
+    onClick: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
+        onClick = onClick,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.width(220.dp),
+    ) {
+        Column {
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(124.dp)
+                    .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(0.dp)),
+            ) {
+                dev.endlesssea.app.SafeAsyncImage(
+                    url = card.thumbUrl,
+                    contentDescription = card.title,
+                    modifier = Modifier.fillMaxSize(),
+                    placeholderModifier = Modifier.fillMaxSize(),
+                )
+                // barre de progression en bas de la miniature
+                androidx.compose.foundation.layout.Box(
+                    Modifier
+                        .align(androidx.compose.ui.Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(0.dp)),
+                ) {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier
+                            .fillMaxWidth(card.progress)
+                            .height(4.dp)
+                            .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(0.dp)),
+                    )
+                }
+            }
+            Column(Modifier.padding(10.dp)) {
+                Text(
+                    card.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    card.remainingLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    card.updatedLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

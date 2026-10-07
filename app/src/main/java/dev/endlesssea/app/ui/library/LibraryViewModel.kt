@@ -42,6 +42,26 @@ data class LibraryUiState(
     val sourceFilter: String = "ALL",
     /** ALL · WATCHING · COMPLETED — onglets de progression (conversation 6). */
     val statusTab: String = "ALL",
+    // ---- §bibliotheque-sections (conversation 6)
+    /** « Reprendre la lecture » : épisodes commencés, non terminés. */
+    val continueWatching: List<ContinueCardUi> = emptyList(),
+    /** « Récemment ajoutés » : derniers titres entrés dans la bibliothèque. */
+    val recentlyAdded: List<SearchItemUi> = emptyList(),
+)
+
+/**
+ * §bibliotheque-sections (conversation 6) — carte « Reprendre » : miniature
+ * 16:9, barre de progression, temps restant, horodatage (même langage visuel
+ * que l'accueil, conversation 9).
+ */
+data class ContinueCardUi(
+    val episodeId: String,
+    val mediaId: String,
+    val title: String,
+    val thumbUrl: String?,
+    val progress: Float,
+    val remainingLabel: String,
+    val updatedLabel: String,
 )
 
 /** Emplacement de stockage d'un élément (conversation 6 : pastille de source). */
@@ -166,6 +186,21 @@ class LibraryViewModel @Inject constructor(
                 if (cat == "FAV") libraryDao.observeFavorites() else libraryDao.observeByCategory(cat)
             }.collect { entries ->
                 rawStatuses = entries.associate { it.mediaId to it.status }
+                // §bibliotheque-sections : « Récemment ajoutés » = ordre d'ajout réel
+                // (LibraryEntity.addedAt), pas l'ordre alphabétique de la grille.
+                val byAddedAt = entries.sortedByDescending { it.addedAt }
+                val recentUi = byAddedAt.mapNotNull { entry ->
+                    mediaDao.byId(entry.mediaId)?.let { media ->
+                        SearchItemUi(
+                            id = media.id,
+                            title = media.customTitle ?: media.title,
+                            posterUrl = media.customCoverUri ?: media.posterUrl,
+                            bannerUrl = media.bannerUrl,
+                            subtitle = media.type,
+                        )
+                    }
+                }.take(12)
+                _uiState.value = _uiState.value.copy(recentlyAdded = recentUi)
                 rawItems = entries.mapNotNull { entry ->
                     mediaDao.byId(entry.mediaId)?.let { media ->
                         SearchItemUi(
@@ -184,6 +219,45 @@ class LibraryViewModel @Inject constructor(
         // bibliothèque — seul (« série » d'un épisode) ou rattaché à sa fiche.
         viewModelScope.launch {
             downloadsDao.observeCompleted().collect { tasks -> buildDownloads(tasks) }
+        }
+        // §bibliotheque-sections : « Reprendre la lecture » (progression réelle,
+        // < 95 % — un épisode presque fini n'encombre pas la rangée).
+        viewModelScope.launch {
+            historyDao.observeContinueWatching(12).collect { entries -> buildContinue(entries) }
+        }
+    }
+
+    /** §bibliotheque-sections : rangée « Reprendre la lecture ». */
+    private suspend fun buildContinue(entries: List<dev.endlesssea.data.db.WatchHistoryEntity>) {
+        val cards = entries.mapNotNull { entry ->
+            val fraction = if (entry.durationMs > 0) {
+                entry.positionMs.toFloat() / entry.durationMs
+            } else 0f
+            if (fraction >= 0.95f) return@mapNotNull null   // quasi terminé
+            val media = mediaDao.byId(entry.mediaId)
+            val remainingMs = (entry.durationMs - entry.positionMs).coerceAtLeast(0)
+            ContinueCardUi(
+                episodeId = entry.episodeId,
+                mediaId = entry.mediaId,
+                title = media?.customTitle ?: media?.title ?: entry.episodeId,
+                thumbUrl = media?.customCoverUri ?: media?.bannerUrl ?: media?.posterUrl,
+                progress = fraction.coerceIn(0f, 1f),
+                remainingLabel = dev.endlesssea.app.local.LocalVideos.humanDuration(remainingMs) + " restantes",
+                updatedLabel = humanSinceShort(entry.updatedAt),
+            )
+        }
+        _uiState.value = _uiState.value.copy(continueWatching = cards)
+    }
+
+    /** Étiquette courte « il y a 2 h / hier / 3 j ». */
+    private fun humanSinceShort(at: Long): String {
+        val diff = System.currentTimeMillis() - at
+        val min = diff / 60_000
+        return when {
+            min < 60 -> "il y a ${min.coerceAtLeast(1)} min"
+            min < 24 * 60 -> "il y a ${min / 60} h"
+            min < 48 * 60 -> "hier"
+            else -> "il y a ${min / (24 * 60)} j"
         }
     }
 
