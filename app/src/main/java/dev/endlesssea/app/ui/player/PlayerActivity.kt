@@ -249,6 +249,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     // §megaskip : segments en ligne + boutons personnalisés + stats
     val pinchZoomOn by viewModel.pinchZoomEnabled.collectAsState()
     val swapVB by viewModel.swapVolumeBrightness.collectAsState()
+    // §gestes-lecteur (conversation 2) : seuils, pas et options des gestes
+    // regroupés dans une configuration unique (plus de nombres magiques).
+    val gestures = dev.endlesssea.player.GestureConfig(
+        skipSeconds = state.skipSeconds,
+        brightnessOnLeft = !swapVB,
+        pinchZoomEnabled = pinchZoomOn,
+    )
     val engineStats by viewModel.engineStats.collectAsState()
     // §theme-lecteur : chaque habillage change VRAIMENT la mise en page —
     // épaisseur et forme de la barre, voile du bas, taille du bouton central.
@@ -320,7 +327,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            pinchScale = (pinchScale * zoom).coerceIn(1f, 3f)
+                            pinchScale = (pinchScale * zoom).coerceIn(1f, gestures.maxPinchZoom)
                             if (pinchScale <= 1.01f) {
                                 // Retour au cadre normal : on recentre.
                                 panX = 0f; panY = 0f
@@ -383,11 +390,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         onTap = { offset ->
                             if (state.locked) return@detectTapGestures
                             // §double-appui-continu : tant qu'on reste dans la
-                            // fenêtre de 900 ms après un saut, chaque appui
-                            // enchaîne un nouveau saut (comportement YouTube) au
-                            // lieu d'afficher/masquer les contrôles.
+                            // fenêtre de [GestureConfig.doubleTapWindowMs] après un
+                            // saut, chaque appui enchaîne un nouveau saut
+                            // (comportement YouTube) au lieu d'afficher/masquer
+                            // les commandes.
                             val now = android.os.SystemClock.uptimeMillis()
-                            if (now - lastSkipAt < 900) {
+                            if (now - lastSkipAt < gestures.doubleTapWindowMs) {
                                 lastSkipAt = now
                                 val half = size.width / 2
                                 viewModel.jumpBy(
@@ -409,9 +417,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         },
                         onLongPress = {
                             if (!state.locked) {
-                                exo.setPlaybackSpeed(2f)
+                                exo.setPlaybackSpeed(gestures.longPressSpeed)
                                 speedBoost = true
-                                gestureOverlay = "Vitesse ×2"
+                                gestureOverlay = "Vitesse ×%.0f".format(gestures.longPressSpeed)
                             }
                         },
                         onPress = {
@@ -449,14 +457,18 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             if (state.locked) return@detectDragGestures
                             accX += amount.x; accY += amount.y
                             if (mode == 0 &&
-                                (kotlin.math.abs(accX) > 24 || kotlin.math.abs(accY) > 24)
+                                (
+                                    kotlin.math.abs(accX) > gestures.seekDeadZonePx ||
+                                        kotlin.math.abs(accY) > gestures.seekDeadZonePx
+                                    )
                             ) {
                                 mode = if (kotlin.math.abs(accX) >= kotlin.math.abs(accY)) 1
                                 else {
                                     // §gestes-lecteur : gauche = luminosité, droite = volume
                                     // (inversible depuis Réglages → Lecteur → Gestes).
                                     val leftSide = startX < size.width / 2f
-                                    val brightnessSide = if (swapVB) !leftSide else leftSide
+                                    val brightnessSide =
+                                        if (gestures.brightnessOnLeft) leftSide else !leftSide
                                     if (brightnessSide) 2 else 3
                                 }
                             }

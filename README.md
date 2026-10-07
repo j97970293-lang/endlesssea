@@ -6,7 +6,9 @@
 
 *An open-source Android platform for anime, movies & series — streaming, advanced downloading and a local library, powered by extensions.*
 
-Android 8.0+ (API 26, testé jusqu'à Android 15) • Kotlin • Jetpack Compose • GPL-3.0
+[![Android CI](https://github.com/j97970293-lang/endlesssea/actions/workflows/android-ci.yml/badge.svg)](https://github.com/j97970293-lang/endlesssea/actions/workflows/android-ci.yml)
+
+Android 8.0+ (API 26, testé jusqu'à Android 15) • Kotlin • Jetpack Compose • GPL-3.0 • version **0.25.0**
 
 </div>
 
