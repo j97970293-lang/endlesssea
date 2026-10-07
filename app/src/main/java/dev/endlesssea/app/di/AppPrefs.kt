@@ -168,31 +168,15 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
          * sert uniquement à l'aperçu du sélecteur ; 0 = couleur de l'application.
          */
         val PLAYER_THEMES = linkedMapOf(
-            "default" to Pair(0L, "Endless Sea"),
-            "netflix" to Pair(0xFFE50914L, "Netflix"),
-            "crunchyroll" to Pair(0xFFF47521L, "Crunchyroll"),
-            "youtube" to Pair(0xFFFF0033L, "YouTube"),
-            "vlc" to Pair(0xFFFF8800L, "VLC"),
-            "plex" to Pair(0xFFE5A00DL, "Plex"),
-            "appletv" to Pair(0xFFFFFFFFL, "Apple TV+"),
-            "gaming" to Pair(0xFF00E5FFL, "Gaming"),
+            "default" to Pair(0xFF00BCD4L, "Défaut"),
+            "zen" to Pair(0xFFFFFFFFL, "Zen"),
+            "orbit" to Pair(0xFF00BCD4L, "Orbit"),
+            "compactbar" to Pair(0xFF00BCD4L, "Compact Bar"),
+            "neonframe" to Pair(0xFF00E5FFL, "Neon Frame"),
+            "split" to Pair(0xFF00BCD4L, "Split Controls"),
+            "floating" to Pair(0xFF00BCD4L, "Floating Cards"),
         )
-
-        /**
-         * Anciennes clés (0.23 et avant, « couleurs ») → thèmes complets :
-         * app→default, mpv→vlc, prime/disney→plex, spotify/aniyomi→crunchyroll,
-         * minuit→gaming.
-         */
-        fun migratePlayerTheme(old: String?): String = when (old) {
-            null -> "default"
-            in PLAYER_THEMES.keys -> old
-            "app" -> "default"
-            "mpv" -> "vlc"
-            "prime", "disney" -> "plex"
-            "spotify", "aniyomi" -> "crunchyroll"
-            "minuit" -> "gaming"
-            else -> "default"
-        }
+        fun migratePlayerTheme(old: String?): String = old?.takeIf { it in PLAYER_THEMES } ?: "default"
 
         /** §anymex-ui : styles de carte média (capture « Card Style »). */
         val CARD_STYLES = listOf("saikou", "exotic", "minimal_exotic", "modern")
@@ -208,6 +192,10 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     }
 
     private val p = context.getSharedPreferences("endless_sea_prefs", Context.MODE_PRIVATE)
+
+    private val _recordHistory = MutableStateFlow(p.getBoolean("record_history", true))
+    val recordHistory: StateFlow<Boolean> = _recordHistory
+    fun setRecordHistory(v: Boolean) { p.edit().putBoolean("record_history", v).apply(); _recordHistory.value = v }
 
     // ---------------------------------------------------------------- thème
     // AMOLED par défaut (esthétique cible) ; l'utilisateur peut revenir à Système.
@@ -601,10 +589,10 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     }
 
     /** §barre-progression : épaisseur en dp (2..12) et bouts arrondis. */
-    private val _progressThickness = MutableStateFlow(p.getInt("player_progress_thickness", 4))
+    private val _progressThickness = MutableStateFlow(p.getInt("player_progress_thickness", 4).coerceIn(2, 8))
     val progressThickness: StateFlow<Int> = _progressThickness
     fun setProgressThickness(v: Int) {
-        val safe = v.coerceIn(2, 14)
+        val safe = v.coerceIn(2, 8)
         p.edit().putInt("player_progress_thickness", safe).apply(); _progressThickness.value = safe
     }
     private val _progressRounded = MutableStateFlow(p.getBoolean("player_progress_round", true))
@@ -622,6 +610,16 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     fun setPlayerTheme(v: String) {
         p.edit().putString("player_theme", v).apply(); _playerTheme.value = v
     }
+
+    private val _seekThumb = MutableStateFlow(p.getInt("seek_thumb", 12).coerceIn(8, 20))
+    val seekThumb: StateFlow<Int> = _seekThumb
+    fun setSeekThumb(v: Int) { val safe = v.coerceIn(8, 20); p.edit().putInt("seek_thumb", safe).apply(); _seekThumb.value = safe }
+    private val _seekBuffer = MutableStateFlow(p.getInt("seek_buffer", 3).coerceIn(2, 8))
+    val seekBuffer: StateFlow<Int> = _seekBuffer
+    fun setSeekBuffer(v: Int) { val safe = v.coerceIn(2, 8); p.edit().putInt("seek_buffer", safe).apply(); _seekBuffer.value = safe }
+    private val _seekHideThumb = MutableStateFlow(p.getBoolean("seek_hide_thumb", false))
+    val seekHideThumb: StateFlow<Boolean> = _seekHideThumb
+    fun setSeekHideThumb(v: Boolean) { p.edit().putBoolean("seek_hide_thumb", v).apply(); _seekHideThumb.value = v }
 
     /**
      * §sous-titres (conversation 1) : décalage appliqué aux pistes externes

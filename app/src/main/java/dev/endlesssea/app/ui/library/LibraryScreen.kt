@@ -1133,6 +1133,9 @@ internal fun playLocal(
         all.map {
             dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
                 title = it.displayName, episodeId = it.uri, links = listOf(link(it)),
+                thumbnailUrl = it.customCoverUri ?: it.uri,
+                durationMs = it.durationMs ?: 0L, episodeNumber = it.episodeNumber?.toFloat(),
+                markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(it.introStartSec, it.introEndSec, it.outroStartSec),
             )
         },
         all.indexOfFirst { it.uri == video.uri },

@@ -27,6 +27,7 @@ data class PlayerControlsState(
     val playing: Boolean = false,
     val locked: Boolean = false,
     val positionMs: Long = 0L,
+    val bufferedPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     /** Position de glissement en cours (0..1) ou null si l'utilisateur ne glisse pas. */
     val dragFraction: Float? = null,
@@ -51,6 +52,9 @@ data class PlayerControlsState(
     val toolsOnTop: Boolean = false,
     val progressThickness: Int = 4,
     val progressRounded: Boolean = true,
+    val thumbSize: Int = 12,
+    val bufferThickness: Int = 3,
+    val autoHideThumb: Boolean = false,
 )
 
 /** Toutes les actions d'un thème — aucun thème ne touche directement au moteur. */
@@ -73,6 +77,7 @@ class PlayerControlsActions(
     val onToggleStats: () -> Unit = {},
     val onRefreshSkip: () -> Unit = {},
     val onOpenMore: () -> Unit = {},
+    val onOpenPlaylist: () -> Unit = {},
     val onMegaJump: () -> Unit = {},
     val onOpenSkipEditor: () -> Unit = {},
     val onSkipSegment: () -> Unit = {},
@@ -114,36 +119,17 @@ interface PlayerTheme {
     fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier = Modifier)
 }
 
-/** Accès aux thèmes par identifiant + migration des anciennes clés. */
+/** Registre unique des interfaces originales. Les anciens choix reviennent au défaut. */
 object ThemeProvider {
-
-    /** Les 8 skins de la conversation 1, dans l'ordre d'affichage. */
     val all: Map<String, PlayerTheme> = linkedMapOf(
         "default" to DefaultTheme,
-        "netflix" to NetflixTheme,
-        "crunchyroll" to CrunchyrollTheme,
-        "youtube" to YouTubeTheme,
-        "vlc" to VlcTheme,
-        "plex" to PlexTheme,
-        "appletv" to AppleTvTheme,
-        "gaming" to GamingTheme,
+        "zen" to ZenTheme,
+        "orbit" to OrbitTheme,
+        "compactbar" to CompactBarTheme,
+        "neonframe" to NeonFrameTheme,
+        "split" to SplitControlsTheme,
+        "floating" to FloatingCardsTheme,
     )
-
-    fun of(id: String?): PlayerTheme = all[id] ?: all.getValue("default")
-
-    /**
-     * Anciennes clés (0.23 et avant) → thèmes de la refonte :
-     * « app » = Default, « mpv » = VLC, « prime »/« disney » = Plex,
-     * « spotify »/« aniyomi » = Crunchyroll, « minuit » = Gaming.
-     */
-    fun migrate(old: String?): String = when (old) {
-        null -> "default"
-        in all -> old
-        "app" -> "default"
-        "mpv" -> "vlc"
-        "prime", "disney" -> "plex"
-        "spotify", "aniyomi" -> "crunchyroll"
-        "minuit" -> "gaming"
-        else -> "default"
-    }
+    fun of(id: String?): PlayerTheme = all[id] ?: DefaultTheme
+    fun migrate(old: String?): String = old?.takeIf { it in all } ?: "default"
 }

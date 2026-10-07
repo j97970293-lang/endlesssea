@@ -209,6 +209,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var showFilterDialog by remember { mutableStateOf(false) }
     /** §sheet-plus : panneau « Plus » (minuterie de veille + filtres vidéo). */
     var showMoreSheet by remember { mutableStateOf(false) }
+    var showPlaylist by remember { mutableStateOf(false) }
+    var interactionVersion by remember { mutableIntStateOf(0) }
     // §sous-titres : recherche en ligne + ouverture d'un fichier local
     var showSubSearch by remember { mutableStateOf(false) }
     var subQuery by remember { mutableStateOf("") }
@@ -231,10 +233,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var panX by remember { mutableStateOf(0f) }
     var panY by remember { mutableStateOf(0f) }
 
-    LaunchedEffect(Unit) {
-        viewModel.engine.player.addListener(object : androidx.media3.common.Player.Listener {
+    DisposableEffect(viewModel.engine.player) {
+        val listener = object : androidx.media3.common.Player.Listener {
             override fun onVideoSizeChanged(size: VideoSize) { videoSize = size }
-        })
+        }
+        viewModel.engine.player.addListener(listener)
+        onDispose { viewModel.engine.player.removeListener(listener) }
     }
 
     // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
@@ -259,29 +263,27 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val engineStats by viewModel.engineStats.collectAsState()
     // §theme-lecteur : chaque habillage change VRAIMENT la mise en page —
     // épaisseur et forme de la barre, voile du bas, taille du bouton central.
-    val skinSquare = playerThemeName in setOf("netflix", "youtube", "mpv", "vlc")
-    val skinThickness = when (playerThemeName) {
-        "netflix" -> 6
-        "crunchyroll" -> 8
-        "youtube" -> 4
-        "prime", "disney" -> 5
-        "mpv", "vlc" -> 3
-        else -> progressThickness
-    }
-    val skinScrim = when (playerThemeName) {
-        "netflix", "prime", "disney" -> 0.78f
-        "crunchyroll", "spotify", "aniyomi" -> 0.60f
-        "mpv", "vlc" -> 0.30f
-        else -> 0.55f
-    }
-    val skinPlaySize = when (playerThemeName) {
-        "netflix", "prime", "disney" -> 92
-        "youtube" -> 74
-        "mpv", "vlc" -> 64
-        else -> 78
+    val thumbSize by viewModel.seekThumb.collectAsState()
+    val bufferThickness by viewModel.seekBuffer.collectAsState()
+    val hideThumb by viewModel.seekHideThumb.collectAsState()
+    LaunchedEffect(state.controlsVisible, isPlaying, state.locked, showMoreSheet, showPlaylist,
+        showCcDialog, showAudioDialog, showFilterDialog, showQualityDialog, showSkipDialog,
+        slidingPos, interactionVersion) {
+        if (state.controlsVisible && isPlaying && !state.locked && !showMoreSheet && !showPlaylist &&
+            !showCcDialog && !showAudioDialog && !showFilterDialog && !showQualityDialog && !showSkipDialog && slidingPos == null) {
+            kotlinx.coroutines.delay(3_000)
+            viewModel.showControls(false)
+        }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                if (event.changes.any { it.pressed }) interactionVersion++
+            }
+        }
+    }) {
         // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
         val renderMode by viewModel.videoRender.collectAsState()
         // §gestes-lecteur : zoom par pincement + déplacement à deux doigts —
@@ -536,7 +538,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
 
         // ---- §marqueurs intro/outro : bouton « Passer » dans les plages éditées (vidéos locales)
         run {
-            val markers = remember { PlayerLaunchStore.lastMarkers }
+            val markers = remember(state.playlistIndex) { PlayerLaunchStore.lastMarkers }
             if (markers.hasAny) {
                 val posSec = state.positionMs / 1000
                 val introStart = markers.introStartSec
@@ -724,15 +726,19 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 customSkips = state.skipButtons,
                 progressOnTop = progressPos == "top",
                 toolsOnTop = toolsPos == "top",
-                progressThickness = activeTheme.progressThickness,
-                progressRounded = activeTheme.rounded,
+                progressThickness = progressThickness,
+                bufferedPositionMs = state.bufferedPositionMs,
+                thumbSize = thumbSize,
+                bufferThickness = bufferThickness,
+                autoHideThumb = hideThumb,
+                progressRounded = progressRounded,
             )
             val controlsActions = PlayerControlsActions(
                 onBack = onBack,
                 onTogglePlay = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
                 onPrev = { viewModel.playQueueOffset(-1) },
                 onNext = { viewModel.playQueueOffset(1) },
-                onDrag = { slidingPos = it },
+                onDrag = { slidingPos = it; interactionVersion++ },
                 onDragFinished = { fraction ->
                     viewModel.engine.player.seekTo(
                         (fraction * state.durationMs.coerceAtLeast(1L)).toLong(),
@@ -763,12 +769,20 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 onToggleStats = { viewModel.toggleStats() },
                 onRefreshSkip = { viewModel.refreshSkip() },
                 onOpenMore = { showMoreSheet = true },
+                onOpenPlaylist = { showPlaylist = true },
                 onMegaJump = { viewModel.megaJump(state.megaSkipSeconds) },
                 onOpenSkipEditor = { showSkipDialog = true },
                 onSkipSegment = { viewModel.skipActive() },
                 onCustomSkip = { button -> viewModel.customSkip(button) },
             )
-            activeTheme.TopControls(
+            if (state.locked) {
+                Box(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                    dev.endlesssea.app.ui.player.themes.SkinIconButton(
+                        Icons.Default.LockOpen, "Déverrouiller", { viewModel.toggleLock() },
+                        background = Color.Black.copy(alpha = 0.6f),
+                    )
+                }
+            } else activeTheme.TopControls(
                 controlsState, controlsActions,
                 Modifier.align(Alignment.TopStart),
             )
@@ -817,6 +831,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         }
     }
 
+    if (showPlaylist) {
+        PlaylistSheet(state, onDismiss = { showPlaylist = false }, onSelect = { index ->
+            viewModel.playPlaylistIndex(index)
+            showPlaylist = false
+        })
+    }
+
     // ---- §megaskip : éditeur des boutons de saut personnalisés
     if (showSkipDialog) {
         dev.endlesssea.app.ui.player.CustomSkipDialog(
@@ -832,13 +853,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     // (Arrêt/15/30/45/60 min) + filtres vidéo en grille, tout au même endroit.
     if (showMoreSheet) {
         ModalBottomSheet(onDismissRequest = { showMoreSheet = false }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp)) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Plus",
+                        "Paramètres du lecteur",
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.weight(1f),
                     )
@@ -852,44 +873,29 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text("Disposition", style = MaterialTheme.typography.labelMedium)
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    FilterChip(
-                        selected = progressPos != "top",
-                        onClick = { viewModel.setProgressPosition("bottom") },
-                        label = { Text("Barre en bas", maxLines = 1, softWrap = false) },
-                    )
-                    FilterChip(
-                        selected = progressPos == "top",
-                        onClick = { viewModel.setProgressPosition("top") },
-                        label = { Text("Barre en haut", maxLines = 1, softWrap = false) },
-                    )
-                    FilterChip(
-                        selected = toolsPos == "top",
-                        onClick = { viewModel.setToolsPosition(if (toolsPos == "top") "bottom" else "top") },
-                        label = { Text("Outils en haut", maxLines = 1, softWrap = false) },
-                    )
-                    FilterChip(
-                        selected = megaSide == "left",
-                        onClick = { viewModel.setMegaSkipSide(if (megaSide == "left") "right" else "left") },
-                        label = { Text("Saut à gauche", maxLines = 1, softWrap = false) },
-                    )
-                    FilterChip(
-                        selected = progressRounded,
-                        onClick = { viewModel.setProgressRounded(!progressRounded) },
-                        label = { Text("Bouts arrondis", maxLines = 1, softWrap = false) },
-                    )
+                TextButton(onClick = { showMoreSheet = false; showPlaylist = true }) { Text("Playlist") }
+                Row {
+                    TextButton(onClick = { showMoreSheet = false; showQualityDialog = true }) { Text("Qualité") }
+                    TextButton(onClick = { showMoreSheet = false; showAudioDialog = true }) { Text("Audio") }
+                    TextButton(onClick = { viewModel.toggleLock(); showMoreSheet = false }) { Text("Verrouiller") }
                 }
+                TextButton(onClick = { zoomMode = (zoomMode + 1) % 3 }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
+                TextButton(onClick = { showMoreSheet = false; showSkipDialog = true }) { Text("Configurer les sauts") }
                 Text("Épaisseur de la barre : $progressThickness dp",
                     style = MaterialTheme.typography.labelMedium)
                 Slider(
                     value = progressThickness.toFloat(),
                     onValueChange = { viewModel.setProgressThickness(it.toInt()) },
-                    valueRange = 2f..14f,
+                    valueRange = 2f..8f,
                 )
+                TextButton(onClick = { viewModel.setProgressRounded(!progressRounded) }) {
+                    Text(if (progressRounded) "Barre arrondie" else "Barre à angles droits")
+                }
+                Text("Taille du curseur : $thumbSize dp")
+                Slider(value = thumbSize.toFloat(), onValueChange = { viewModel.setSeekThumb(it.toInt()) }, valueRange = 8f..20f)
+                Text("Épaisseur du buffer : $bufferThickness dp")
+                Slider(value = bufferThickness.toFloat(), onValueChange = { viewModel.setSeekBuffer(it.toInt()) }, valueRange = 2f..8f)
+                TextButton(onClick = { viewModel.setSeekHideThumb(!hideThumb) }) { Text(if (hideThumb) "Afficher le curseur au repos" else "Masquer le curseur au repos") }
                 Text("Thème du lecteur", style = MaterialTheme.typography.labelMedium)
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
@@ -1001,7 +1007,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(14.dp))
 
-                // ---- 🎚 Filtres vidéo en grille (12 préréglages)
+                // ---- Filtres vidéo en grille (12 préréglages)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Tune, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))

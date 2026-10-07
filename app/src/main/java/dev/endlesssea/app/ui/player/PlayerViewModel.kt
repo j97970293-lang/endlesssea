@@ -30,6 +30,9 @@ data class PlayerUiState(
     val speed: Float = 1f,
     val error: String? = null,
     val positionMs: Long = 0,
+    val bufferedPositionMs: Long = 0,
+    val playlist: List<PlayerLaunchStore.QueueItem> = emptyList(),
+    val playlistIndex: Int = -1,
     val durationMs: Long = 0,
     val skipSeconds: Int = 10,
     /** §mégaskip : secondes du grand saut (bouton dédié). */
@@ -166,6 +169,7 @@ class PlayerViewModel @Inject constructor(
             while (isActive) {
                 _uiState.value = _uiState.value.copy(
                     positionMs = engine.player.currentPosition.coerceAtLeast(0),
+                    bufferedPositionMs = engine.player.bufferedPosition.coerceAtLeast(0),
                     durationMs = engine.player.duration.coerceAtLeast(0),
                 )
                 // §megaskip : détection du segment courant + saut automatique
@@ -548,7 +552,7 @@ class PlayerViewModel @Inject constructor(
         if (target !in queue.indices) return@launch
         persistPosition()
         val item = queue[target]
-        _uiState.value = _uiState.value.copy(loading = true, title = item.title, error = null)
+        _uiState.value = _uiState.value.copy(loading = true, error = null)
         val links = item.links.ifEmpty {
             val id = item.episodeId
             if (id == null) emptyList()
@@ -562,20 +566,38 @@ class PlayerViewModel @Inject constructor(
             return@launch
         }
         PlayerLaunchStore.queueIndex = target
+        PlayerLaunchStore.updateMarkers(item.markers)
         prepare(
-            mediaId = mediaId, episodeId = item.episodeId,
+            mediaId = item.mediaId ?: mediaId, episodeId = item.episodeId,
             title = item.title, links = links, startIndex = 0,
         )
     }
 
-    private fun refreshQueueFlags() {
+    private suspend fun refreshQueueFlags() {
         val q = PlayerLaunchStore.queue
         val i = PlayerLaunchStore.queueIndex
         _uiState.value = _uiState.value.copy(
+            playlist = q.map { item ->
+                val saved = item.episodeId?.let { historyDao.byEpisode(it) }
+                item.copy(positionMs = saved?.positionMs ?: item.positionMs,
+                    durationMs = saved?.durationMs ?: item.durationMs, watched = saved?.watched ?: item.watched)
+            },
+            playlistIndex = i,
             hasPrev = i > 0 && q.isNotEmpty(),
             hasNext = i >= 0 && i < q.lastIndex,
         )
     }
+
+    fun playPlaylistIndex(index: Int) {
+        if (_uiState.value.loading || index == PlayerLaunchStore.queueIndex) return
+        playQueueOffset(index - PlayerLaunchStore.queueIndex)
+    }
+    val seekThumb get() = prefs.seekThumb
+    val seekBuffer get() = prefs.seekBuffer
+    val seekHideThumb get() = prefs.seekHideThumb
+    fun setSeekThumb(v: Int) = prefs.setSeekThumb(v)
+    fun setSeekBuffer(v: Int) = prefs.setSeekBuffer(v)
+    fun setSeekHideThumb(v: Boolean) = prefs.setSeekHideThumb(v)
 
     fun setSpeed(speed: Float) {
         engine.setSpeed(speed)
@@ -812,7 +834,7 @@ class PlayerViewModel @Inject constructor(
         val dur = engine.durationMs.value
         if (pos <= 0 || dur <= 0) return
         val watched = pos.toFloat() / dur >= 0.9f   // ≥ 90 % → marqué « vu » (spec §24)
-        historyDao.upsert(
+        if (prefs.recordHistory.value) historyDao.upsert(
             WatchHistoryEntity(
                 episodeId = ep,
                 mediaId = mediaId ?: "",

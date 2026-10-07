@@ -217,7 +217,7 @@ class DetailsViewModel @Inject constructor(
         ) ?: f.targetUri
         dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
             title = f.label.substringBefore(" · "),
-            mediaId = mediaId, episodeId = f.id,
+            mediaId = mediaId, episodeId = f.episodeId ?: f.id,
             links = listOf(
                 dev.endlesssea.extensions.api.model.VideoLink(
                     url = playable,
@@ -394,9 +394,9 @@ class DetailsViewModel @Inject constructor(
     fun dismissTrackerSearch() { _trackerSearch.value = TrackerSearchState() }
 
     /** Rattachement manuel : recherche le titre de la fiche sur le service choisi. */
-    fun searchTracker(service: String) = viewModelScope.launch {
+    fun searchTracker(service: String, query: String? = null) = viewModelScope.launch {
         _trackerSearch.value = TrackerSearchState(service = service, loading = true)
-        val title = _uiState.value.details?.title
+        val title = query?.takeIf { it.isNotBlank() } ?: _uiState.value.details?.title
             ?: dev.endlesssea.app.local.LocalNames.pretty(mediaId)
         val hits = trackers.search(service, title)
         _trackerSearch.value = TrackerSearchState(service = service, loading = false, hits = hits)
@@ -569,7 +569,13 @@ class DetailsViewModel @Inject constructor(
                 dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
                     title = buildEpisodeTitle(ep),
                     episodeId = ep.id,
-                    links = _uiState.value.linksByEpisode[ep.id].orEmpty(),
+                    links = downloadedFor(ep.id)?.let { local ->
+                        listOf(VideoLink(url = local.targetUri, streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                            quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargement"))
+                    } ?: _uiState.value.linksByEpisode[ep.id].orEmpty(),
+                    downloaded = downloadedFor(ep.id) != null,
+                    thumbnailUrl = ep.thumbnailUrl, season = ep.season, episodeNumber = ep.number,
+                    durationMs = ep.durationMs ?: 0L, mediaId = mediaId,
                 )
             },
             all.indexOfFirst { it.id == episode.id },

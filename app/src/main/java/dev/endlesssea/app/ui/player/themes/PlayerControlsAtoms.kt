@@ -70,7 +70,7 @@ fun SkinIconButton(
     onClick: () -> Unit,
     tint: Color = Color.White,
     size: Int = 40,
-    iconSize: Int = 22,
+    iconSize: Int = 20,
     enabled: Boolean = true,
     shape: Shape = CircleShape,
     background: Color = Color.Transparent,
@@ -163,7 +163,7 @@ fun SkinSeekBar(
     showTimes: Boolean = true,
     remaining: Boolean = false,
     timeColor: Color = Color.White,
-    thumbSize: Int = thickness + 8,
+    thumbSize: Int = state.thumbSize,
 ) {
     val duration = state.durationMs.coerceAtLeast(1L)
     val fraction = (state.dragFraction ?: (state.positionMs.toFloat() / duration)).coerceIn(0f, 1f)
@@ -184,11 +184,12 @@ fun SkinSeekBar(
             value = fraction,
             onValueChange = { actions.onDrag(it) },
             onValueChangeFinished = { actions.onDragFinished(fraction) },
+            enabled = state.durationMs > 0,
             modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             thumb = {
                 Box(
                     Modifier
-                        .size(thumbSize.dp)
+                        .size((if (state.autoHideThumb && state.dragFraction == null) 0 else thumbSize).dp)
                         .clip(CircleShape)
                         .background(accent),
                 )
@@ -199,12 +200,18 @@ fun SkinSeekBar(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(thickness.dp)
+                        .height(maxOf(thickness, state.bufferThickness).dp)
                         .clip(shape)
                         .background(Color.White.copy(alpha = 0.28f)),
                 ) {
                     Box(
-                        Modifier
+                        Modifier.align(Alignment.CenterStart)
+                            .fillMaxWidth((state.bufferedPositionMs.toFloat() / duration).coerceIn(0f, 1f))
+                            .height(state.bufferThickness.dp)
+                            .background(Color.White.copy(alpha = 0.45f)),
+                    )
+                    Box(
+                        Modifier.align(Alignment.CenterStart)
                             .fillMaxWidth(frac.coerceIn(0f, 1f))
                             .height(thickness.dp)
                             .clip(shape)
@@ -441,7 +448,7 @@ fun TrackIcons(
     actions: PlayerControlsActions,
     accent: Color,
     size: Int = 40,
-    iconSize: Int = 22,
+    iconSize: Int = 20,
 ) {
     if (state.hasLinks) {
         SkinIconButton(

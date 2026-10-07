@@ -34,6 +34,15 @@ object PlayerLaunchStore {
         val title: String,
         val episodeId: String?,
         val links: List<VideoLink> = emptyList(),
+        val thumbnailUrl: String? = null,
+        val season: Int? = null,
+        val episodeNumber: Float? = null,
+        val durationMs: Long = 0L,
+        val positionMs: Long = 0L,
+        val watched: Boolean = false,
+        val downloaded: Boolean = false,
+        val mediaId: String? = null,
+        val markers: SkipMarkers = SkipMarkers(),
     )
 
     @Volatile var queue: List<QueueItem> = emptyList()
@@ -64,6 +73,8 @@ object PlayerLaunchStore {
     /** Derniers marqueurs fournis (lue par PlayerScreen ; non effacés par consume()). */
     @Volatile var lastMarkers: SkipMarkers = SkipMarkers()
         private set
+
+    fun updateMarkers(markers: SkipMarkers) { lastMarkers = markers }
 
     fun consume(): Launch = pending.also { pending = Launch() }
 }

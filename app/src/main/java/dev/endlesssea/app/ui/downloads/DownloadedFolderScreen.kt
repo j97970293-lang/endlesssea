@@ -275,6 +275,7 @@ internal fun playDownloaded(
                 // clé d'historique stable : l'id d'épisode de la fiche quand il existe
                 episodeId = it.episodeId ?: it.uri,
                 links = links(it),
+                downloaded = true, mediaId = it.mediaId, thumbnailUrl = it.uri, episodeNumber = it.episodeNumber?.toFloat(),
             )
         },
         all.indexOfFirst { it.uri == current.uri }.coerceAtLeast(0),
