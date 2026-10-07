@@ -153,6 +153,7 @@ Endless Sea is a modern, lightweight Android app inspired by the best ideas of *
 - 📚 **Offline local library**: anime, movies, series, OVA, ONA, customizable categories & genres, storage filters (internal / SD card) and “Watching / Completed” tabs
 - 📂 **Aniyomi-style video folders**: `Series/cover.jpg` + `details.json` (editable in-app, written into the folder) + `episodes.json` (episode titles), sorted by episode number
 - 📥 **Downloads inside the library**: any downloaded episode — even a single one — becomes its own “series” (badge, episode count, storage) and plays offline
+- 🔎 **Download hygiene**: SHA-256 integrity check, bandwidth limit, automatic cleanup of old files and orphan parts, “Clean now” action, foreground service with wake-lock
 - 🔍 Aggregated **multi-extension search** with filters
 - 🛡️ **CAPTCHA/anti-bot**: user-driven WebView verification screen, per-extension cookie persistence
 - 📱 Android 8.0+, internal or SD-card storage (SAF)
