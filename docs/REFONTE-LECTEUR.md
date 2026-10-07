@@ -33,7 +33,7 @@ python3 docs/validate_room_sqlite.py
 
 107 tests JVM réussis, 0 échec : app 41, core 13, API 6, downloader 26, player 11, loader 10. Le module data n'a pas de tests JVM. Les 17 nouveaux tests de cette continuation couvrent le matching, l'idempotence/hors-ligne, les numéros locaux et les requêtes Shikimori/MAL simulées sans vrais comptes. `git diff --check` réussi.
 
-APK debug assemblé avec succès (signature debug du dépôt conservée, applicationId `dev.endlesssea.app.debug`, version 0.25.0-debug). Il ne constitue pas une release de production. Validation SQLite : schémas exportés v7 et v8 identiques après application des SQL de migration, progression conservée et suppression des vus manuels vérifiée. Ce n'est pas un test Android instrumenté.
+APK debug assemblé avec succès (signature debug du dépôt conservée, applicationId `dev.endlesssea.app.debug`, version 0.26.0-debug). Il ne constitue pas une release de production. Validation SQLite : schémas exportés v7 et v8 identiques après application des SQL de migration, progression conservée et suppression des vus manuels vérifiée. Ce n'est pas un test Android instrumenté.
 
 Pour une machine disposant de 2 Go de RAM, séparer compilation et assemblage :
 
