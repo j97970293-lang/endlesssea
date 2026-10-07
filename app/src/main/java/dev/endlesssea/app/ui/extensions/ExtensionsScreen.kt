@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,6 +72,61 @@ fun ExtensionsScreen(
     val selectedLangs by viewModel.languages.collectAsState()
     var addDialog by remember { mutableStateOf(false) }
     var repoUrl by remember { mutableStateOf("") }
+
+    // ---- §extensions-onglets (conversation 8) : « Installées », « Non installées »
+    // et « Dépôts » ne sont PLUS dans le même panier — chacun a son onglet et
+    // SES filtres (langue, type, statut, mises à jour, recherche).
+    var tab by remember { mutableStateOf(0) }
+    var installedFilter by remember { mutableStateOf("ALL") }   // ALL | ON | OFF | UPDATE
+    var entryFilter by remember { mutableStateOf("ALL") }       // ALL | UPDATE
+    var repoFilter by remember { mutableStateOf("ALL") }        // ALL | ON | OFF
+    var query by remember { mutableStateOf("") }
+    /** Langues/type choisis pour l'onglet « Non installées » (vides = tout). */
+    var entryLangs by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var entryTypes by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    val installedList = state.extensions
+    val availableList = state.repoEntries
+    val updatesCount = installedList.count { ext ->
+        val entry = availableList.firstOrNull { it.entry.id == ext.pkg }?.entry
+        entry != null && entry.version > ext.version
+    }
+    val filteredInstalled = installedList
+        .filter { ext ->
+            when (installedFilter) {
+                "ON" -> ext.enabled
+                "OFF" -> !ext.enabled
+                "UPDATE" -> {
+                    val entry = availableList.firstOrNull { it.entry.id == ext.pkg }?.entry
+                    entry != null && entry.version > ext.version
+                }
+                else -> true
+            }
+        }
+        .filter { ext ->
+            query.isBlank() || ext.name.contains(query, true) || ext.pkg.contains(query, true)
+        }
+    val filteredEntries = availableList
+        .filter { e ->
+            val installed = installedList.any { x -> x.pkg == e.entry.id }
+            val updatable = e.installedVersion in 1 until e.entry.version
+            (!installed || updatable) &&
+                (entryFilter != "UPDATE" || updatable) &&
+                (entryLangs.isEmpty() || e.entry.languages.isEmpty() ||
+                    e.entry.languages.any { l -> l.lowercase() in entryLangs }) &&
+                (entryTypes.isEmpty() || e.entry.types.any { t -> t.lowercase() in entryTypes }) &&
+                (query.isBlank() || e.entry.name.contains(query, true) ||
+                    (e.entry.description.values.firstOrNull()?.contains(query, true) ?: false)) &&
+                (selectedLangs.isEmpty() || e.entry.languages.isEmpty() ||
+                    e.entry.languages.any { l -> l.lowercase() in selectedLangs })
+        }
+    val filteredRepos = state.repos.filter {
+        when (repoFilter) {
+            "ON" -> it.enabled
+            "OFF" -> !it.enabled
+            else -> true
+        }
+    }.filter { query.isBlank() || it.name.contains(query, true) || it.url.contains(query, true) }
 
     // Retours visibles — « quand j'ajoute n'importe quoi, ça donne quelque chose »
     LaunchedEffect(state.message) {
@@ -125,7 +181,117 @@ fun ExtensionsScreen(
                 }
             }
 
+            // ------------------------------------------------- Onglets + recherche
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    androidx.compose.material3.TabRow(selectedTabIndex = tab) {
+                        listOf(
+                            "Installées" to installedList.size,
+                            "Non installées" to filteredEntries.size,
+                            "Dépôts" to state.repos.size,
+                        ).forEachIndexed { index, (label, count) ->
+                            androidx.compose.material3.Tab(
+                                selected = tab == index,
+                                onClick = { tab = index; query = "" },
+                                text = {
+                                    Text(
+                                        if (count > 0) "$label ($count)" else label,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = {
+                            Text(
+                                when (tab) {
+                                    0 -> "Filtrer mes extensions…"
+                                    1 -> "Filtrer les extensions disponibles…"
+                                    else -> "Filtrer les dépôts…"
+                                },
+                            )
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Filled.Search, null) },
+                        trailingIcon = {
+                            if (query.isNotBlank()) {
+                                IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Effacer") }
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    // Filtres propres à l'onglet courant
+                    Row(
+                        Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        when (tab) {
+                            0 -> listOf(
+                                "ALL" to "Toutes",
+                                "ON" to "Actives",
+                                "OFF" to "Inactives",
+                                "UPDATE" to "Mises à jour ($updatesCount)",
+                            ).forEach { (key, label) ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = installedFilter == key,
+                                    onClick = { installedFilter = key },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
+                                )
+                            }
+                            1 -> {
+                                androidx.compose.material3.FilterChip(
+                                    selected = entryFilter == "UPDATE",
+                                    onClick = { entryFilter = if (entryFilter == "UPDATE") "ALL" else "UPDATE" },
+                                    label = { Text("Mises à jour", maxLines = 1, softWrap = false) },
+                                )
+                                val langs = availableList.flatMap { it.entry.languages }
+                                    .map { it.lowercase() }.distinct().sorted()
+                                langs.forEach { l ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = l in entryLangs,
+                                        onClick = {
+                                            entryLangs = if (l in entryLangs) entryLangs - l else entryLangs + l
+                                        },
+                                        label = { Text(l.uppercase(), maxLines = 1, softWrap = false) },
+                                    )
+                                }
+                                val types = availableList.flatMap { it.entry.types }
+                                    .map { it.lowercase() }.distinct().sorted()
+                                types.forEach { t ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = t in entryTypes,
+                                        onClick = {
+                                            entryTypes = if (t in entryTypes) entryTypes - t else entryTypes + t
+                                        },
+                                        label = { Text(t, maxLines = 1, softWrap = false) },
+                                    )
+                                }
+                            }
+                            else -> listOf(
+                                "ALL" to "Tous",
+                                "ON" to "Activés",
+                                "OFF" to "Désactivés",
+                            ).forEach { (key, label) ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = repoFilter == key,
+                                    onClick = { repoFilter = key },
+                                    label = { Text(label, maxLines = 1, softWrap = false) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // --------------------------------------------------------- Dépôts
+            if (tab == 2) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Dépôts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -151,7 +317,7 @@ fun ExtensionsScreen(
                     }
                 }
             }
-            items(state.repos, key = { it.url }) { repo ->
+            items(filteredRepos, key = { it.url }) { repo ->
                 GlassCard(contentPadding = PaddingValues(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         // §4 — Icône du dépôt : SafeAsyncImage charge en parallèle,
@@ -180,27 +346,30 @@ fun ExtensionsScreen(
                 }
             }
 
+            }   // ---- fin de l'onglet « Dépôts »
+
             // --------------------------------------- Extensions disponibles (dépôts)
+            if (tab == 1) {
             item {
                 Text(
                     "Disponibles (non installées)",
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
-            if (state.repoEntries.isNotEmpty()) {
-                item { Text("Disponibles en ligne", style = MaterialTheme.typography.titleMedium) }
-            val shownEntries = state.repoEntries.filter { e ->
-                // §sections-extensions : ici, uniquement ce qui N'EST PAS installé
-                // (ou qui a une mise à jour en attente).
-                val installed = state.extensions.any { x -> x.pkg == e.entry.id }
-                val updatable = e.installedVersion in 1 until e.entry.version
-                (!installed || updatable) && (
-                    selectedLangs.isEmpty() ||
-                        e.entry.languages.isEmpty() ||
-                        e.entry.languages.any { l -> l.lowercase() in selectedLangs }
+            if (filteredEntries.isEmpty()) {
+                item {
+                    Text(
+                        if (availableList.isEmpty()) {
+                            "Aucune extension disponible : ajoutez et synchronisez un dépôt (onglet « Dépôts »)."
+                        } else {
+                            "Aucun résultat avec ces filtres."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
             }
-            items(shownEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
+            items(filteredEntries, key = { "${it.repoUrl}|${it.entry.id}" }) { e ->
                 val upToDate = e.installedVersion >= e.entry.version
                 GlassCard(contentPadding = PaddingValues(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -234,45 +403,22 @@ fun ExtensionsScreen(
             }
 
             // --------------------------------------------- Extensions installées
+            if (tab == 0) {
             item { Text("Extensions installées", style = MaterialTheme.typography.titleMedium) }
-            item {
-                // §langues-extensions : ne garder que certaines langues de sources
-                val langs = remember(state.repoEntries) {
-                    state.repoEntries.flatMap { it.entry.languages }.map { it.lowercase() }
-                        .distinct().sorted()
-                }
-                if (langs.isNotEmpty()) {
-                    Column {
-                        Text(
-                            "Langues des sources",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(
-                            Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            langs.forEach { l ->
-                                androidx.compose.material3.FilterChip(
-                                    selected = selectedLangs.isEmpty() || l in selectedLangs,
-                                    onClick = { viewModel.toggleLanguage(l) },
-                                    label = { Text(l.uppercase(), maxLines = 1, softWrap = false) },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            if (state.extensions.isEmpty()) {
+            if (filteredInstalled.isEmpty()) {
                 item {
                     Text(
-                        "Rien pour l'instant. Installez depuis un dépôt (synchronisez-le d'abord) ou un fichier .esx.",
+                        if (installedList.isEmpty()) {
+                            "Rien pour l'instant. Installez depuis un dépôt (synchronisez-le d'abord) ou un fichier .esx."
+                        } else {
+                            "Aucune extension ne correspond à ce filtre."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            items(state.extensions, key = { it.pkg }) { ext ->
+            items(filteredInstalled, key = { it.pkg }) { ext ->
                 GlassCard(contentPadding = PaddingValues(14.dp)) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -336,6 +482,7 @@ fun ExtensionsScreen(
                     }
                 }
             }
+            }   // ---- fin de l'onglet « Installées »
         }
     }
 
