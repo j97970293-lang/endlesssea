@@ -785,10 +785,10 @@ fun DetailsScreen(
             state.linksByEpisode.values.flatten()
                 .mapNotNull { it.server?.takeIf { s -> s.isNotBlank() } }.distinct()
         }
-        var ordered by remember(storedOrder, detected) {
-            mutableStateOf(storedOrder.filter { it in detected } + detected.filter { it !in storedOrder })
+        var ordered by remember { mutableStateOf(storedOrder + detected.filter { it !in storedOrder }) }
+        LaunchedEffect(detected) {
+            ordered = ordered + detected.filter { it !in ordered }
         }
-        if (ordered.isEmpty()) ordered = detected.ifEmpty { storedOrder }
         var inactive by remember { mutableStateOf(setOf<String>()) }
         AlertDialog(
             onDismissRequest = { serverOrderDialog = false },
@@ -806,7 +806,7 @@ fun DetailsScreen(
             dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
             title = { Text("Serveurs & priorité") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
                         "Maintiens la poignée ≡ et glisse pour classer : le serveur le plus haut " +
                             "est essayé en premier pour chaque épisode. Désactive ceux à ignorer.",

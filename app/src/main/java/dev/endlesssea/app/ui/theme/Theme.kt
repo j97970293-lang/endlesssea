@@ -7,6 +7,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -134,7 +135,17 @@ fun EndlessSeaTheme(
             blurRadius = 5f,
         ),
     )
-    MaterialTheme(colorScheme = tinted, typography = typography, content = content)
+    val surfaces = listOf(tinted.background, tinted.surface, tinted.surfaceVariant).map { it.toArgb() }
+    fun readable(color: Color) = Color(readableColor(color.toArgb(), surfaces))
+    fun foreground(color: Color) = if (contrastRatio(color.toArgb(), -1) >= contrastRatio(color.toArgb(), 0xFF000000.toInt())) Color.White else Color.Black
+    val primary = readable(tinted.primary)
+    val secondary = readable(tinted.secondary)
+    val tertiary = readable(tinted.tertiary)
+    val accessible = tinted.copy(primary = primary, onPrimary = foreground(primary),
+        secondary = secondary, onSecondary = foreground(secondary),
+        tertiary = tertiary, onTertiary = foreground(tertiary),
+        onSurfaceVariant = readable(tinted.onSurfaceVariant))
+    MaterialTheme(colorScheme = accessible, typography = typography, content = content)
 }
 
 // ----------------------------------------------------------------- polices §37

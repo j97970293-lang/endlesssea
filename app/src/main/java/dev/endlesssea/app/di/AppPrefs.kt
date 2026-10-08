@@ -196,15 +196,17 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     init {
         // Preserve existing order, append new destinations, and expose Statistics once.
         val savedOrder = p.getString("tab_order", null)?.split(",")
+        val edit = p.edit()
         if (savedOrder != null) {
-            val order = normalizeTabOrder(savedOrder, ALL_TAB_ROUTES)
-            val edit = p.edit().putString("tab_order", order.joinToString(","))
-            if ("statistics" !in savedOrder) {
-                val tabs = p.getStringSet("bar_tabs", DEFAULT_TABS).orEmpty() + "statistics"
-                edit.putStringSet("bar_tabs", tabs)
-            }
-            edit.apply()
+            edit.putString("tab_order", normalizeTabOrder(savedOrder, ALL_TAB_ROUTES).joinToString(","))
         }
+        if (!p.getBoolean("statistics_tab_migrated", false)) {
+            if (savedOrder == null || "statistics" !in savedOrder) {
+                edit.putStringSet("bar_tabs", p.getStringSet("bar_tabs", DEFAULT_TABS).orEmpty() + "statistics")
+            }
+            edit.putBoolean("statistics_tab_migrated", true)
+        }
+        edit.apply()
     }
 
     private val _recordHistory = MutableStateFlow(p.getBoolean("record_history", true))
