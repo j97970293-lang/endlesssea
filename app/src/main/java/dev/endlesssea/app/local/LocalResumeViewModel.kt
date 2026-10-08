@@ -59,7 +59,7 @@ class LocalResumeViewModel @Inject constructor(
                             introStartSec = metadata.introStartSec, introEndSec = metadata.introEndSec, outroStartSec = metadata.outroStartSec)
                     localPlaybackQueue(siblings, selected) to selected
                 }
-                LocalLibraryCache.publish((LocalLibraryCache.files.value.filter { it.parentUri != selected.parentUri } + queue).distinctBy { it.uri })
+                LocalLibraryCache.publish((LocalLibraryCache.files.value.filter { if (selected.parentUri.isBlank()) it.uri != selected.uri else it.parentUri != selected.parentUri } + queue).distinctBy { it.uri })
                 onReady(queue, selected)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {

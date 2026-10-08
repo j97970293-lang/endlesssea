@@ -1060,7 +1060,7 @@ internal fun playLocal(
                 thumbnailUrl = it.customCoverUri ?: it.uri,
                 durationMs = it.durationMs ?: 0L, episodeNumber = it.episodeNumber?.toFloat(),
                 season = dev.endlesssea.app.local.LocalVideos.episodeSeason(it.name),
-                mediaId = dev.endlesssea.app.local.LocalMediaIds.series(it.parentUri), downloaded = true,
+                mediaId = it.parentUri.takeIf { parent -> parent.isNotBlank() }?.let(dev.endlesssea.app.local.LocalMediaIds::series), downloaded = true,
                 markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(it.introStartSec, it.introEndSec, it.outroStartSec),
             )
         },
@@ -1068,7 +1068,7 @@ internal fun playLocal(
     )
     dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
         title = video.displayName,
-        mediaId = dev.endlesssea.app.local.LocalMediaIds.series(video.parentUri), episodeId = video.uri,
+        mediaId = video.parentUri.takeIf { it.isNotBlank() }?.let(dev.endlesssea.app.local.LocalMediaIds::series), episodeId = video.uri,
         links = listOf(link(video)),
         startIndex = 0,
         markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(

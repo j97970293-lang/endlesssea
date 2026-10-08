@@ -8,6 +8,15 @@ internal fun localPlaybackQueue(files: List<LocalVideoUi>, selected: LocalVideoU
         .distinctBy { it.uri }
         .sortedWith(compareBy<LocalVideoUi>(
             { LocalVideos.episodeSeason(it.name) ?: 0 },
-            { LocalVideos.episodeNumber(it.name) ?: Int.MAX_VALUE },
+            { playbackEpisodeOrder(it.name) ?: Double.MAX_VALUE },
             { it.name.lowercase(java.util.Locale.ROOT) },
         ))
+
+/** Fractional specials stay in viewing order without being sent as integer tracker episodes. */
+private fun playbackEpisodeOrder(name: String): Double? {
+    LocalVideos.episodeNumber(name)?.let { return it.toDouble() }
+    val base = name.substringBeforeLast('.')
+    val explicit = Regex("(?i)(?:s\\d{1,2}[ ._-]*e|\\bep?(?:isode)?[ ._-]?)(\\d{1,5}[.,]\\d+)").find(base)
+    val standalone = Regex("(?:^|[ _-])(\\d{1,5}[.,]\\d+)(?=$|[ _-])").find(base)
+    return (explicit ?: standalone)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
+}
