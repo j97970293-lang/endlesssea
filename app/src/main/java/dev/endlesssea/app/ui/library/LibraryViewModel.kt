@@ -573,7 +573,7 @@ class LibraryViewModel @Inject constructor(
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
-                val m = metadataByUri[f.uri] ?: AppPrefs.LocalFileMeta()
+                val m = metadataByUri[f.uri] ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
                 LocalVideoUi(
                     uri = f.uri,
                     name = dev.endlesssea.app.local.LocalNames.fileName(f.displayName)
