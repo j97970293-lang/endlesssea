@@ -8,7 +8,7 @@
 
 [![Android CI](https://github.com/j97970293-lang/endlesssea/actions/workflows/android-ci.yml/badge.svg)](https://github.com/j97970293-lang/endlesssea/actions/workflows/android-ci.yml)
 
-Android 8.0+ (API 26, testé jusqu'à Android 15) • Kotlin • Jetpack Compose • GPL-3.0 • version **0.25.0**
+Android 8.0+ (API 26, cible Android 15) • Kotlin • Jetpack Compose • GPL-3.0 • version du code **0.26.0**
 
 </div>
 
@@ -23,21 +23,25 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 > **L'application ne contient aucune source en dur.** L'utilisateur installe les extensions/providers qu'il souhaite depuis des dépôts. Le dépôt principal ne dépend d'aucune liste fixe de sites.
 
 - 🔌 **Système d'extensions** indépendant (plugins compilés `.esx`, providers déclaratifs JSON), dépôts multiples, permissions et signatures vérifiées
-- ⬇️ **Gestionnaire de téléchargement puissant** : multi-connexions segmentées, pause/reprise, file d'attente, arrière-plan, HLS/DASH, sous-titres en fichiers séparés, reprise après redémarrage
+- ⬇️ **Gestionnaire de téléchargement puissant** : multi-connexions segmentées, pause/reprise, file d'attente, arrière-plan, fichiers directs et HLS (DASH : lecture en ligne uniquement), sous-titres en fichiers séparés, reprise après redémarrage
 - 🔗 **Suivi des épisodes vus** : AniList, MyAnimeList, Shikimori (rattachement manuel + marquage automatique à 90 %) et TMDB pour les affiches et bandes-annonces manquantes — identifiants stockés sur l'appareil, aucun compte requis
-- ▶️ **Lecteur moderne** (Media3/ExoPlayer) : **8 thèmes complets** (Endless Sea, Netflix, Crunchyroll, YouTube, VLC, Plex, Apple TV+, Gaming — chacun sa mise en page), vitesse 0,25×–4× (pitch corrigé), pistes audio, **sous-titres affichés et décalables ±0,5 s**, **boost audio jusqu'à 200 %**, upscaling par niveaux (OFF/AUTO/PERFORMANCE/QUALITY) avec garde thermique, gestes complets (double appui, glisser luminosité/volume — inversable), zoom au pincement 1×–3×, verrouillage, reprise de position, surimpression de statistiques
+- ▶️ **Lecteur moderne** (Media3/ExoPlayer) : **7 thèmes** (Défaut, Zen, Orbit, Compact Bar, Neon Frame, Split Controls, Floating Cards), placement indépendant des outils et de la progression en haut/bas, vitesse 0,25×–4× (pitch corrigé), pistes audio, **sous-titres affichés et décalables ±0,5 s**, **boost audio jusqu'à 200 %**, upscaling par niveaux (OFF/AUTO/PERFORMANCE/QUALITY) avec garde thermique, gestes complets (double appui, glisser luminosité/volume — inversable), zoom au pincement 1×–3×, verrouillage, reprise de position, surimpression de statistiques
 - ⏭️ **Megaskip** : saut d'intro/récap/générique/aperçu alimenté par **TheIntroDB**, **IntroDB** et **AniSkip** (identifiants résolus automatiquement via AniZip/Jikan), **cache hors-ligne** en base, boutons de saut personnalisés (« +85 s », « Opening », « Filler ») et réglages fins par type de segment
 - 📚 **Bibliothèque locale hors-ligne** : anime, films, séries, OVA, ONA, catégories et genres personnalisables, filtres par emplacement (interne / carte SD) et onglets « En cours / Terminés »
 - 📂 **Dossiers vidéo façon Aniyomi** : `Série/cover.jpg` + `details.json` (éditable depuis l'app, écrit dans le dossier) + `episodes.json` (titres d'épisodes), tri par numéro d'épisode
 - 🔎 **Entretien des téléchargements** : vérification d'intégrité SHA-256, limite de bande passante, purge automatique des fichiers anciens et des temporaires orphelins
 - 📥 **Téléchargements dans la bibliothèque** : un épisode téléchargé — même isolé — forme sa propre « série » (badge, nombre d'épisodes, emplacement) et se lit hors-ligne
+- 💾 **Sauvegarde JSON versionnée** : bibliothèque, historique complet, fiches en cache, genres, catégories personnelles, annotations locales et une sélection de réglages ; validation et aperçu avant fusion. Sans vidéos, fichiers image ni jetons de connexion. [Périmètre et limites](docs/maintenance/reliability-and-backups.md).
+- 🎨 **8 logos sélectionnables**, bleu et blanc par défaut ; images optimisées, choix appliqué au lancement et à l’icône Android.
 - 🔍 **Recherche multi-extensions** agrégée avec filtres
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
 - 📱 Android 8.0+ (API 26 → 15), stockage interne ou carte SD (SAF)
 
 ### État des lieux & audit
 
-Un audit vivant, par composant, est maintenu dans [`docs/fr/AUDIT.md`](docs/fr/AUDIT.md) (compilation, mise à jour, WebView, images d'extensions, téléchargements, erreurs, Android 8, DNS — + fondations Phase 2).
+Les travaux actuels et la checklist appareil sont décrits dans [Fiabilité et sauvegardes](docs/maintenance/reliability-and-backups.md). Les tests unitaires et la compilation en CI ne remplacent pas une validation sur téléphone.
+
+L’audit historique, par composant, est conservé dans [`docs/fr/AUDIT.md`](docs/fr/AUDIT.md) (compilation, mise à jour, WebView, images d'extensions, téléchargements, erreurs, Android 8, DNS — + fondations Phase 2).
 
 ### Avertissement légal
 
@@ -76,7 +80,7 @@ endless-sea/
 │       ├── 00-resume.md                        ← résumé complet en français
 │       ├── AUDIT.md                            ← audit vivant par composant
 │       ├── conversations-0.22.md               ← suivi des 11 conversations (ligne par ligne)
-│       └── ETAT-0.25.md                        ← état livré 0.25.0 (lecteur 8 thèmes, suivi, téléchargements)
+│       └── ETAT-0.25.md                        ← archive des exigences 0.25.0 (pas l’état actuel)
 │
 ├── core/                            ← modèles partagés, erreurs, réseau commun
 │   └── src/main/java/dev/endlesssea/core/
@@ -133,8 +137,8 @@ endless-sea/
 
 ```bash
 # Prérequis : JDK 17+, Android SDK 35
-git clone https://github.com/<org>/endless-sea.git
-cd endless-sea
+git clone https://github.com/j97970293-lang/endlesssea.git
+cd endlesssea
 ./gradlew :app:assembleDebug
 ```
 
@@ -151,17 +155,23 @@ Endless Sea is a modern, lightweight Android app inspired by the best ideas of *
 > **No hardcoded sources.** Users install the extensions/providers they want from pluggable repositories. The main repo has zero mandatory streaming sources.
 
 - 🔌 Independent **extension system** (compiled `.esx` plugins, declarative JSON providers), multiple repositories, verified permissions & checksums
-- ⬇️ **Powerful download manager**: segmented multi-connection downloads, pause/resume, queue, background, HLS/DASH, subtitles as sidecar files, crash/restart recovery
+- ⬇️ **Powerful download manager**: segmented multi-connection downloads, pause/resume, queue, background, direct files and HLS (DASH: online playback only), subtitles as sidecar files, crash/restart recovery
 - 🔗 **Episode tracking**: AniList, MyAnimeList, Shikimori (manual linking + automatic marking at 90%) plus TMDB for missing posters and trailers — credentials stored on device, no account required
-- ▶️ **Modern player** (Media3/ExoPlayer): **8 full themes** (Endless Sea, Netflix, Crunchyroll, YouTube, VLC, Plex, Apple TV+, Gaming — each with its own control layout), 0.25×–4× speed with pitch correction, audio tracks, **subtitles displayed and delayable ±0.5 s**, **audio boost up to 200 %**, tiered upscaling (OFF/AUTO/PERFORMANCE/QUALITY) with thermal guard, gestures (double-tap, brightness/volume drag — swappable), 1×–3× pinch zoom, lock, position resume, stats overlay
+- ▶️ **Modern player** (Media3/ExoPlayer): **7 themes** (Default, Zen, Orbit, Compact Bar, Neon Frame, Split Controls, Floating Cards), independent top/bottom placement for tools and progress, 0.25×–4× speed with pitch correction, audio tracks, **subtitles displayed and delayable ±0.5 s**, **audio boost up to 200 %**, tiered upscaling (OFF/AUTO/PERFORMANCE/QUALITY) with thermal guard, gestures (double-tap, brightness/volume drag — swappable), 1×–3× pinch zoom, lock, position resume, stats overlay
 - ⏭️ **Megaskip**: intro/recap/credits/preview skipping powered by **TheIntroDB**, **IntroDB** and **AniSkip** (IDs resolved automatically through AniZip/Jikan), **offline cache** in the local database, custom skip buttons (“+85 s”, “Opening”, “Filler”) and per-type settings
 - 📚 **Offline local library**: anime, movies, series, OVA, ONA, customizable categories & genres, storage filters (internal / SD card) and “Watching / Completed” tabs
 - 📂 **Aniyomi-style video folders**: `Series/cover.jpg` + `details.json` (editable in-app, written into the folder) + `episodes.json` (episode titles), sorted by episode number
 - 📥 **Downloads inside the library**: any downloaded episode — even a single one — becomes its own “series” (badge, episode count, storage) and plays offline
 - 🔎 **Download hygiene**: SHA-256 integrity check, bandwidth limit, automatic cleanup of old files and orphan parts, “Clean now” action, foreground service with wake-lock
+- 💾 **Versioned JSON backups**: library, complete history, cached media details, genres, custom categories, local annotations and selected preferences; validation and preview before merging. No video/image files or authentication tokens. [Scope and limitations](docs/maintenance/reliability-and-backups.md).
+- 🎨 **8 selectable logos**, blue and white by default; optimized artwork used for the splash screen and Android launcher.
 - 🔍 Aggregated **multi-extension search** with filters
 - 🛡️ **CAPTCHA/anti-bot**: user-driven WebView verification screen, per-extension cookie persistence
 - 📱 Android 8.0+, internal or SD-card storage (SAF)
+
+### Validation status
+
+CI runs unit tests and assembles a debug APK. This is not proof of real-device playback, launcher behavior or tracker-account interoperability; see the [device checklist](docs/maintenance/reliability-and-backups.md#vérifications-sur-appareil-à-effectuer).
 
 ### Legal notice
 
@@ -181,7 +191,7 @@ Full design docs live in [`docs/en`](docs/en) (a French summary is in [`docs/fr/
 
 🇫🇷 Documentation complémentaire : [résumé complet](docs/fr/00-resume.md) ·
 [audit par composant](docs/fr/AUDIT.md) · [suivi des 11 conversations](docs/fr/conversations-0.22.md) ·
-[état livré 0.25.0](docs/fr/ETAT-0.25.md).
+[archive 0.25.0](docs/fr/ETAT-0.25.md) · [fiabilité et sauvegardes actuelles](docs/maintenance/reliability-and-backups.md).
 
 ### Build
 
@@ -192,7 +202,7 @@ cd endlesssea
 ./gradlew :app:assembleDebug
 ```
 
-Version courante : **0.25.0** (versionCode 25) — APK de débogage :
+Version du code : **0.26.0** (versionCode 26 ; les commits de maintenance ne publient pas de release) — APK de débogage :
 `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### License

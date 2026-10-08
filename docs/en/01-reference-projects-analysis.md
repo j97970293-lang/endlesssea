@@ -82,7 +82,7 @@ Directory/community resources studied: [miyomi.app](https://miyomi.app/), [every
 |---|---|---|
 | Direct file HTTP(S), Range multi-connection | ABDM, IDM, 1DM+ | ✅ SegmentEngine (4–8 parts, adaptive) |
 | HLS (m3u8 → .ts parts, variant pick) | Cloudstream, ABDM, Nuvio | ✅ Media3 HLS parser + sequential part writer |
-| DASH (MPD) | Nuvio (ExoPlayer), CS3 | ✅ playback; download = best-effort track mux note |
+| DASH (MPD) | Nuvio (ExoPlayer), CS3 | ✅ playback; DASH download currently rejected by DownloadManager |
 | Torrent (debrid/torrent add-ons) | Aniyomi forks, Stremio | 🔜 extension-provided `infoHash` links, external handler |
 | WebView-resolved links (JS challenges) | CS3 CloudflareKiller | ✅ Captcha/anti-bot flow (doc 05, §CAPTCHA) |
 | External subtitles sidecar (.srt/.vtt/.ass) | CS3, Stremio, Nuvio | ✅ first-class (doc 06 §subtitles) |

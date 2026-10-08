@@ -1,5 +1,8 @@
 # Endless Sea — état des exigences (11 conversations) → 0.25.0
 
+> **Archive de la version 0.25, pas un état actuel.** Le code est en 0.26.0 ; les sept thèmes actuels sont Défaut, Zen, Orbit, Compact Bar, Neon Frame, Split Controls et Floating Cards. Voir le [README](../../README.md) et les [travaux de fiabilité](../maintenance/reliability-and-backups.md). Les mentions « livré » de cette archive ne prouvent pas une validation sur appareil.
+
+
 Document de suivi : chaque conversation DeepSeek est confrontée au code réel du
 dépôt. Une ligne = une conversation, avec son identifiant de partage, son état
 et ce qui a été fait concrètement (adapté, jamais copié tel quel).

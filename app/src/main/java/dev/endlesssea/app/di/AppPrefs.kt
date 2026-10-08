@@ -162,7 +162,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
          * "app" = suit le thème de l'application.
          */
         /**
-         * §theme-lecteur (conversations 1 & 2) — les 8 thèmes complets du lecteur.
+         * §theme-lecteur (conversations 1 & 2) — les 7 thèmes du lecteur.
          * Un thème n'est pas une couleur : chaque skin fournit sa propre mise en
          * page des commandes (voir `ui/player/themes/`). Le couple (argb, libellé)
          * sert uniquement à l'aperçu du sélecteur ; 0 = couleur de l'application.
@@ -622,7 +622,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     /**
      * §theme-lecteur : habillage du lecteur. Les couleurs viennent de [PLAYER_THEMES] ;
-     * "app" suit le thème de l'application.
+     * Les anciennes valeurs inconnues sont migrées vers "default".
      */
     private val _playerTheme = MutableStateFlow(migratePlayerTheme(p.getString("player_theme", "default")))
     val playerTheme: StateFlow<String> = _playerTheme

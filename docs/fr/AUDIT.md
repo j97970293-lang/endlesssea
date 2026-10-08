@@ -1,5 +1,8 @@
 # Audit Endless Sea — Phase 1 (stabilisation) + Phase 2 (fondations)
 
+> Audit historique. Pour les corrections actuelles de reprise locale, métadonnées, scan et sauvegarde, consulter [Fiabilité et sauvegardes](../maintenance/reliability-and-backups.md). Ne pas assimiler les conclusions de cette archive à des tests appareil récents.
+
+
 *Dernière révision : 2026-10-05 — post v0.8.0.*
 
 Légende : ✅ terminé · 🟡 partiel · 🔴 cassé/absent.

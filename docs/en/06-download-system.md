@@ -6,7 +6,7 @@
 
 ## 1. Requirements recap (spec §5, §6)
 
-Parallel segmented downloads · resume after interruption/crash/reboot · pause/resume · background queue · N simultaneous tasks · server & quality choice at enqueue · subtitle sidecar files (SRT/ASS/VTT) · direct files + HLS (and DASH best-effort) · integrity check · progress notifications · clear errors.
+Parallel segmented downloads · resume after interruption/crash/reboot · pause/resume · background queue · N simultaneous tasks · server & quality choice at enqueue · subtitle sidecar files (SRT/ASS/VTT) · direct files + HLS (DASH download is not implemented) · integrity check · progress notifications · clear errors.
 
 ## 2. Components
 
@@ -53,11 +53,13 @@ Key decisions:
 
 ## 5. HLS (and DASH note)
 
-1. Parse master playlist with **Media3 `HlsPlaylistParser`** (already a dependency for playback).
-2. Variant selected by requested quality (else highest ≤ user cap in settings).
-3. Segments are fetched sequentially (HLS servers rarely allow Range anyway), written into one growing `.part.ts` with a 64 KiB checkpoint cursor.
-4. EXT-X-KEY (AES-128): supported via standard key fetch — **only** when the source's ToS allow downloading; otherwise the extension must not return the link (documented for authors).
-5. DASH: playback native; download = best single representation when the manifest exposes direct `BaseURL`s; otherwise the engine reports "format not downloadable from this source" — honest error over brittle hacks.
+1. `HlsEngine` parses master/media playlists and resolves relative URLs.
+2. The master variant with the highest advertised bandwidth is selected. A user quality cap is not currently enforced by this parser.
+3. Segments are fetched sequentially with an index checkpoint and assembled into a `.ts` or fMP4 output (`EXT-X-MAP`).
+4. AES-128-CBC is supported. SAMPLE-AES and unsupported encryption methods are rejected; this is not a DRM-download implementation.
+5. DASH playback is supported by Media3, but `DownloadManager.runTask` explicitly rejects DASH tasks with “lecture en ligne uniquement pour l'instant”. Direct `BaseURL` extraction/muxing is **not implemented**.
+
+These implementation notes supersede the earlier “DASH best-effort” design. Playback/download compatibility still requires real-source and device testing.
 
 ## 6. Subtitles (spec §6)
 
