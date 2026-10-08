@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Prepare release assets
+        run: |
+          VERSION=0.28.0
+          cp app/build/outputs/apk/debug/app-debug.apk endless-sea-${VERSION}-debug.apk
+          sha256sum endless-sea-${VERSION}-debug.apk > SHA256SUMS.txt
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Create tag
+        run: |
+          VERSION=v0.28.0
+          if git ls-remote --tags origin "$VERSION" | grep -q "$VERSION"; then
+            echo "Tag $VERSION existe déjà"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$VERSION" $GITHUB_SHA
+            git push origin "$VERSION"
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > RELEASE_NOTES.md << 'EOF'
+          # EndlessSea 0.28.0 — Refonte UI du lecteur
+
+          ## Lecteur
+
+          - **Refonte visuelle des 7 thèmes** (Défaut, Zen, Orbit, Compact Bar, Neon Frame, Split Controls, Floating Cards), inspirée des lecteurs modernes (YouTube, Netflix, MX) :
+            - fin des pastilles noires opaques : boutons icône **transparents**, surfaces en **verre fumé translucide** avec filet 1 dp ;
+            - **dégradés** noir→transparent en haut et en bas au lieu de voiles unis ;
+            - barre de progression modernisée : piste discrète, **buffer visible atténué**, **curseur avec anneau blanc** ;
+            - **chips pilulaires** : active = accent plein, inactive = verre fumé ;
+            - bouton lecture en verre avec anneau discret, ou accent plein selon le thème.
+          - Thème par défaut : titre + sous-titre sur dégradé haut, temps collés à la barre, vitesse en chip allumée quand ≠ 1×, verrouillage en haut à droite.
+          - Compact Bar devient un dock en pilule de verre ; Floating Cards de vraies cartes translucides ; Neon Frame en exécution propre.
+          - Aucune signature publique modifiée : PlayerActivity et le sélecteur de thèmes compilent sans changement.
+
+          ## Installation
+
+          Télécharger **endless-sea-0.28.0-debug.apk**.
+
+          - Android 8.0 / API 26 minimum.
+          - `versionName = 0.28.0-debug`, `versionCode = 28`.
+          - Identifiant : `dev.endlesssea.app.debug`.
+          - Même clé debug fixe du dépôt que la 0.27.0 : mise à jour par-dessus une installation existante. Ne pas désinstaller pour mettre à jour.
+          - **APK debug**, pas une build de production.
+
+          Vérification : `sha256sum -c SHA256SUMS.txt`.
+
+          ## Validation et limites
+
+          Release publiée après succès du workflow Android CI sur le même commit (tests JVM des sept modules, assemblage debug). Aucun essai visuel sur téléphone ou émulateur n'est revendiqué : le rendu exact des thèmes reste à vérifier sur appareil.
+
+          Commits : `65d96b0`, `d0cd55e`, `420306b`, `309c164`.
+          EOF
+          gh release create v0.28.0 \
+            --title "EndlessSea 0.28.0 — Refonte UI du lecteur" \
+            --notes-file RELEASE_NOTES.md \
+            endless-sea-${VERSION}-debug.apk SHA256SUMS.txt
