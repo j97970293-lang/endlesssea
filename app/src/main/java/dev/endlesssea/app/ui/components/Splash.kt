@@ -34,7 +34,7 @@ import kotlinx.coroutines.delay
  * + titre qui apparaît, puis main (≈800 ms au total). Teinte du logo réglable.
  */
 @Composable
-fun SplashScreen(tintArgb: Long?, onFinished: () -> Unit, logoId: String = dev.endlesssea.app.branding.AppLogos.DEFAULT_ID) {
+fun SplashScreen(tintArgb: Long?, logoId: String = dev.endlesssea.app.branding.AppLogos.DEFAULT_ID, onFinished: () -> Unit) {
     var visible by remember { mutableStateOf(false) }
     var titleVisible by remember { mutableStateOf(false) }
     var gone by remember { mutableStateOf(false) }
