@@ -393,7 +393,6 @@ fun LocalDetailsScreen(
             onDismissRequest = { editTitle = false },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.saveFolderMeta(folderUri, null, null, null, null)
                     files.forEach { f ->
                         viewModel.saveLocalMeta(
                             f.uri, titleDraft, f.customCoverUri,

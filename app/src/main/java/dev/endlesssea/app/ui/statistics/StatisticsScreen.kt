@@ -44,6 +44,11 @@ fun StatisticsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            state.error?.let { error ->
+                Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+                TextButton(onClick = viewModel::refresh) { Text("Réessayer") }
+            }
             // §stats-header : résumé global
             Card(
                 modifier = Modifier
@@ -72,7 +77,7 @@ fun StatisticsScreen(
                             icon = Icons.Default.List,
                         )
                         StatCard(
-                            label = "Temps total",
+                            label = "Position cumulée",
                             value = formatDuration(state.totalWatchTimeMs),
                             icon = Icons.Default.Timer,
                         )
@@ -80,6 +85,8 @@ fun StatisticsScreen(
                 }
             }
 
+            Text("Estimation basée sur les positions enregistrées, pas sur le temps réellement regardé.",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
             // §stats-by-service : par service de tracking
             if (state.statsByService.isNotEmpty()) {
                 Card(

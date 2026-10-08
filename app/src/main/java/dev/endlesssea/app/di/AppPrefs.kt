@@ -193,6 +193,20 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     private val p = context.getSharedPreferences("endless_sea_prefs", Context.MODE_PRIVATE)
 
+    init {
+        // Preserve existing order, append new destinations, and expose Statistics once.
+        val savedOrder = p.getString("tab_order", null)?.split(",")
+        if (savedOrder != null) {
+            val order = normalizeTabOrder(savedOrder, ALL_TAB_ROUTES)
+            val edit = p.edit().putString("tab_order", order.joinToString(","))
+            if ("statistics" !in savedOrder) {
+                val tabs = p.getStringSet("bar_tabs", DEFAULT_TABS).orEmpty() + "statistics"
+                edit.putStringSet("bar_tabs", tabs)
+            }
+            edit.apply()
+        }
+    }
+
     private val _recordHistory = MutableStateFlow(p.getBoolean("record_history", true))
     val recordHistory: StateFlow<Boolean> = _recordHistory
     fun setRecordHistory(v: Boolean) { p.edit().putBoolean("record_history", v).apply(); _recordHistory.value = v }

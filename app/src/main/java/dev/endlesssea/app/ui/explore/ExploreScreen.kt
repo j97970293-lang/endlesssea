@@ -105,7 +105,11 @@ fun ExploreScreen(
             filterExploreRows(visibleRows, selectedGenre, selectedYear, selectedType)
         }
         if (suggestions) {
-            val items by viewModel.suggestions.collectAsState()
+            val suggestionsList by viewModel.suggestions.collectAsState()
+            val items = filterExploreRows(
+                listOf(ExploreRowUi("Suggestions", suggestionsList, "")),
+                selectedGenre, selectedYear, selectedType,
+            ).flatMap { it.items }
             LazyColumn {
                 item {
                     if (items.isEmpty()) Text("Regardez quelques épisodes pour obtenir des suggestions.", Modifier.padding(16.dp))
@@ -220,7 +224,7 @@ private fun FilterDialog(
     onReset: () -> Unit,
 ) {
     val genres = listOf("Action", "Aventure", "Comédie", "Drame", "Fantastique", "Horreur", "Romance", "SF", "Thriller")
-    val years = (2010..2026).reversed().toList()
+    val years = (1950..java.time.Year.now().value).reversed().toList()
     val types = listOf("Anime", "Film", "Série", "OVA", "ONA")
     
     androidx.compose.material3.AlertDialog(
