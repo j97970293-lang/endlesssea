@@ -316,15 +316,12 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Box {
                                     IconButton(onClick = { logoMenu = true }) {
-                                        androidx.compose.foundation.Image(
-                                            painter = androidx.compose.ui.res.painterResource(
-                                                dev.endlesssea.app.R.drawable.logo_sea,
-                                            ),
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.PlaylistPlay,
                                             contentDescription = "Menu EndlessSea",
                                             modifier = Modifier
                                                 .size(32.dp)
-                                                .androidxScale(logoScale)
-                                                .clip(androidx.compose.foundation.shape.CircleShape),
+                                                .androidxScale(logoScale),
                                         )
                                     }
                                     androidx.compose.material3.DropdownMenu(
