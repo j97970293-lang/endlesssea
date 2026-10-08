@@ -474,36 +474,14 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val outroStartSec: Int? = null,
     )
 
-    fun localFileMeta(uri: String): LocalFileMeta {
-        val q = "\""
-        val json = p.getString("local_file_meta", "{}") ?: "{}"
-        val entry = Regex(
-            java.util.regex.Pattern.quote(q + uri + q) + """\s*:\s*\[[^\]]*\]""",
-        ).find(json)?.value ?: return LocalFileMeta()
-        val fields = Regex("\"([^\"]*)\"").findAll(entry).map { it.groupValues[1] }.toList()
-        fun str(i: Int) = fields.getOrNull(i)?.takeIf { it.isNotBlank() }
-        fun sec(i: Int) = fields.getOrNull(i)?.toIntOrNull()
-        return LocalFileMeta(str(0), str(1), sec(2), sec(3), sec(4))
-    }
+    fun localFileMetadataSnapshot(): Map<String, LocalFileMeta> =
+        dev.endlesssea.app.local.LocalMetadataCodec.decodeAll(p.getString("local_file_meta", "{}") ?: "{}")
+
+    fun localFileMeta(uri: String): LocalFileMeta = localFileMetadataSnapshot()[uri] ?: LocalFileMeta()
 
     fun setLocalFileMeta(uri: String, meta: LocalFileMeta) {
-        val q = "\""
-        val json = p.getString("local_file_meta", "{}") ?: "{}"
-        val key = q + uri.replace(q, " ") + q
-        fun f(v: Any?) = (v?.toString() ?: "").replace(q, "'").replace(",", " ")
-        val entry = key + ":[" +
-            listOf(f(meta.title), f(meta.coverUri), f(meta.introStartSec), f(meta.introEndSec), f(meta.outroStartSec))
-                .joinToString(",") { q + it + q } +
-            "]"
-        val keyPattern = Regex(java.util.regex.Pattern.quote(key) + """\s*:\s*\[[^\]]*\]""")
-        val base = json.trim().removePrefix("{").removeSuffix("}").trim()
-        val body = when {
-            keyPattern.containsMatchIn(base) ->
-                keyPattern.replace(base, java.util.regex.Matcher.quoteReplacement(entry))
-            base.isBlank() -> entry
-            else -> base + "," + entry
-        }
-        p.edit().putString("local_file_meta", "{" + body + "}").apply()
+        val values = localFileMetadataSnapshot() + (uri to meta)
+        p.edit().putString("local_file_meta", dev.endlesssea.app.local.LocalMetadataCodec.encode(values)).apply()
         _visibleLocalMetaTick.value++
     }
 
