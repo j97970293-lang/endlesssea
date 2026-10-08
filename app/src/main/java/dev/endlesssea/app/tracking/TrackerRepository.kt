@@ -27,6 +27,7 @@ import javax.inject.Singleton
 class TrackerRepository @Inject constructor(
     private val dao: TrackerDao,
     http: OkHttpClient,
+    private val prefs: dev.endlesssea.app.di.AppPrefs,
 ) {
 
     private val services: List<TrackerService> = TrackerRegistry.all(http)
@@ -86,6 +87,11 @@ class TrackerRepository @Inject constructor(
     private suspend fun activeAccount(id: String): TrackerAccountEntity? =
         dao.account(id)?.takeIf { it.enabled && it.userName.isNotBlank() }
 
+    /** §tracker-auto-link : récupère le premier service activé pour la création automatique de lien. */
+    private suspend fun getFirstEnabledService(): String? = withContext(Dispatchers.IO) {
+        dao.observeAccounts().first().firstOrNull { it.enabled && it.userName.isNotBlank() }?.service
+    }
+
     private suspend fun renewMal(account: TrackerAccountEntity): TrackerAccountEntity? {
         val mal = service("MAL") as? MalService ?: return null
         val token = mal.refresh(account) ?: return null
@@ -125,17 +131,23 @@ class TrackerRepository @Inject constructor(
         autoMatchEpisodes: Boolean = false, autoMatchSeason: Int? = null,
     ) =
         withContext(Dispatchers.IO) {
+            val existing = dao.link(mediaId)
+            // §tracker-no-reset : si un lien existe déjà, conserver sa progression et statut
+            val progress = existing?.progress ?: 0
+            val existingStatus = existing?.status ?: status
+            val existingAutoMatch = existing?.autoMatchEpisodes ?: autoMatchEpisodes
+            val existingSeason = existing?.autoMatchSeason ?: autoMatchSeason
             dao.upsertLink(
                 TrackerLinkEntity(
                     mediaId = mediaId,
                     service = service,
                     remoteId = hit.remoteId,
                     title = hit.title,
-                    totalEpisodes = hit.totalEpisodes ?: 0,
-                    progress = 0,
-                    status = status,
-                    autoMatchEpisodes = autoMatchEpisodes,
-                    autoMatchSeason = autoMatchSeason,
+                    totalEpisodes = hit.totalEpisodes ?: existing?.totalEpisodes ?: 0,
+                    progress = progress,
+                    status = existingStatus,
+                    autoMatchEpisodes = existingAutoMatch,
+                    autoMatchSeason = existingSeason,
                 ),
             )
         }
@@ -159,9 +171,29 @@ class TrackerRepository @Inject constructor(
     /** À 90 %, applique le numéro de la saison choisie ; une relecture ne compte jamais deux fois. */
     suspend fun markEpisodeWatched(
         mediaId: String, episodeId: String, number: Float?, season: Int?,
+        service: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         progressMutex.withLock {
-            val link = dao.link(mediaId) ?: return@withLock false
+            val link = dao.link(mediaId) ?: run {
+                // §tracker-auto-link : si aucun lien n'existe, en créer un automatique
+                // avec le service par défaut ou le premier disponible et activé.
+                val targetService = service ?: getDefaultService() ?: getFirstEnabledService() ?: return@withLock false
+                val account = account(targetService) ?: return@withLock false
+                // Créer un lien par défaut avec progress = 0
+                val newLink = TrackerLinkEntity(
+                    mediaId = mediaId,
+                    service = targetService,
+                    remoteId = "",
+                    title = "",
+                    totalEpisodes = 0,
+                    progress = 0,
+                    status = "WATCHING",
+                    autoMatchEpisodes = true,
+                    autoMatchSeason = season,
+                )
+                dao.upsertLink(newLink)
+                newLink
+            }
             val next = EpisodeMatching.nextProgress(
                 link.autoMatchEpisodes, link.autoMatchSeason, season, number,
                 link.progress, link.totalEpisodes,
@@ -193,6 +225,43 @@ class TrackerRepository @Inject constructor(
                 push(updated, progress, total, newStatus)
             }
         }
+
+    /**
+     * §tracker-force : force la mise à jour de la progression même si l'épisode
+     * a déjà été marqué comme vu (utile pour les relectures ou corrections manuelles).
+     */
+    suspend fun forceMarkEpisodeWatched(
+        mediaId: String, episodeId: String, number: Float?, season: Int?,
+        service: String? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        progressMutex.withLock {
+            val link = dao.link(mediaId) ?: run {
+                val targetService = service ?: getDefaultService() ?: getFirstEnabledService() ?: return@withLock false
+                val newLink = TrackerLinkEntity(
+                    mediaId = mediaId,
+                    service = targetService,
+                    remoteId = "",
+                    title = "",
+                    totalEpisodes = 0,
+                    progress = 0,
+                    status = "WATCHING",
+                    autoMatchEpisodes = true,
+                    autoMatchSeason = season,
+                )
+                dao.upsertLink(newLink)
+                newLink
+            }
+            val episode = number?.toInt() ?: return@withLock false
+            val total = link.totalEpisodes.takeIf { it > 0 }
+            val status = if (total != null && episode >= total) "COMPLETED" else "WATCHING"
+            val updated = link.copy(
+                progress = episode, status = status, lastEpisodeId = episodeId,
+                pendingSync = true, updatedAt = System.currentTimeMillis(),
+            )
+            dao.upsertLink(updated)
+            push(updated, episode, total, status)
+        }
+    }
 
     /** Pousse l'état vers le service ; en cas d'échec le drapeau reste levé. */
     private suspend fun push(
@@ -257,4 +326,17 @@ class TrackerRepository @Inject constructor(
     suspend fun firstLink(): TrackerLinkEntity? = withContext(Dispatchers.IO) {
         dao.observeLinks().first().firstOrNull()
     }
+
+    /** §tracker-choose : récupère tous les services activés pour permettre à l'utilisateur de choisir. */
+    suspend fun getEnabledServices(): List<TrackerAccountEntity> = withContext(Dispatchers.IO) {
+        dao.observeAccounts().first().filter { it.enabled && it.userName.isNotBlank() }
+    }
+
+    /** §tracker-choose : définit le service par défaut pour le tracking automatique. */
+    suspend fun setDefaultService(service: String) = withContext(Dispatchers.IO) {
+        prefs.setDefaultTrackerService(service)
+    }
+
+    /** §tracker-choose : récupère le service par défaut pour le tracking automatique. */
+    fun getDefaultService(): String? = prefs.defaultTrackerService.value
 }

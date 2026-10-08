@@ -1004,6 +1004,15 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val playerStats: StateFlow<Boolean> = _playerStats
     fun setPlayerStats(v: Boolean) { p.edit().putBoolean("player_stats", v).apply(); _playerStats.value = v }
 
+    // ---------------------------------------------------------------- tracker par défaut
+    /** §tracker-choose : service de tracking par défaut pour le tracking automatique. */
+    private val _defaultTrackerService = MutableStateFlow(p.getString("default_tracker_service", null))
+    val defaultTrackerService: StateFlow<String?> = _defaultTrackerService
+    fun setDefaultTrackerService(v: String?) {
+        p.edit().putString("default_tracker_service", v).apply(); _defaultTrackerService.value = v
+    }
+    fun getDefaultTrackerService(): String? = _defaultTrackerService.value
+
     init {
         // Synchronise le résolveur réseau global dès la création des préférences.
         dev.endlesssea.core.net.EsNet.dnsMode = _dnsMode.value
