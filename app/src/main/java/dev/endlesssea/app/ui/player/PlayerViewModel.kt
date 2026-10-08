@@ -108,6 +108,26 @@ class PlayerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState
 
+    private val sessionOwner = dev.endlesssea.app.ui.player.session.PlaybackSessionOwner<PlayerLaunchStore.Launch> {
+        it.links.isNotEmpty()
+    }
+
+    /** Called on every Activity creation; an already-owned session is never re-prepared. */
+    fun attachSession() {
+        when (val attachment = sessionOwner.attach(PlayerLaunchStore::consume)) {
+            is dev.endlesssea.app.ui.player.session.PlaybackSessionOwner.Attachment.Start -> {
+                val request = attachment.request
+                prepare(request.mediaId, request.episodeId, request.title.ifBlank { "Lecture" },
+                    request.links, request.startIndex)
+            }
+            dev.endlesssea.app.ui.player.session.PlaybackSessionOwner.Attachment.Retained -> Unit
+            dev.endlesssea.app.ui.player.session.PlaybackSessionOwner.Attachment.Unavailable -> {
+                _uiState.value = _uiState.value.copy(loading = false,
+                    error = "Session de lecture indisponible. Rouvrez la vidéo depuis sa fiche ou la bibliothèque.")
+            }
+        }
+    }
+
     private var episodeId: String? = null
     private var mediaId: String? = null
 

@@ -63,7 +63,6 @@ fun LibraryScreen(
     onDownloadedFolderClick: (String) -> Unit = {},
     viewModel: LibraryViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
-    var tab by remember { mutableIntStateOf(0) }
     val state by viewModel.uiState.collectAsState()
     // §catégories-perso : onglets = catégories natives + celles créées par l'utilisateur
     val customCats by viewModel.customCategories.collectAsState()
@@ -74,7 +73,20 @@ fun LibraryScreen(
     var newCategoryName by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf("")
     }
-    val tabs = remember(customCats) { LIBRARY_TABS + customCats.map { it to "CUSTOM:$it" } }
+    val tabs = remember(customCats, state.localMode) {
+        if (state.localMode) listOf("Tous les dossiers" to "LOCAL") + customCats.map { it to "CUSTOM:$it" }
+        else LIBRARY_TABS.filter { it.second != "LOCAL" }
+    }
+    val currentKey = state.navigation.destination
+    val currentLabel = when {
+        state.downloadsOnly -> "Téléchargements"
+        else -> tabs.firstOrNull { it.second == currentKey }?.first ?: "Bibliothèque"
+    }
+    androidx.compose.runtime.LaunchedEffect(currentKey, customCats) {
+        if (currentKey.startsWith("CUSTOM:") && currentKey.removePrefix("CUSTOM:") !in customCats) {
+            viewModel.navigate("LOCAL")
+        }
+    }
     // §bibliotheque-locale-fusion : les fichiers locaux apparaissent dans la grille
     // normale (même affichage que les titres suivis), activable d'un chip.
     val mergeLocal by viewModel.mergeLocal.collectAsState()
@@ -90,7 +102,6 @@ fun LibraryScreen(
             )
         }
     }
-    if (tab >= tabs.size) tab = 0
     /** §métadonnées-éditées : fiche en cours d'édition (appui long dans la grille). */
     var editMediaMeta by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<SearchItemUi?>(null)
@@ -102,50 +113,22 @@ fun LibraryScreen(
         // (nombre de titres et de fichiers locaux), menu = nouvelle catégorie.
         dev.endlesssea.app.ui.components.EndlessSeaTopBar(
             title = "Bibliothèque",
-            subtitle = "${state.items.size} titre(s) · ${state.localFiles.size} fichier(s) local(aux)" +
-                (if (state.downloadedGroups.isNotEmpty()) " · ${state.downloadedGroups.size} téléchargé(s)" else ""),
+            subtitle = when (state.navigation.area) {
+                LibraryArea.COLLECTION -> "${state.items.size} titre(s) dans la collection"
+                LibraryArea.DOWNLOADS -> "${state.downloadedGroups.size} titre(s) · ${state.downloadedEpisodes.size} épisode(s)"
+                LibraryArea.FOLDERS -> "${state.localFiles.size} fichier(s) local(aux)"
+            },
             icon = Icons.Filled.VideoLibrary,
             onMenu = { showNewCategory = true },
             menuDescription = "Nouvelle catégorie",
         )
-        // §onglets-scrollés : 7 catégories sans cassure verticale (bug « Fa vo ris »)
-        // §onglets-compacts (capture utilisateur « Fa vo ris ») : des pastilles
-        // qui défilent horizontalement, texte sur UNE ligne, jamais cassé
-        // lettre par lettre comme le faisait le Tab à largeur contrainte.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            tabs.forEachIndexed { i, (label, key) ->
-                androidx.compose.material3.FilterChip(
-                    selected = tab == i,
-                    onClick = {
-                        tab = i
-                        when {
-                            key == "LOCAL" -> viewModel.setLocalMode(true)
-                            // la catégorie perso contient des fichiers locaux : on scanne
-                            key.startsWith("CUSTOM:") -> viewModel.setLocalMode(true)
-                            else -> { viewModel.setLocalMode(false); viewModel.onCategory(key) }
-                        }
-                    },
-                    label = {
-                        Text(
-                            label,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
-                        )
-                    },
-                )
-            }
-            androidx.compose.material3.AssistChip(
-                onClick = { newCategoryName = ""; showNewCategory = true },
-                label = { Text("+ Catégorie", maxLines = 1, softWrap = false) },
-            )
-        }
+        LibraryWorkspaceNavigation(
+            navigation = state.navigation,
+            destinations = tabs,
+            onArea = viewModel::openArea,
+            onDestination = viewModel::navigate,
+            onAddCategory = { newCategoryName = ""; showNewCategory = true },
+        )
 
         if (showNewCategory) {
             androidx.compose.material3.AlertDialog(
@@ -174,13 +157,12 @@ fun LibraryScreen(
         }
 
         // ---- Onglet « Fichiers » : panneau vidéos locales et on s'arrête là
-        if (tabs[tab].second == "LOCAL") {
+        if (currentKey == "LOCAL") {
             LocalFilesPanel(viewModel, onLocalFolderClick, state)
             return@Column
         }
 
         // ---- Onglet catégorie perso : les fichiers locaux rangés dedans
-        val currentKey = tabs[tab].second
         if (currentKey.startsWith("CUSTOM:")) {
             val catName = currentKey.removePrefix("CUSTOM:")
             val uris = remember(catName, catTick) { viewModel.categoryItems(catName).toSet() }
@@ -189,8 +171,8 @@ fun LibraryScreen(
             return@Column
         }
 
-        // ---- Filtre bibliothèque (comme Anymex : Tous / Sur l'appareil)
-        Row(
+        // Collection filters do not apply to the dedicated downloads area.
+        if (!state.downloadsOnly) Row(
             Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
@@ -206,25 +188,8 @@ fun LibraryScreen(
                 selected = state.onDeviceOnly,
                 onClick = {
                     viewModel.setOnDeviceOnly(true)
-                    viewModel.setDownloadsOnly(false)
                 },
                 label = { Text("Sur l'appareil", maxLines = 1, softWrap = false) },
-            )
-            // §telecharges-bibliotheque (conversation 7) : les épisodes téléchargés
-            // ont leur propre vue, même s'il n'y en a qu'un seul.
-            androidx.compose.material3.FilterChip(
-                selected = state.downloadsOnly,
-                onClick = {
-                    viewModel.setDownloadsOnly(!state.downloadsOnly)
-                    if (!state.downloadsOnly) viewModel.setOnDeviceOnly(false)
-                },
-                label = {
-                    Text(
-                        if (state.downloadedGroups.isEmpty()) "Téléchargés"
-                        else "Téléchargés (${state.downloadedGroups.size})",
-                        maxLines = 1, softWrap = false,
-                    )
-                },
             )
             // §bibliotheque-locale-fusion : mêler les vidéos locales aux titres suivis
             androidx.compose.material3.FilterChip(
@@ -280,7 +245,7 @@ fun LibraryScreen(
         }
         // §multi-sources (conversation 6) : on ne garde que ce qui vient de la
         // source choisie (mémoire interne, carte SD, téléchargements).
-        val source = state.sourceFilter
+        val source = if (state.downloadsOnly) LibrarySource.ALL else state.sourceFilter
         val sourceLocal = when (source) {
             LibrarySource.ALL, LibrarySource.DOWNLOADS -> localCards
             else -> state.localFiles
@@ -323,12 +288,13 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    "« ${tabs[tab].first} » est vide",
+                    "« $currentLabel » est vide",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 10.dp),
                 )
                 Text(
-                    "Ajoutez des titres depuis une fiche (boutons « Ajouter à ma liste » / cœur) ou la bannière d'accueil.",
+                    if (state.downloadsOnly) "Vos téléchargements terminés apparaîtront ici, regroupés par titre."
+                    else "Ajoutez des titres depuis une fiche (boutons « Ajouter à ma liste » / cœur) ou la bannière d'accueil.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),

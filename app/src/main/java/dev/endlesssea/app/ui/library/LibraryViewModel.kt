@@ -20,12 +20,10 @@ import javax.inject.Inject
 data class LibraryUiState(
     val category: String = "FAV",
     val items: List<SearchItemUi> = emptyList(),
-    /** Filtre « Sur l'appareil » : ne garder que les titres avec un fichier téléchargé. */
-    val onDeviceOnly: Boolean = false,
+    /** Stable workspace navigation; compatible with existing stored category identifiers. */
+    val navigation: LibraryNavigation = LibraryNavigation.restore(),
     /** Filtre watchlist §29 : ALL ou un statut de suivi. */
     val filterStatus: String = "ALL",
-    /** §bibliothèque-locale : mode « fichiers vidéo locaux » actif (chip en haut). */
-    val localMode: Boolean = false,
     /** Vidéos locales scannées sur les dossiers SAF choisis (multi-dossiers). */
     val localFiles: List<LocalVideoUi> = emptyList(),
     val localScanning: Boolean = false,
@@ -37,8 +35,6 @@ data class LibraryUiState(
     // téléchargé apparaît, regroupé en « série » virtuelle.
     val downloadedGroups: List<DownloadedGroupUi> = emptyList(),
     val downloadedEpisodes: List<DownloadedEpisodeUi> = emptyList(),
-    /** Afficher UNIQUEMENT les téléchargements (chip « Téléchargés »). */
-    val downloadsOnly: Boolean = false,
     // ---- §bibliotheque-sections (conversation 6)
     /** « Reprendre la lecture » : épisodes commencés, non terminés. */
     val continueWatching: List<ContinueCardUi> = emptyList(),
@@ -49,7 +45,11 @@ data class LibraryUiState(
     val sourceFilter: String = "ALL",
     /** ALL · WATCHING · COMPLETED — état de visionnage (onglets de la grille). */
     val watchFilter: String = "ALL",
-)
+) {
+    val onDeviceOnly: Boolean get() = navigation.onDeviceOnly
+    val localMode: Boolean get() = navigation.area == LibraryArea.FOLDERS
+    val downloadsOnly: Boolean get() = navigation.area == LibraryArea.DOWNLOADS
+}
 
 /** §multi-sources (conversation 6) : origine d'un contenu de la bibliothèque. */
 object LibrarySource {
@@ -183,6 +183,7 @@ class LibraryViewModel @Inject constructor(
     private val historyDao: dev.endlesssea.data.db.WatchHistoryDao,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val savedStateHandle: androidx.lifecycle.SavedStateHandle,
 ) : ViewModel() {
 
     val localHistory = historyDao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -209,8 +210,12 @@ class LibraryViewModel @Inject constructor(
         })
     }
 
-    private val category = MutableStateFlow("FAV")
-    private val _uiState = MutableStateFlow(LibraryUiState())
+    private val restoredNavigation = LibraryNavigation.restore(
+        savedStateHandle["library.destination"], savedStateHandle["library.collection"],
+        savedStateHandle["library.deviceOnly"] ?: false,
+    )
+    private val category = MutableStateFlow(restoredNavigation.collection)
+    private val _uiState = MutableStateFlow(LibraryUiState(navigation = restoredNavigation))
     val uiState: StateFlow<LibraryUiState> = _uiState
 
     /** Dernière liste complète (avant filtrage) pour re-filtrer sans recharger. */
@@ -374,9 +379,20 @@ class LibraryViewModel @Inject constructor(
         )
     }
 
-    /** Afficher uniquement les téléchargements (ou revenir à la bibliothèque). */
-    fun setDownloadsOnly(v: Boolean) {
-        _uiState.value = _uiState.value.copy(downloadsOnly = v)
+    /** One entry point for the new library shell; the DAOs retain their existing identifiers. */
+    fun navigate(destination: String) = updateNavigation(_uiState.value.navigation.select(destination))
+
+    fun openArea(area: LibraryArea) = updateNavigation(_uiState.value.navigation.open(area))
+
+    private fun updateNavigation(next: LibraryNavigation) {
+        val previous = _uiState.value.navigation
+        savedStateHandle["library.destination"] = next.destination
+        savedStateHandle["library.collection"] = next.collection
+        savedStateHandle["library.deviceOnly"] = next.deviceOnly
+        _uiState.value = _uiState.value.copy(navigation = next)
+        category.value = next.collection
+        viewModelScope.launch { applyFilter() }
+        if (next.area == LibraryArea.FOLDERS && previous.destination != next.destination) scanLocal()
     }
 
     // ------------------------------------------------ §multi-sources (conversation 6)
@@ -466,12 +482,7 @@ class LibraryViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(category = category.value, items = shown)
     }
 
-    fun onCategory(cat: String) { category.value = cat.uppercase() }
-
-    fun setOnDeviceOnly(v: Boolean) {
-        _uiState.value = _uiState.value.copy(onDeviceOnly = v)
-        viewModelScope.launch { applyFilter() }
-    }
+    fun setOnDeviceOnly(v: Boolean) = updateNavigation(_uiState.value.navigation.filterDeviceOnly(v))
 
     fun setFilterStatus(status: String) {
         _uiState.value = _uiState.value.copy(filterStatus = status)
@@ -511,12 +522,6 @@ class LibraryViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(localMetaTick = tic)
             }
         }
-    }
-
-    /** Bascule affichage fichiers locaux ↔ bibliothèque de la fiche. */
-    fun setLocalMode(mode: Boolean) {
-        _uiState.value = _uiState.value.copy(localMode = mode)
-        if (mode) scanLocal()
     }
 
     /** Enregistre un nouvel arbre SAF et relance le scan. */

@@ -109,14 +109,7 @@ class PlayerActivity : ComponentActivity() {
         } else {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
-        val launch = PlayerLaunchStore.consume()
-        viewModel.prepare(
-            mediaId = launch.mediaId,
-            episodeId = launch.episodeId,
-            title = launch.title.ifBlank { "Lecture" },
-            links = launch.links,
-            startIndex = launch.startIndex,
-        )
+        viewModel.attachSession()
         setContent {
             val motionEnabled by prefs.enableAnimation.collectAsState()
             EndlessSeaTheme(animationsEnabled = motionEnabled) {
