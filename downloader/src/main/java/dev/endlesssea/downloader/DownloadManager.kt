@@ -6,6 +6,7 @@ import dev.endlesssea.data.db.DownloadSegmentEntity
 import dev.endlesssea.data.db.DownloadTaskEntity
 import dev.endlesssea.data.db.DownloadsDao
 import dev.endlesssea.downloader.segment.SegmentEngine
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,7 +105,7 @@ class DownloadManager(
     }
 
     override suspend fun pause(taskId: String) {
-        jobs.remove(taskId)?.cancel()                  // co-op cancellation = byte-exact stop
+        jobs[taskId]?.cancelAndJoin() // Wait for an in-flight HLS append/checkpoint.
         dao.updateStatus(taskId, DownloadStatus.PAUSED.name)
     }
 
@@ -114,7 +115,7 @@ class DownloadManager(
     }
 
     override suspend fun cancel(taskId: String, deleteFiles: Boolean) {
-        jobs.remove(taskId)?.cancel()
+        jobs[taskId]?.cancelAndJoin()
         if (deleteFiles) partFile(dao.byId(taskId)?.fileName ?: return).delete()
         dao.delete(taskId)
     }
@@ -307,17 +308,24 @@ class DownloadManager(
     private suspend fun runHlsTask(taskId: String, task: DownloadTaskEntity) {
         try {
             dao.updateStatus(taskId, DownloadStatus.PROBING.name)
-            val plan = hlsEngine.resolve(task.url, task.headersMap())
+            val requestedHeight = dev.endlesssea.extensions.api.model.Quality.entries
+                .firstOrNull { it.name == task.quality || it.label == task.quality }?.pixels ?: 0
+            val plan = hlsEngine.resolve(task.url, task.headersMap(), requestedHeight)
             val partsDir = tempDirProvider().resolve(".tmp").apply { mkdirs() }
             val part = File(partsDir, "${task.fileName}.part")
-            val table = dao.segments(taskId).ifEmpty {
-                plan.segments.map { DownloadSegmentEntity(taskId, it.idx, 0, 0) }
-                    .also { dao.upsertSegments(it) }
+            val existing = dao.segments(taskId)
+            val done = existing.filter { it.done }.sortedBy { it.idx }
+            if (existing.isNotEmpty() && (existing.map { it.idx } != plan.segments.map { it.idx } || done.map { it.idx } != (0 until done.size).toList())) {
+                throw java.io.IOException("Les segments HLS ont changé. Annule cette tâche et relance le téléchargement.")
             }
-            val doneIdx = table.filter { it.done }.map { it.idx }.toSet()
-            val fromIdx = plan.segments.firstOrNull { it.idx !in doneIdx }?.idx ?: plan.segments.size
+            val markerId = java.security.MessageDigest.getInstance("SHA-256").digest(taskId.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+            val marker = File(partsDir, "$markerId.hls-plan")
+            dev.endlesssea.downloader.hls.prepareHlsResume(part, marker, hlsEngine.fingerprint(plan), done.lastOrNull()?.downloadedBytes)
+            if (existing.isEmpty()) dao.upsertSegments(plan.segments.map { DownloadSegmentEntity(taskId, it.idx, 0, 0) })
+            val fromIdx = done.size
             dao.updateStatus(taskId, DownloadStatus.DOWNLOADING.name)
-            var doneCount = doneIdx.size
+            var doneCount = done.size
             val totalCount = plan.segments.size
             publishProgress(
                 DownloadProgress(
@@ -327,7 +335,7 @@ class DownloadManager(
                 ),
             )
             val bytes = hlsEngine.download(plan, task.headersMap(), part, fromIdx) { idx ->
-                dao.checkpoint(taskId, idx, 0, true)
+                dao.checkpoint(taskId, idx, part.length(), true)
                 doneCount++
                 publishProgress(
                     DownloadProgress(
@@ -351,6 +359,7 @@ class DownloadManager(
             )
             publishFinal(taskId, dao.byId(taskId) ?: task, finalFile)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
+            marker.delete()
             notices.trySend(
                 DownloadNotice(taskId, finalName, "Téléchargement terminé ($totalCount segments)", ok = true),
             )

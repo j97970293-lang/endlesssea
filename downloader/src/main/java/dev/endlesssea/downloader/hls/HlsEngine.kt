@@ -1,6 +1,7 @@
 package dev.endlesssea.downloader.hls
 
 import dev.endlesssea.downloader.segment.SegmentEngine
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
@@ -15,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Téléchargeur de flux HLS (`#EXTM3U`), style IDM : la playlist est résolue
- * (variante de meilleure qualité choisie automatiquement), chaque segment est
+ * (qualité explicite respectée, meilleure variante seulement en mode automatique), chaque segment est
  * téléchargé séquentiellement avec reprise après coupure (checkpoint par index),
  * support du chiffrement AES-128-CBC, puis assemblage dans un fichier unique
  * (`.ts` MPEG-TS, ou `.mp4` si fMP4/`EXT-X-MAP`).
@@ -47,32 +48,53 @@ class HlsEngine(private val client: OkHttpClient) {
         return res
     }
 
-    /** Résout une URL HLS en plan : playlist média de meilleure qualité + segments. */
-    suspend fun resolve(url: String, headers: Map<String, String> = emptyMap()): Plan =
+    /** Resolve the requested rendition; UNKNOWN retains automatic highest-bandwidth selection. */
+    suspend fun resolve(url: String, headers: Map<String, String> = emptyMap(), requestedHeight: Int = 0): Plan =
         withContext(Dispatchers.IO) {
-            val body = get(url, headers).use { it.body?.string() ?: throw HlsError("Playlist vide") }
-            if (!body.contains("#EXTM3U")) throw HlsError("Ce n'est pas un flux HLS (.m3u8)")
-
-            val mediaUrl = if (body.contains("#EXT-X-STREAM-INF")) {
-                // Variante maître : on prend le débit le plus élevé annoncé
-                var bestLine: String? = null
-                var bestBandwidth = -1L
-                val lines = body.lines()
-                for (i in lines.indices) {
-                    if (lines[i].startsWith("#EXT-X-STREAM-INF")) {
-                        val bw = Regex("BANDWIDTH=([0-9]+)").find(lines[i])?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                        val next = lines.drop(i + 1).firstOrNull { it.isNotBlank() && !it.startsWith("#") }
-                        if (next != null && bw >= bestBandwidth) { bestBandwidth = bw; bestLine = next }
+            var current = url
+            val visited = mutableSetOf<String>()
+            repeat(4) {
+                coroutineContext.ensureActive()
+                val (base, body) = get(current, headers).use { response ->
+                    val input = response.body?.byteStream() ?: throw HlsError("Playlist vide")
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    input.use { stream ->
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            if (output.size() + count > 2 * 1024 * 1024) throw HlsError("Playlist HLS trop volumineuse")
+                            output.write(buffer, 0, count)
+                        }
                     }
+                    response.request.url.toString() to output.toString("UTF-8").removePrefix("\uFEFF").trim()
                 }
-                bestLine?.let { resolveUrl(url, it) }
-                    ?: throw HlsError("Playlist maître sans variante exploitable")
-            } else url
-
-            val mediaBody = if (mediaUrl == url) body
-            else get(mediaUrl, headers).use { it.body?.string() ?: throw HlsError("Playlist média vide") }
-            return@withContext parseMediaPlaylist(mediaUrl, mediaBody)
+                if (!visited.add(base)) throw HlsError("Boucle dans les playlists HLS")
+                if (!body.startsWith("#EXTM3U")) throw HlsError("Ce n'est pas un flux HLS (.m3u8)")
+                if (!body.contains("#EXT-X-STREAM-INF:")) return@withContext parseMediaPlaylist(base, body)
+                val variant = selectHlsVariant(hlsVariants(body), requestedHeight)
+                    ?: throw HlsError(if (requestedHeight > 0)
+                        "Aucune variante ${requestedHeight}p identifiable dans ce manifeste. Choisis une autre qualité."
+                        else "Playlist maître sans variante exploitable")
+                current = resolveUrl(base, variant.uri)
+            }
+            throw HlsError("Trop de playlists HLS imbriquées")
         }
+
+    /** Conservative identity: changed signed URLs also require a fresh download. No tokens are stored in the marker. */
+    fun fingerprint(plan: Plan): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        fun add(value: String) {
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
+            digest.update(bytes)
+        }
+        add(plan.mediaPlaylistUrl); add(plan.mediaSequence.toString()); add(plan.initUrl.orEmpty())
+        add(plan.keyUri.orEmpty()); add(plan.keyIv?.joinToString(",") ?: "")
+        plan.segments.forEach { add(it.idx.toString()); add(it.url) }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private fun parseMediaPlaylist(baseUrl: String, body: String): Plan {
         val segments = mutableListOf<Segment>()
@@ -94,7 +116,10 @@ class HlsEngine(private val client: OkHttpClient) {
                         throw HlsError("Flux chiffré SAMPLE-AES non supporté")
                     }
                 }
+                t.startsWith("#EXT-X-BYTERANGE") ->
+                    throw HlsError("HLS à plages d'octets non pris en charge : téléchargement refusé pour éviter de recopier le fichier entier par segment")
                 t.startsWith("#EXT-X-MAP") -> {
+                    if (attr(t, "BYTERANGE") != null) throw HlsError("Initialisation HLS à plage d'octets non prise en charge")
                     initUrl = attr(t, "URI")?.let { resolveUrl(baseUrl, it) }
                 }
                 t.isNotBlank() && !t.startsWith("#") ->
@@ -152,10 +177,11 @@ class HlsEngine(private val client: OkHttpClient) {
         plan.segments.filter { it.idx >= fromIdx }.forEach { seg ->
             coroutineContext.ensureActive()
             val bytes = fetchSegment(plan, seg, headers, keyBytes)
-            withContext(Dispatchers.IO) {
+            // Cancellation must not split append from its durable checkpoint.
+            withContext(NonCancellable + Dispatchers.IO) {
                 target.appendBytes(bytes)
+                onSegment(seg.idx)
             }
-            onSegment(seg.idx)
         }
         withContext(Dispatchers.IO) { target.length() }
     }

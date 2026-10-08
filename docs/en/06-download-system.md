@@ -54,8 +54,8 @@ Key decisions:
 ## 5. HLS (and DASH note)
 
 1. `HlsEngine` parses master/media playlists and resolves relative URLs.
-2. The master variant with the highest advertised bandwidth is selected. A user quality cap is not currently enforced by this parser.
-3. Segments are fetched sequentially with an index checkpoint and assembled into a `.ts` or fMP4 output (`EXT-X-MAP`).
+2. An explicit quality selects a matching `RESOLUTION` height; if unavailable/unidentifiable, the task fails rather than silently upgrading. Only UNKNOWN/automatic quality selects the highest advertised `BANDWIDTH`. Redirected and nested playlists are resolved with a four-manifest limit and a 2 MiB bound per manifest.
+3. Segments are fetched sequentially and assembled into a `.ts` or fMP4 output (`EXT-X-MAP`). New HLS checkpoints store the cumulative committed file offset; a matching plan fingerprint is required for resume. Byte-range playlists/maps are explicitly rejected instead of repeatedly downloading whole resources. See [size and resume limitations](../maintenance/download-sizes.md).
 4. AES-128-CBC is supported. SAMPLE-AES and unsupported encryption methods are rejected; this is not a DRM-download implementation.
 5. DASH playback is supported by Media3, but `DownloadManager.runTask` explicitly rejects DASH tasks with “lecture en ligne uniquement pour l'instant”. Direct `BaseURL` extraction/muxing is **not implemented**.
 

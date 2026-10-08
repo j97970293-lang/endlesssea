@@ -65,7 +65,7 @@ class DownloadsViewModel @Inject constructor(
                 .collect { (tasks, liveMap) ->
                     rawRows = tasks.map { t ->
                         val live = liveMap[t.id]
-                        val isLive = live != null && t.status == DownloadStatus.DOWNLOADING.name
+                        val isLive = live != null && t.status in setOf(DownloadStatus.DOWNLOADING.name, DownloadStatus.PAUSED.name)
                         DownloadRowUi(
                             id = t.id,
                             title = t.fileName.removeSuffix(".part"),
