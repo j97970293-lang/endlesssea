@@ -536,11 +536,13 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     /** Merge only portable user collections; no storage permissions or arbitrary preference keys. */
     fun mergeBackupCollections(categories: Map<String, List<String>>, metadata: Map<String, LocalFileMeta>) {
-        val names = _customCategories.value.toMutableList()
+        val merged = dev.endlesssea.app.backup.mergeBackupCategories(
+            _customCategories.value.associateWith { categoryItems(it) }, categories,
+        )
+        val names = merged.keys.toList()
         val edit = p.edit()
-        categories.forEach { (incoming, items) ->
-            val name = names.firstOrNull { it.equals(incoming, true) } ?: incoming.also { names += it }
-            edit.putString("lib_cat_items_" + name, org.json.JSONArray((categoryItems(name) + items).distinct()).toString())
+        merged.forEach { (name, items) ->
+            edit.putString("lib_cat_items_" + name, org.json.JSONArray(items).toString())
         }
         edit.putString("lib_categories", org.json.JSONArray(names).toString())
         // Existing local edits win over imported values.

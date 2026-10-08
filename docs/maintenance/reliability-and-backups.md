@@ -81,3 +81,7 @@ Le workflow Android CI lance les tests des sept modules, assemble l'APK debug pu
 - [ ] Tester interruption/stockage plein pendant export et copie automatique ; contrôler la dernière archive lisible.
 - [ ] Sur un autre appareil, vérifier le message sur les fichiers absents, réautoriser les dossiers et réinstaller les extensions.
 - [ ] Réaliser séparément la checklist lecteur/logos de [cleanup-and-logos.md](cleanup-and-logos.md).
+
+## Durcissement après la première passe
+
+Les catégories importées qui ne diffèrent que par la casse (par exemple `Anime`, `ANIME`, `anime`) sont fusionnées dans un résultat accumulé. Les éléments d'une variante ne remplacent plus ceux de la variante précédente ; l'ordre et l'orthographe des catégories déjà présentes sont conservés. `BackupCategoryMergeTest` couvre six cas, dont une seconde importation et des listes vides.
