@@ -248,8 +248,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val progressThickness by viewModel.progressThickness.collectAsState()
     val progressRounded by viewModel.progressRounded.collectAsState()
     val playerThemeName by viewModel.playerTheme.collectAsState()
-    val themeArgb = dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES[playerThemeName]?.first ?: 0L
-    val accentColor = if (themeArgb == 0L) MaterialTheme.colorScheme.primary else Color(themeArgb)
     // §megaskip : segments en ligne + boutons personnalisés + stats
     val pinchZoomOn by viewModel.pinchZoomEnabled.collectAsState()
     val swapVB by viewModel.swapVolumeBrightness.collectAsState()
@@ -783,10 +781,15 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         background = Color.Black.copy(alpha = 0.6f),
                     )
                 }
-            } else activeTheme.TopControls(
-                controlsState, controlsActions,
-                Modifier.align(Alignment.TopStart),
-            )
+            } else Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
+                activeTheme.TopControls(controlsState, controlsActions)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    dev.endlesssea.app.ui.player.themes.PlayerBarContent(
+                        controlsState, controlsActions,
+                        activeTheme.accent ?: MaterialTheme.colorScheme.primary, top = true,
+                    )
+                }
+            }
             if (!state.locked) {
                 activeTheme.CenterControls(
                     controlsState, controlsActions,

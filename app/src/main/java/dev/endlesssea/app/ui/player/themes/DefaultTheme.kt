@@ -44,9 +44,7 @@ object DefaultTheme : PlayerTheme {
     @Composable
     override fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
         Column(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            SkipAndSettings(state, actions, accent)
-            SkinSeekBar(state, actions, accent, showTimes = false)
-            TimeAndActions(state, actions, accent)
+            PlayerBarContent(state, actions, accent, top = false)
         }
     }
 }
@@ -54,6 +52,7 @@ object DefaultTheme : PlayerTheme {
 @Composable
 internal fun SkipAndSettings(state: PlayerControlsState, actions: PlayerControlsActions, accent: Color) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (state.megaSkipLeft) SkinChip("+${state.megaSkipSeconds}s", false, accent, actions.onMegaJump, border = false)
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             state.activeSkip?.let {
                 SkinChip("Passer ${it.type.label}" + (state.skipCountdown?.let { n -> " ($n)" } ?: ""), false, accent, actions.onSkipSegment, border = false)
@@ -62,8 +61,7 @@ internal fun SkipAndSettings(state: PlayerControlsState, actions: PlayerControls
                 SkinChip(button.label, false, accent, { actions.onCustomSkip(button) }, border = false)
             }
         }
-        // §megaskip-right : déplacer le bouton megaskip à droite
-        SkinChip("+${state.megaSkipSeconds}s", false, accent, actions.onMegaJump, border = false)
+        if (!state.megaSkipLeft) SkinChip("+${state.megaSkipSeconds}s", false, accent, actions.onMegaJump, border = false)
         SkinIconButton(Icons.Default.Settings, "Paramètres du lecteur", actions.onOpenMore)
         SkinIconButton(Icons.Default.Info, "Informations techniques", actions.onToggleStats)
     }
@@ -81,4 +79,13 @@ internal fun TimeAndActions(state: PlayerControlsState, actions: PlayerControlsA
         Spacer(Modifier.weight(1f))
         Text(fmtTime(state.durationMs), color = Color.White)
     }
+}
+
+/** One shared implementation: each section is rendered on exactly one side. */
+@Composable
+internal fun PlayerBarContent(state: PlayerControlsState, actions: PlayerControlsActions, accent: Color, top: Boolean) {
+    val placement = PlayerBarPlacement(state.progressOnTop, state.toolsOnTop)
+    if (placement.showsTools(top)) SkipAndSettings(state, actions, accent)
+    if (placement.showsProgress(top)) SkinSeekBar(state, actions, accent, showTimes = false)
+    if (placement.showsTools(top)) TimeAndActions(state, actions, accent)
 }
