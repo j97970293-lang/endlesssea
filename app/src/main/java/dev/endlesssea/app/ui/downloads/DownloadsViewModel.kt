@@ -94,6 +94,8 @@ class DownloadsViewModel @Inject constructor(
                             createdAt = t.createdAt,
                             totalBytes = t.totalBytes,
                             targetUri = t.targetUri,
+                            seriesKey = t.mediaId ?: t.displayPath.substringBeforeLast('/').ifBlank { t.id },
+                            seriesTitle = t.displayPath.substringBeforeLast('/').substringAfterLast('/').ifBlank { "Téléchargements" },
                         )
                     }
                     applyView(rawRows)

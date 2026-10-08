@@ -85,7 +85,7 @@ fun LocalDetailsScreen(
     val title = meta?.title ?: first?.let {
         dev.endlesssea.app.local.LocalNames.pretty(folderUri)
     } ?: "Dossier"
-    val cover = meta?.coverUri ?: files.firstOrNull { it.customCoverUri != null }?.customCoverUri
+    val cover = viewModel.folderCover(folderUri) ?: files.firstOrNull { it.customCoverUri != null }?.customCoverUri ?: meta?.coverUri
         ?: first?.uri
 
     val seriesHistory = history.filter { entry -> files.any { it.uri == entry.episodeId } }
@@ -108,6 +108,9 @@ fun LocalDetailsScreen(
     var outroStart by remember(folderUri, files.size) {
         mutableStateOf(files.firstNotNullOfOrNull { it.outroStartSec }?.toString() ?: "")
     }
+    val coverPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { viewModel.importFolderCover(folderUri, it.toString()) } }
     var editTitle by remember { mutableStateOf(false) }
     var titleDraft by remember(title) { mutableStateOf(title) }
     /** §metadonnees-fichier : édition des métadonnées écrites dans details.json. */
@@ -183,6 +186,8 @@ fun LocalDetailsScreen(
                         // §metadonnees-fichier : écrit details.json dans le dossier
                         TextButton(onClick = { editSeriesMeta = true }) { Text("Métadonnées") }
                     }
+                    TextButton(onClick = { coverPicker.launch(arrayOf("image/*")) }) { Text("Choisir la couverture") }
+                    state.localScanLabel.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
@@ -393,6 +398,7 @@ fun LocalDetailsScreen(
             onDismissRequest = { editTitle = false },
             confirmButton = {
                 Button(onClick = {
+                    viewModel.saveSeriesMeta(folderUri, titleDraft, meta?.description, meta?.author, meta?.genres.orEmpty())
                     files.forEach { f ->
                         viewModel.saveLocalMeta(
                             f.uri, titleDraft, f.customCoverUri,

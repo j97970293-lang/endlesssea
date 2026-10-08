@@ -644,6 +644,50 @@ class LibraryViewModel @Inject constructor(
                 }
             },
         )
+        dev.endlesssea.app.local.LocalLibraryCache.publish(
+            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { file ->
+                if (file.uri == uri) file.copy(customTitle = title, customCoverUri = coverUri,
+                    introStartSec = introStartSec, introEndSec = introEndSec, outroStartSec = outroStartSec)
+                else file
+            },
+        )
+    }
+
+    fun folderCover(folderUri: String): String? = prefs.localFileMeta("folder:$folderUri").coverUri
+
+    fun importFolderCover(folderUri: String, imageUri: String) = viewModelScope.launch {
+        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val directory = java.io.File(context.filesDir, "local-covers").apply { mkdirs() }
+            val target = java.io.File(directory, java.util.UUID.randomUUID().toString() + ".img")
+            try {
+                context.contentResolver.openInputStream(android.net.Uri.parse(imageUri))?.use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= 20L * 1024 * 1024) { "Image trop volumineuse (20 Mo maximum)" }
+                            output.write(buffer, 0, count)
+                        }
+                        require(total > 0) { "Image vide" }
+                    }
+                } ?: error("Image inaccessible")
+                Result.success(target.toURI().toString())
+            } catch (error: Exception) { target.delete(); Result.failure<String>(error) }
+        }
+        result.onSuccess { cover ->
+            prefs.setLocalFileMeta("folder:$folderUri", null, cover)
+            val files = _uiState.value.localFiles.filter { it.parentUri == folderUri }
+                .ifEmpty { dev.endlesssea.app.local.LocalLibraryCache.folder(folderUri) }
+            files.forEach { file -> saveLocalMeta(file.uri, file.customTitle, cover,
+                file.introStartSec, file.introEndSec, file.outroStartSec) }
+            _uiState.value = _uiState.value.copy(localMetaTick = _uiState.value.localMetaTick + 1,
+                localScanLabel = "Couverture enregistrée dans l'application")
+        }.onFailure { error ->
+            _uiState.value = _uiState.value.copy(localScanLabel = error.message ?: "Import impossible")
+        }
     }
 
     /**

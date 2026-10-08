@@ -692,9 +692,9 @@ private fun LocalFilesPanel(
                                 Modifier.fillMaxWidth().clickable { onLocalFolderClick(parent) },
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             ) {
-                                if (meta?.coverUri != null) {
+                                if (viewModel.folderCover(parent) != null || meta?.coverUri != null) {
                                     coil.compose.AsyncImage(
-                                        model = meta.coverUri,
+                                        model = viewModel.folderCover(parent) ?: meta?.coverUri,
                                         contentDescription = null,
                                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                         modifier = Modifier.padding(end = 12.dp)

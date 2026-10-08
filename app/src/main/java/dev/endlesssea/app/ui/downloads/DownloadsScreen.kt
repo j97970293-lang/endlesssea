@@ -97,11 +97,12 @@ fun DownloadsScreen(
         }
     }
 
+    var collapsedSeries by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(setOf<String>()) }
     Column(Modifier.fillMaxSize()) {
         // §barre-haut (conversation 4) : verre liquide — nombre de téléchargements.
         dev.endlesssea.app.ui.components.EndlessSeaTopBar(
             title = "Téléchargements",
-            subtitle = "${state.totalCount} tâche(s) · ${state.rows.count { it.status == "EN COURS" || it.status == "TÉLÉCHARGEMENT" }} active(s)",
+            subtitle = "${state.totalCount} tâche(s) · ${state.rows.count { it.status == "DOWNLOADING" }} active(s)",
             icon = Icons.Filled.Download,
         )
         // ---- Filtres par statut
@@ -190,7 +191,16 @@ fun DownloadsScreen(
                     }
                 }
             }
-            items(state.rows, key = { it.id }) { task ->
+            state.rows.groupBy { it.seriesKey }.forEach { (seriesKey, episodes) ->
+                item(key = "series:$seriesKey") {
+                    androidx.compose.material3.TextButton(onClick = {
+                        collapsedSeries = if (seriesKey in collapsedSeries) collapsedSeries - seriesKey else collapsedSeries + seriesKey
+                    }) {
+                        Text("${if (seriesKey in collapsedSeries) "▸" else "▾"} ${episodes.first().seriesTitle} · ${episodes.size} épisode(s)",
+                            style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                if (seriesKey !in collapsedSeries) items(episodes, key = { it.id }) { task ->
                 DownloadCard(
                     row = task,
                     onPause = { viewModel.pause(task.id) },
@@ -212,6 +222,7 @@ fun DownloadsScreen(
                     // §appui-long : supprimer un téléchargement
                     onLongPress = { deleteCandidate = task },
                 )
+                }
             }
         }
     }
@@ -334,4 +345,6 @@ data class DownloadRowUi(
     val totalBytes: Long = 0,
     /** Cible actuelle (file:// ou SAF content://) — lecture & « Déplacer ». */
     val targetUri: String = "",
+    val seriesKey: String = "",
+    val seriesTitle: String = "Téléchargements",
 )
