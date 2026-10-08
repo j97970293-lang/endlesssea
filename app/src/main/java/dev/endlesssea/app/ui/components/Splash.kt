@@ -34,7 +34,7 @@ import kotlinx.coroutines.delay
  * + titre qui apparaît, puis main (≈800 ms au total). Teinte du logo réglable.
  */
 @Composable
-fun SplashScreen(tintArgb: Long?, onFinished: () -> Unit) {
+fun SplashScreen(tintArgb: Long?, onFinished: () -> Unit, logoId: String = dev.endlesssea.app.branding.AppLogos.DEFAULT_ID) {
     var visible by remember { mutableStateOf(false) }
     var titleVisible by remember { mutableStateOf(false) }
     var gone by remember { mutableStateOf(false) }
@@ -73,17 +73,14 @@ fun SplashScreen(tintArgb: Long?, onFinished: () -> Unit) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
-                painter = painterResource(R.drawable.logo_sea),
+                painter = painterResource(dev.endlesssea.app.branding.AppLogos.resolve(logoId).drawable),
                 contentDescription = "EndlessSea",
                 modifier = Modifier
                     .size(168.dp)
                     .scale(logoScale)
                     .alpha(logoAlpha),
-                // §splash-thème : sans choix explicite, le logo prend la couleur d'accent du thème
-                colorFilter = ColorFilter.tint(
-                    tintArgb?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
-                    BlendMode.Modulate,
-                ),
+                // Original means original: preserve the blue AND white, unless tint is explicitly chosen.
+                colorFilter = tintArgb?.let { ColorFilter.tint(Color(it), BlendMode.Modulate) },
             )
             Text(
                 "EndlessSea",

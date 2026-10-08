@@ -161,10 +161,12 @@ class MainActivity : ComponentActivity() {
             ) {
                 // ---- Splash animé (logo qui grandit en fondu, ~800 ms) puis application
                 val logoTint by prefs.logoTint.collectAsState()
+                val appLogo by prefs.appLogo.collectAsState()
                 var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
                 if (showSplash) {
                     dev.endlesssea.app.ui.components.SplashScreen(
                         tintArgb = dev.endlesssea.app.ui.components.logoTintArgb(logoTint),
+                        logoId = appLogo,
                     ) { showSplash = false }
                     return@EndlessSeaTheme
                 }

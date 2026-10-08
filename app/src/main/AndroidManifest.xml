@@ -30,10 +30,6 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <!-- Local playback of user videos (spec §7 : lecteur de fichiers locaux) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -41,6 +37,104 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+
+        <!-- Selectable launcher icons. Never disable the actual activity. -->
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.BlueWhite"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_blue_white"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Glacier"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_glacier"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Cyan"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_cyan"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Ocean"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_ocean"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Silver"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_silver"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Ember"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_ember"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Adventure"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_adventure"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="dev.endlesssea.app.launcher.Classic"
+            android:targetActivity="dev.endlesssea.app.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/app_logo_classic"
+            android:label="Endless Sea">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Lecteur immersif (spec §7) -->
         <activity

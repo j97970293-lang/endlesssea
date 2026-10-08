@@ -228,13 +228,14 @@ fun SettingsScreen(
                     "Synchroniser les épisodes vus, récupérer affiches et bandes-annonces",
                     expanded = false) { onOpenTrackers() }
             }
-            if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis et halos")) item {
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis, halos, logo, icône")) item {
                 SettingCategory(Icons.Filled.Dashboard, "Interface et thème",
                     "Couleurs, luminosité, cartes, carrousel, barre, arrondis, police, fond",
                     expanded = "ui" in openCategories) { toggleCategory("ui") }
             }
             if ("ui" in openCategories) {
                 item { UiSettingsSection(viewModel, state) }
+                item { LogoSettingsSection(viewModel.appLogo.collectAsState().value, viewModel::setAppLogo) }
             }
             // §fusion-reglages : « Thème » n'est plus une page séparée — tout
             // est dans « Interface » (une seule page d'apparence).
@@ -444,7 +445,7 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text("Couleur du logo / feuille de démarrage", style = MaterialTheme.typography.bodyLarge)
+                    Text("Teinte du logo au démarrage", style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(6.dp))
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
@@ -453,7 +454,7 @@ fun SettingsScreen(
                         FilterChip(
                             selected = state.logoTint == "original",
                             onClick = { viewModel.setLogoTint("original") },
-                            label = { Text("Thème (auto)", maxLines = 1, softWrap = false) },
+                            label = { Text("Couleurs originales", maxLines = 1, softWrap = false) },
                         )
                         AppPrefs.ACCENTS.keys.forEach { name ->
                             FilterChip(

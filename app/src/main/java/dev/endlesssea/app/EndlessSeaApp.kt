@@ -21,10 +21,14 @@ class EndlessSeaApp : Application() {
 
     @Inject lateinit var prefs: dev.endlesssea.app.di.AppPrefs
 
+    @Inject lateinit var appLogoManager: dev.endlesssea.app.branding.AppLogoManager
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
+        // Reconcile restored preferences/launcher overrides after an update or Android backup restore.
+        appLogoManager.select(prefs.appLogo.value)
         // §diagnostic : journaliser les plantages AVANT tout le reste
         dev.endlesssea.app.util.CrashReporter.install(this)
         // §4 — Images des extensions : Coil partagé avec cache disque, UA honnête

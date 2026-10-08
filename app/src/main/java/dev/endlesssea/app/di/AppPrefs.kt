@@ -440,6 +440,14 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     // ---------------------------------------------------------------- apparence avancée
     /** Teinte appliquée sur le logo de démarrage ("original" ou un nom de ACCENTS). */
+    private val _appLogo = MutableStateFlow(dev.endlesssea.app.branding.AppLogos.resolve(p.getString("app_logo", null)).id)
+    val appLogo: StateFlow<String> = _appLogo
+    fun setAppLogo(id: String) {
+        val safe = dev.endlesssea.app.branding.AppLogos.resolve(id).id
+        p.edit().putString("app_logo", safe).apply()
+        _appLogo.value = safe
+    }
+
     private val _logoTint = MutableStateFlow(p.getString("logo_tint", "original") ?: "original")
     val logoTint: StateFlow<String> = _logoTint
     fun setLogoTint(v: String) { p.edit().putString("logo_tint", v).apply(); _logoTint.value = v }

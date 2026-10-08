@@ -86,6 +86,7 @@ class SettingsViewModel @Inject constructor(
     private val historyDao: WatchHistoryDao,
     private val updateChecker: dev.endlesssea.app.update.UpdateChecker,
     private val extensionDao: dev.endlesssea.data.db.ExtensionDao,
+    private val appLogoManager: dev.endlesssea.app.branding.AppLogoManager,
     private val extSettingsStore: dev.endlesssea.app.data.ExtensionSettingsStore,
     private val registry: dev.endlesssea.extensions.loader.ExtensionRegistry,
     private val skipRepository: dev.endlesssea.app.skip.SkipRepository,
@@ -94,6 +95,13 @@ class SettingsViewModel @Inject constructor(
 
     companion object {
         private const val BACKUP_INTERVAL_MS = 24L * 60 * 60 * 1000
+    }
+
+    val appLogo get() = prefs.appLogo
+    fun setAppLogo(id: String) {
+        appLogoManager.select(id).onSuccess {
+            toastState("Logo sélectionné : ${dev.endlesssea.app.branding.AppLogos.resolve(id).label}")
+        }.onFailure { toastState("Impossible de changer l'icône : ${it.message}") }
     }
 
     // ---- §anymex-theme : réglages de la page Thème exposés en direct
