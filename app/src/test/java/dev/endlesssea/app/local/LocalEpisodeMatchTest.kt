@@ -43,6 +43,14 @@ class LocalEpisodeMatchTest {
         assertEquals(EpisodeMatchKey(1,12.1), onlineEpisodeKey(1,12.1f))
     }
     @Test fun missingOnlineSeasonDoesNotDefaultToSeasonOne() { assertNull(onlineEpisodeKey(null, 1f)) }
+    @Test fun bareNumberedFilesCanBeAssociatedWithAnExplicitSeason() {
+        assertEquals(1000, LocalVideos.episodeNumber("01000.mkv"))
+        assertEquals(1, LocalVideos.episodeNumber("1.mp4"))
+        assertNull(LocalVideos.episodeSeason("1.mp4"))
+    }
+    @Test fun decimalFilenameMatchesNormalizedOnlineNumber() {
+        assertEquals(onlineEpisodeKey(2,12.1f), EpisodeMatchKey(2, playbackEpisodeOrder("Show S02E12.1.mkv")!!))
+    }
     @Test fun emptyInputHasNoAssociations() { assertTrue(match(emptyList(), emptyList()).isEmpty()) }
     @Test fun unrelatedRemoteEpisodesDoNotChangeMatches() {
         val local = item("local",1,5.0)

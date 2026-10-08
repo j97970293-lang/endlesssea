@@ -242,6 +242,7 @@ object LocalVideos {
      */
     fun episodeNumber(fileName: String): Int? {
         val base = fileName.substringBeforeLast('.')
+        if (Regex("\\d{1,5}").matches(base.trim())) return base.trim().toInt()
         if (Regex("(?i)(?:e(?:p(?:isode)?)?[ ._-]?|^|[ _-])\\d+[.,]\\d+(?![A-Za-z0-9])").containsMatchIn(base)) return null
         Regex("(?i)s(\\d{1,2})[ ._-]*e(\\d{1,5})").find(base)?.let { return it.groupValues[2].toInt() }
         Regex("(?i)\\bep?(?:isode)?[ ._-]?(\\d{1,5})\\b").find(base)?.let { return it.groupValues[1].toInt() }

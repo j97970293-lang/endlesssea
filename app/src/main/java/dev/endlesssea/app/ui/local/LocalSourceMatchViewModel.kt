@@ -100,14 +100,18 @@ internal class LocalSourceMatchViewModel @Inject constructor(
                 database.withTransaction {
                     val previous = database.mediaDao().byId(id)
                     val oldIds = org.json.JSONObject(previous?.externalIdsJson ?: "{}")
-                    val preserveManual = previous != null && (!oldIds.has("local_source") || oldIds.optBoolean("local_manual_meta"))
                     val fileMeta = LocalVideos.seriesMeta[folder]
+                    val preserveManual = (previous != null && (!oldIds.has("local_source") || oldIds.optBoolean("local_manual_meta"))) ||
+                        (previous == null && fileMeta != null)
+                    val manualSynopsis = previous?.synopsis ?: fileMeta?.description
+                    val manualGenres = previous?.genresJson ?: org.json.JSONArray(fileMeta?.genres.orEmpty()).toString()
+                    val manualStudios = previous?.studiosJson ?: org.json.JSONArray(listOfNotNull(fileMeta?.author)).toString()
                     database.mediaDao().upsertAll(listOf(MediaEntity(
                         id = id, extensionId = "local", type = details.type.name,
                         title = details.title, titleKey = FileNames.normalizedKey(details.title),
-                        synopsis = if (preserveManual) previous?.synopsis ?: details.synopsis else details.synopsis, posterUrl = details.posterUrl, bannerUrl = details.bannerUrl,
-                        year = details.year, genresJson = if (preserveManual && previous?.genresJson != "[]") previous!!.genresJson else org.json.JSONArray(details.genres).toString(),
-                        studiosJson = if (preserveManual && previous?.studiosJson != "[]") previous!!.studiosJson else org.json.JSONArray(details.studios).toString(), episodeCount = details.episodeCount,
+                        synopsis = if (preserveManual) manualSynopsis ?: details.synopsis else details.synopsis, posterUrl = details.posterUrl, bannerUrl = details.bannerUrl,
+                        year = details.year, genresJson = if (preserveManual && manualGenres != "[]") manualGenres else org.json.JSONArray(details.genres).toString(),
+                        studiosJson = if (preserveManual && manualStudios != "[]") manualStudios else org.json.JSONArray(details.studios).toString(), episodeCount = details.episodeCount,
                         externalIdsJson = org.json.JSONObject(details.externalIds).put("local_source", preview.hit.source)
                             .put("local_source_key", preview.hit.item.url).put("local_manual_meta", preserveManual).toString(),
                         customTitle = previous?.customTitle ?: previous?.title?.takeIf { preserveManual } ?: fileMeta?.title,
