@@ -1534,14 +1534,16 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
     val direct = kind == dev.endlesssea.core.download.DownloadSourceKind.DIRECT || kind == dev.endlesssea.core.download.DownloadSourceKind.HLS
     var sizeLabel by androidx.compose.runtime.remember(link) {
         androidx.compose.runtime.mutableStateOf(
-            if (kind == dev.endlesssea.core.download.DownloadSourceKind.HLS) "Taille finale inconnue — débit variable"
+            if (kind == dev.endlesssea.core.download.DownloadSourceKind.HLS) "Estimation de la taille…"
             else "Vérification de la taille…",
         )
     }
     androidx.compose.runtime.LaunchedEffect(link) {
-        if (kind != dev.endlesssea.core.download.DownloadSourceKind.DIRECT) return@LaunchedEffect
+        if (!direct) return@LaunchedEffect
         sizeLabel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            probeSize(link) ?: "Taille non annoncée par le serveur"
+            probeSize(link) ?: if (kind == dev.endlesssea.core.download.DownloadSourceKind.HLS)
+                "Estimation indisponible (données insuffisantes ou flux non compatible)"
+            else "Taille non annoncée par le serveur"
         }
     }
     Row(
@@ -1666,13 +1668,33 @@ private fun EpisodeRowAnymex(
 
 
 private val sizeProbeGate = kotlinx.coroutines.sync.Semaphore(4)
+private val hlsSizeEstimator by lazy {
+    dev.endlesssea.downloader.hls.HlsSizeEstimator(dev.endlesssea.core.net.HttpClients.baseBuilder().build())
+}
 
-/** No HLS extrapolation: only display the size declared for an actual direct file. */
-private suspend fun probeSize(link: dev.endlesssea.extensions.api.model.VideoLink): String? = sizeProbeGate.withPermit {
-    if (dev.endlesssea.core.download.downloadSourceKind(link.streamType.name, link.url) !=
-        dev.endlesssea.core.download.DownloadSourceKind.DIRECT) return@withPermit null
-    val bytes = dev.endlesssea.core.net.EsNet.contentLength(link.url, link.headers) ?: return@withPermit null
+private fun videoSizeLabel(bytes: Long): String {
     val mo = bytes / 1_048_576.0
-    val size = if (mo >= 1024) "%.2f Go".format(mo / 1024) else "%.0f Mo".format(mo)
-    "$size annoncés par le serveur"
+    return if (mo >= 1024) "%.2f Go".format(mo / 1024) else "%.0f Mo".format(mo)
+}
+
+/** Direct server declaration or a duration-weighted sample of the actual HLS rendition. */
+private suspend fun probeSize(link: dev.endlesssea.extensions.api.model.VideoLink): String? = sizeProbeGate.withPermit {
+    when (dev.endlesssea.core.download.downloadSourceKind(link.streamType.name, link.url)) {
+        dev.endlesssea.core.download.DownloadSourceKind.DIRECT -> {
+            val bytes = dev.endlesssea.core.net.EsNet.contentLength(link.url, link.headers) ?: return@withPermit null
+            "${videoSizeLabel(bytes)} annoncés par le serveur"
+        }
+        dev.endlesssea.core.download.DownloadSourceKind.HLS -> {
+            val estimate = hlsSizeEstimator.estimate(link.url, link.headers, link.quality.pixels) ?: return@withPermit null
+            if (estimate.measuredAll) "${videoSizeLabel(estimate.bytes)} annoncés (tous les segments)"
+            else buildString {
+                append("≈ ${videoSizeLabel(estimate.bytes)} estimés")
+                if (estimate.indicativeHighBytes.toDouble() - estimate.indicativeLowBytes > estimate.bytes * 0.1) {
+                    append(" · plage indicative ${videoSizeLabel(estimate.indicativeLowBytes)}–${videoSizeLabel(estimate.indicativeHighBytes)}")
+                }
+                append(" · ${estimate.sampledSegments}/${estimate.totalSegments} segments analysés")
+            }
+        }
+        else -> null
+    }
 }

@@ -26,7 +26,7 @@ import javax.crypto.spec.SecretKeySpec
  */
 class HlsEngine(private val client: OkHttpClient) {
 
-    data class Segment(val idx: Int, val url: String)
+    data class Segment(val idx: Int, val url: String, val durationSeconds: Double? = null)
     data class Plan(
         val mediaPlaylistUrl: String,
         val segments: List<Segment>,
@@ -34,6 +34,7 @@ class HlsEngine(private val client: OkHttpClient) {
         val keyIv: ByteArray?,
         val mediaSequence: Long,
         val initUrl: String?,
+        val endList: Boolean = false,
     ) {
         val isFmp4: Boolean get() = initUrl != null
     }
@@ -103,9 +104,14 @@ class HlsEngine(private val client: OkHttpClient) {
         var mediaSequence = 0L
         var initUrl: String? = null
         var idx = 0
+        var duration: Double? = null
+        var endList = false
         for (line in body.lines()) {
             val t = line.trim()
             when {
+                t == "#EXT-X-ENDLIST" -> endList = true
+                t.startsWith("#EXTINF:") -> duration = t.substringAfter(':').substringBefore(',').trim()
+                    .toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
                 t.startsWith("#EXT-X-MEDIA-SEQUENCE") ->
                     mediaSequence = t.substringAfter(':').trim().toLongOrNull() ?: 0
                 t.startsWith("#EXT-X-KEY") -> {
@@ -122,12 +128,14 @@ class HlsEngine(private val client: OkHttpClient) {
                     if (attr(t, "BYTERANGE") != null) throw HlsError("Initialisation HLS à plage d'octets non prise en charge")
                     initUrl = attr(t, "URI")?.let { resolveUrl(baseUrl, it) }
                 }
-                t.isNotBlank() && !t.startsWith("#") ->
-                    segments += Segment(idx++, resolveUrl(baseUrl, t))
+                t.isNotBlank() && !t.startsWith("#") -> {
+                    segments += Segment(idx++, resolveUrl(baseUrl, t), duration)
+                    duration = null
+                }
             }
         }
         if (segments.isEmpty()) throw HlsError("Flux HLS sans segment (lien expiré ?)")
-        return Plan(baseUrl, segments, keyUri, keyIv, mediaSequence, initUrl)
+        return Plan(baseUrl, segments, keyUri, keyIv, mediaSequence, initUrl, endList)
     }
 
     private fun attr(tag: String, name: String): String? {
