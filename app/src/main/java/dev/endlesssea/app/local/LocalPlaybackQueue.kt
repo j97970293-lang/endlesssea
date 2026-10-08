@@ -7,8 +7,8 @@ internal fun localPlaybackQueue(files: List<LocalVideoUi>, selected: LocalVideoU
     (files.filter { selected.parentUri.isNotBlank() && it.parentUri == selected.parentUri } + selected)
         .distinctBy { it.uri }
         .sortedWith(compareBy<LocalVideoUi>(
-            { LocalVideos.episodeSeason(it.name) ?: 0 },
-            { playbackEpisodeOrder(it.name) ?: Double.MAX_VALUE },
+            { it.matchedSeason ?: LocalVideos.episodeSeason(it.name) ?: 0 },
+            { it.matchedNumber?.toDouble() ?: playbackEpisodeOrder(it.name) ?: Double.MAX_VALUE },
             { it.name.lowercase(java.util.Locale.ROOT) },
         ))
 

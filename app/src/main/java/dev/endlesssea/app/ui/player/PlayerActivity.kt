@@ -886,6 +886,15 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
                 TextButton(onClick = { zoomMode = (zoomMode + 1) % 3 }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
                 TextButton(onClick = { showMoreSheet = false; showSkipDialog = true }) { Text("Configurer les sauts") }
+                if (playerThemeName == "cinema") {
+                    Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = megaSide != "left", onClick = { viewModel.setMegaSkipSide("right") }, label = { Text("À droite") })
+                        FilterChip(selected = megaSide == "left", onClick = { viewModel.setMegaSkipSide("left") }, label = { Text("À gauche") })
+                    }
+                    Text("Essentiel conserve la progression et les raccourcis en bas, comme la disposition de référence.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
                 Text("Épaisseur de la barre : $progressThickness dp",
                     style = MaterialTheme.typography.labelMedium)
                 Slider(

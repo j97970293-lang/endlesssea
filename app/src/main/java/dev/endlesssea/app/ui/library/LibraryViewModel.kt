@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -148,8 +149,11 @@ data class LocalVideoUi(
     val introStartSec: Int? = null,
     val introEndSec: Int? = null,
     val outroStartSec: Int? = null,
+    val matchedTitle: String? = null,
+    val matchedSeason: Int? = null,
+    val matchedNumber: Float? = null,
 ) {
-    val displayName: String get() = customTitle ?: name
+    val displayName: String get() = customTitle ?: matchedTitle ?: name
 
     /** Nom lisible du dossier parent (« Animes/One Piece » → « One Piece »). */
     val folderName: String
@@ -597,14 +601,20 @@ class LibraryViewModel @Inject constructor(
                     (0 until array.length()).map { array.getString(it) }
                 }.getOrDefault(emptyList())
                 folder to (dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]
-                    ?: dev.endlesssea.app.local.SeriesMeta()).copy(title = saved.title, description = saved.synopsis,
-                        author = strings(saved.studiosJson).firstOrNull(), genres = strings(saved.genresJson))
+                    ?: dev.endlesssea.app.local.SeriesMeta()).copy(title = saved.customTitle ?: saved.title, description = saved.synopsis,
+                        author = strings(saved.studiosJson).firstOrNull(), genres = strings(saved.genresJson),
+                        coverUri = saved.customCoverUri ?: saved.posterUrl ?: dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]?.coverUri)
             }
         }.toMap()
-        _uiState.value = _uiState.value.copy(localFiles = files, folderMetadata = folderMetadata,
+        val matched = files.map { it.parentUri }.distinct().flatMap { folder ->
+            episodeDao.ofMedia(dev.endlesssea.app.local.LocalMediaIds.series(folder)).first()
+        }.associateBy { it.id }
+        val enriched = files.map { file ->
+            matched[file.uri]?.let { ep -> file.copy(matchedTitle = ep.title, matchedNumber = ep.number, matchedSeason = ep.season) } ?: file
+        }
+        _uiState.value = _uiState.value.copy(localFiles = enriched, folderMetadata = folderMetadata,
             localScanning = false, localScanLabel = "")
-        // §fiche-locale : partagé avec l'écran de fiche d'un dossier
-        dev.endlesssea.app.local.LocalLibraryCache.publish(files)
+        dev.endlesssea.app.local.LocalLibraryCache.publish(enriched)
 
         }.also { scanJob = it }
     }
@@ -762,12 +772,16 @@ class LibraryViewModel @Inject constructor(
         val id = dev.endlesssea.app.local.LocalMediaIds.series(folderUri)
         val displayTitle = next.title ?: dev.endlesssea.app.local.LocalNames.pretty(folderUri)
         // Room is authoritative for edits even on read-only SAF folders. No episode title is rewritten.
-        mediaDao.upsertAll(listOf(dev.endlesssea.data.db.MediaEntity(
+        val previous = mediaDao.byId(id)
+        val base = previous ?: dev.endlesssea.data.db.MediaEntity(
             id = id, extensionId = "local", type = "ANIME", title = displayTitle,
-            titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle),
+            titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle))
+        mediaDao.upsertAll(listOf(base.copy(
+            customTitle = next.title,
             synopsis = next.description, posterUrl = folderCover(folderUri) ?: next.coverUri,
             genresJson = org.json.JSONArray(next.genres).toString(),
             studiosJson = org.json.JSONArray(listOfNotNull(next.author)).toString(),
+            externalIdsJson = org.json.JSONObject(base.externalIdsJson).put("local_manual_meta", true).toString(),
         )))
         val exported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(context, folderUri, next.title,

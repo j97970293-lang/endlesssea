@@ -47,12 +47,14 @@ fun PlaylistSheet(state: PlayerUiState, onDismiss: () -> Unit, onSelect: (Int) -
                         verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(100.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Color.DarkGray), contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.PlayArrow, null, tint = Color.Gray)
-                            AsyncImage(item.thumbnailUrl, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            val localVideo = item.links.firstOrNull()?.url?.takeIf { item.mediaId?.startsWith("local:") == true }
+                            if (localVideo != null) dev.endlesssea.app.ui.local.LocalVideoThumbnail(localVideo, 0L, Modifier.fillMaxSize())
+                            else AsyncImage(item.thumbnailUrl, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         }
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val episode = item.episodeNumber?.let { "E${it.toInt().toString().padStart(2, '0')}" }.orEmpty()
+                            val episode = item.episodeNumber?.let { "E${it.toString().removeSuffix(".0").padStart(2, '0')}" }.orEmpty()
                             val season = item.season?.let { "S${it.toString().padStart(2, '0')}" }.orEmpty()
                             Text(listOf(season + episode, if (duration > 0) fmtTime(duration) else "Durée inconnue",
                                 if (current) "En cours" else if (item.watched) "Vu" else "").filter { it.isNotBlank() }.joinToString(" · "),

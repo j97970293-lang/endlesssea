@@ -1034,7 +1034,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     val progPos = viewModel.progressPosition.collectAsState().value
-                    Text("Barre de progression", style = MaterialTheme.typography.labelLarge)
+                    Text("Barre de progression (anciens thèmes)", style = MaterialTheme.typography.labelLarge)
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1052,7 +1052,7 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(6.dp))
                     val toolsPos = viewModel.toolsPosition.collectAsState().value
-                    Text("Outils (verrou, vitesse, filtres…)", style = MaterialTheme.typography.labelLarge)
+                    Text("Outils en haut / bas (anciens thèmes)", style = MaterialTheme.typography.labelLarge)
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

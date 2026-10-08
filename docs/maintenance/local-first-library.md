@@ -43,3 +43,15 @@ La disponibilité signifie « lisible actuellement » : une permission révoqué
 Aucun essai sur téléphone n'est revendiqué. À vérifier : dossier de 1 000 fichiers, plusieurs saisons, métadonnées dans un dossier non modifiable, téléchargement puis lecture en mode avion, suppression puis lecture en ligne, longues listes de serveurs, petit écran/portrait, TalkBack et grand texte.
 
 Le regroupement local suit le dossier contenant les vidéos : des sous-dossiers de saisons restent des entrées distinctes, sans fusion automatique par nom. La restauration totale après mort du processus et l'index global définitif du chantier de reconstruction restent à compléter.
+
+## Révision lecteur de référence et association locale (2026-10-09)
+
+- Essentiel conserve le bouton Play blanc de 80 dp. Entête et commandes secondaires arrondis ; précédent/suivant au centre. Le mégaskip est ancré immédiatement au-dessus de la barre de progression, à droite par défaut, indépendamment des placements historiques des outils. Le dock inférieur est défilant. Aucun faux moteur HW+ n'est ajouté.
+- Les réglages de forme/épaisseur de progression, tampon et curseur sont conservés. Le placement haut/bas ne concerne plus Essentiel, ce que les libellés indiquent.
+- Sur la fiche d'un dossier : « Associer à une fiche en ligne » recherche parmi les extensions activées, charge une fiche choisie, puis demande confirmation. La recherche est bornée (trois sources simultanées, première page, trente résultats/source). Aucun rapprochement automatique de titres.
+- Association des épisodes par saison et numéro uniquement, uniques des deux côtés. Une saison de repli peut être choisie explicitement pour les fichiers sans saison ; par défaut, aucune saison n'est devinée. Les numéros fractionnaires sont conservés. Les lignes ambiguës restent inchangées.
+- Import Room transactionnel, avec les identifiants locaux existants. Les sources vidéo restent les URI locales. Ni renommage, ni téléchargement, ni écriture tracker, ni remplacement des identifiants d'historique. Métadonnées manuelles prioritaires ; l'éditeur conserve désormais les références de source.
+- Les numéros, saisons et titres importés sont projetés dans la fiche, sa recherche et la file de lecture complète. Filtrer la fiche ne tronque pas la file de lecture.
+- Miniatures d'épisodes et de playlist locale : extraction à 10 % de la vidéo, demande 320×180, deux décodeurs maximum, cache mémoire URI/taille et repli visible. Décodeur vidéo explicite pour les fournisseurs SAF signalant `application/octet-stream`. Les affiches de série restent réservées à la fiche.
+
+Validation à effectuer sur téléphone : proportions par rapport à la capture, portrait/paysage et encoche ; mégaskip avec les anciens réglages placés en haut ; vignettes SAF avec 1 000 fichiers ; import, redémarrage, titres manuels et historique ; refus des doublons et saisons inconnues. Les tests unitaires/CI ne valident pas ces comportements Android réels.

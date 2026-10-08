@@ -519,8 +519,8 @@ internal fun playLocal(
             dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
                 title = it.displayName, episodeId = it.uri, links = listOf(link(it)),
                 thumbnailUrl = it.customCoverUri ?: it.uri,
-                durationMs = it.durationMs ?: 0L, episodeNumber = it.episodeNumber?.toFloat(),
-                season = dev.endlesssea.app.local.LocalVideos.episodeSeason(it.name),
+                durationMs = it.durationMs ?: 0L, episodeNumber = it.matchedNumber ?: it.episodeNumber?.toFloat(),
+                season = it.matchedSeason ?: dev.endlesssea.app.local.LocalVideos.episodeSeason(it.name),
                 mediaId = it.parentUri.takeIf { parent -> parent.isNotBlank() }?.let(dev.endlesssea.app.local.LocalMediaIds::series), downloaded = true,
                 markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(it.introStartSec, it.introEndSec, it.outroStartSec),
             )

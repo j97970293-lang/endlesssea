@@ -78,13 +78,13 @@ fun LocalDetailsScreen(
         val candidates = (state.localFiles.takeIf { it.isNotEmpty() } ?: cached).filter { it.parentUri == folderUri }
         candidates.firstOrNull()?.let { dev.endlesssea.app.local.localPlaybackQueue(candidates, it) }.orEmpty()
     }
-    val seasons = remember(files) { files.mapNotNull { LocalVideos.episodeSeason(it.name) }.distinct().sorted() }
+    val seasons = remember(files) { files.mapNotNull { it.matchedSeason ?: LocalVideos.episodeSeason(it.name) }.distinct().sorted() }
     val meta = viewModel.folderMetadata(folderUri)
     val visibleEpisodes = remember(files, episodeQuery, selectedSeason, meta) {
         files.filter { video ->
-            (selectedSeason == null || LocalVideos.episodeSeason(video.name) == selectedSeason) &&
+            (selectedSeason == null || (video.matchedSeason ?: LocalVideos.episodeSeason(video.name)) == selectedSeason) &&
                 dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery,
-                    dev.endlesssea.app.local.playbackEpisodeOrder(video.name), video.name, video.displayName,
+                    video.matchedNumber?.toString()?.toDoubleOrNull() ?: dev.endlesssea.app.local.playbackEpisodeOrder(video.name), video.name, video.displayName, video.matchedTitle,
                     LocalVideos.episodeNumber(video.name)?.let { meta.episodeTitles[it] })
         }
     }
@@ -92,7 +92,7 @@ fun LocalDetailsScreen(
     val title = meta?.title ?: first?.let {
         dev.endlesssea.app.local.LocalNames.pretty(folderUri)
     } ?: "Dossier"
-    val cover = viewModel.folderCover(folderUri) ?: files.firstOrNull { it.customCoverUri != null }?.customCoverUri ?: meta?.coverUri
+    val cover = viewModel.folderCover(folderUri) ?: meta.coverUri ?: files.firstOrNull { it.customCoverUri != null }?.customCoverUri
         ?: first?.uri
 
     val seriesHistory = history.filter { entry -> files.any { it.uri == entry.episodeId } }
@@ -122,6 +122,7 @@ fun LocalDetailsScreen(
     var titleDraft by remember(title) { mutableStateOf(title) }
     /** §metadonnees-fichier : édition des métadonnées écrites dans details.json. */
     var editSeriesMeta by remember { mutableStateOf(false) }
+    var showSourceMatch by remember(folderUri) { mutableStateOf(false) }
     var editEpisode by remember { mutableStateOf<dev.endlesssea.app.ui.library.LocalVideoUi?>(null) }
 
     LazyColumn(
@@ -195,6 +196,7 @@ fun LocalDetailsScreen(
                         TextButton(onClick = { editSeriesMeta = true }) { Text("Métadonnées") }
                     }
                     TextButton(onClick = { coverPicker.launch(arrayOf("image/*")) }) { Text("Choisir la couverture") }
+                    TextButton(onClick = { showSourceMatch = true }) { Text("Associer à une fiche en ligne") }
                     state.localScanLabel.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
@@ -309,24 +311,19 @@ fun LocalDetailsScreen(
                         onLongClick = { editEpisode = video }),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    coil.compose.AsyncImage(
-                        model = video.customCoverUri ?: video.uri,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(74.dp).height(44.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                    )
+                    LocalVideoThumbnail(uri = video.uri, bytes = video.sizeBytes,
+                        modifier = Modifier.width(88.dp).height(50.dp).clip(RoundedCornerShape(8.dp)))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         // §episodes-json : « Ép. 3 · Le début » quand le dossier
                         // publie episodes.json, sinon le nom de fichier nettoyé.
                         val number = LocalVideos.episodeNumber(video.name)
                         val metaTitle = number?.let { meta?.episodeTitles?.get(it) }
-                        val shownTitle = video.customTitle?.takeUnless { it == title } ?: metaTitle
+                        val shownTitle = video.customTitle?.takeUnless { it == title } ?: video.matchedTitle ?: metaTitle
                             ?: LocalVideos.episodeTitleFromFileName(video.name)
                                 .ifBlank { video.displayName }
                         Text(
-                            if (number != null) "Ép. $number · $shownTitle" else shownTitle,
+                            (video.matchedNumber?.toString()?.removeSuffix(".0") ?: number?.toString())?.let { "Ép. $it · $shownTitle" } ?: shownTitle,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
@@ -350,6 +347,11 @@ fun LocalDetailsScreen(
 
     // §metadonnees-fichier : les métadonnées de la série sont écrites DANS le
     // dossier (details.json) — elles suivent donc la carte SD, pas l'application.
+    if (showSourceMatch) {
+        LocalSourceMatchDialog(folderUri, title, files,
+            onDismiss = { showSourceMatch = false }, onApplied = { viewModel.scanLocal() })
+    }
+
     editEpisode?.let { video ->
         var episodeTitle by remember(video.uri) { mutableStateOf(video.customTitle ?: video.name) }
         var episodeCover by remember(video.uri) { mutableStateOf(video.customCoverUri.orEmpty()) }
