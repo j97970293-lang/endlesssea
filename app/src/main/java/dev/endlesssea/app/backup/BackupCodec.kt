@@ -57,7 +57,7 @@ object BackupCodec {
         val library = rows(root.getJSONArray("library")) { row ->
             decodeLibraryEntity(row, version).also {
                 require(it.mediaId.isNotBlank() && it.category.isNotBlank()) { "Entrée de bibliothèque sans identifiant ou catégorie." }
-                it.customGenresJson?.let(::JSONArray)
+                it.customGenresJson?.let(::jsonArray)
             }
         }
         val history = rows(root.getJSONArray("history")) { row ->
@@ -66,8 +66,8 @@ object BackupCodec {
         val media = if (version == 1) emptyList() else rows(root.getJSONArray("media")) { row ->
             decodeMediaEntity(row).also {
                 require(it.id.isNotBlank() && it.extensionId.isNotBlank()) { "Fiche sans identifiant." }
-                JSONArray(it.altTitlesJson); JSONArray(it.genresJson); JSONArray(it.languagesJson); JSONArray(it.studiosJson)
-                JSONObject(it.externalIdsJson)
+                jsonArray(it.altTitlesJson); jsonArray(it.genresJson); jsonArray(it.languagesJson); jsonArray(it.studiosJson)
+                jsonObject(it.externalIdsJson)
             }
         }
         val genres = if (version == 1) emptyList() else rows(root.getJSONArray("genres")) { row ->
@@ -118,11 +118,15 @@ object BackupCodec {
                 else if (c == '"') quoted = false
             } else when (c) {
                 '"' -> quoted = true
+                '\'', '/', '#' -> throw IllegalArgumentException("Commentaires et chaînes non JSON refusés.")
                 '{', '[' -> { depth++; require(depth <= 32) { "JSON trop profondément imbriqué." } }
                 '}', ']' -> depth--
             }
         }
     }
+
+    private fun jsonArray(text: String): JSONArray { checkNesting(text); return JSONArray(text) }
+    private fun jsonObject(text: String): JSONObject { checkNesting(text); return JSONObject(text) }
 
     private fun <T> rows(array: JSONArray, decode: (JSONObject) -> T): List<T> {
         require(array.length() <= MAX_ROWS) { "Sauvegarde trop volumineuse." }

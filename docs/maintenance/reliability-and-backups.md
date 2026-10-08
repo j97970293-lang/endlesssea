@@ -62,7 +62,7 @@ Tests ajoutés :
 - `LocalPlaybackQueueTest` : tri numérique, isolation des dossiers, reprise sans cache, absence de doublons, épisode 1000, titres renommés et spéciaux fractionnaires.
 - `LocalMetadataCodecTest` : clé URI distincte des champs, compatibilité deux champs, caractères spéciaux et valeurs absentes.
 - `BoundedTreeScanTest` : huit parents avec enfants, concurrence bornée, profondeur zéro et arrêt du scan.
-- `BackupCodecTest` : aller-retour v2, v1, 701 épisodes terminés, fichier étranger/version inconnue, ligne tardive malformée, doublons, nombres négatifs, réglages invalides, champs exportés, limites de taille, fermeture des flux, UTF-8/BOM, imbrication, données parasites et politique de conflits.
+- `BackupCodecTest` : aller-retour v2, v1, 701 épisodes terminés, fichier étranger/version inconnue, ligne tardive malformée, doublons, nombres négatifs, réglages invalides, champs exportés, limites de taille, fermeture des flux, UTF-8/BOM, imbrication (y compris les champs JSON internes), refus des commentaires, données parasites et politique de conflits.
 
 Le workflow Android CI lance les tests des sept modules, assemble l'APK debug puis téléverse l'artefact. Une CI verte valide ces étapes, **pas le fonctionnement sur téléphone, les fournisseurs SAF ni les comptes distants**. Le comportement réel de la transaction Room n'est pas couvert par un test instrumenté dans cette passe.
 

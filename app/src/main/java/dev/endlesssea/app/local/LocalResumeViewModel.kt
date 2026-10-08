@@ -35,6 +35,7 @@ class LocalResumeViewModel @Inject constructor(
                     context.contentResolver.openFileDescriptor(document, "r")?.use { }
                         ?: error("Fichier introuvable")
                     val cached = LocalLibraryCache.files.value
+                    val cachedByUri = cached.associateBy { it.uri }
                     val saved = history.byEpisode(uri)
                     val folder = cached.firstOrNull { it.uri == uri }?.parentUri?.takeIf { it.isNotBlank() }
                         ?: saved?.mediaId?.takeIf { it.startsWith("local:") }?.removePrefix("local:")?.takeIf { it.isNotBlank() }
@@ -47,6 +48,7 @@ class LocalResumeViewModel @Inject constructor(
                                 .map { file ->
                                     val metadata = metadataByUri[file.uri] ?: AppPrefs.LocalFileMeta()
                                     LocalVideoUi(file.uri, file.displayName, file.parentUri, file.sizeBytes,
+                                        durationMs = cachedByUri[file.uri]?.durationMs ?: saved?.takeIf { it.episodeId == file.uri }?.durationMs,
                                         customTitle = metadata.title, customCoverUri = metadata.coverUri,
                                         introStartSec = metadata.introStartSec, introEndSec = metadata.introEndSec, outroStartSec = metadata.outroStartSec)
                                 }

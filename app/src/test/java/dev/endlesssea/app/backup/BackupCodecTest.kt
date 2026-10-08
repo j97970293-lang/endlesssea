@@ -43,6 +43,14 @@ class BackupCodecTest {
         rejects(BackupCodec.encode(snapshot()) + " trailing junk")
         rejects("[".repeat(100) + "0" + "]".repeat(100))
     }
+    @Test fun nestedJsonInsideMetadataIsAlsoBounded() {
+        val deep = "[".repeat(100) + "0" + "]".repeat(100)
+        rejects(BackupCodec.encode(snapshot().copy(media = listOf(snapshot().media.single().copy(genresJson = deep)))))
+    }
+    @Test fun commentsCannotBypassJsonNestingChecks() {
+        rejects("/* comment */" + BackupCodec.encode(snapshot()))
+        rejects(BackupCodec.encode(snapshot()).replace("\"endless_sea\"", "'endless_sea'"))
+    }
     @Test fun malformedLaterRowsCannotProduceAPartialSnapshot() {
         val root = JSONObject(BackupCodec.encode(snapshot()))
         root.getJSONArray("history").put(JSONObject().put("episodeId", "broken"))
