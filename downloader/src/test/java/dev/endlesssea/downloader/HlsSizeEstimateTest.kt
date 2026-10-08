@@ -31,6 +31,14 @@ class HlsSizeEstimateTest {
         assertTrue(e.indicativeLowBytes < e.bytes)
         assertTrue(e.indicativeHighBytes >= actual)
     }
+    @Test fun repeatedLowBitrateScenesDoNotAlignWithEverySample() {
+        val sizes = (0 until 120).associateWith { if (it % 10 == 4) 100L else 200L }
+        val sampled = HlsSizeMath.sampleIndices(120).associateWith { sizes.getValue(it) }
+        val e = HlsSizeMath.estimate(List(120) { 5.0 }, sampled, 0, true)!!
+        val actual = sizes.values.sum()
+        assertTrue(e.bytes > actual * 0.9)
+        assertTrue(e.bytes < actual * 1.1)
+    }
     @Test fun differingSegmentDurationsAreWeightedBySecondsNotSegmentCount() {
         val seconds = List(60) { if (it % 2 == 0) 2.0 else 10.0 }
         val samples = HlsSizeMath.sampleIndices(60).associateWith { (seconds[it] * 100).toLong() }

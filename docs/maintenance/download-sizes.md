@@ -40,11 +40,11 @@ Tests appareil indispensables : choisir 720p dans un manifeste proposant aussi 1
 Le chiffre est de nouveau affiché, sans reprendre l'extrapolation des trois premiers segments :
 
 1. Résolution par **le même moteur HLS que le téléchargement**, avec la même qualité et les mêmes en-têtes.
-2. Pour un flux fini (`EXT-X-ENDLIST`), découpage de la vidéo en douze régions au maximum et sondage d'un segment représentatif par région, du début à la fin.
+2. Pour un flux fini (`EXT-X-ENDLIST`), découpage de la vidéo en douze régions au maximum et sondage d'un segment représentatif par région, du début à la fin. La position varie à l’intérieur des régions pour éviter de sonder toujours la même phase d’un motif répétitif.
 3. Pondération par les durées réelles `EXTINF` de chaque région, plutôt que par le seul nombre de segments. La taille de l'initialisation fMP4 est ajoutée.
 4. Affichage `≈ X Mo estimés`, du nombre de segments analysés et, lorsque les débits mesurés varient, d'une **plage indicative** calculée à partir des débits observés. Cette plage n'est ni un plafond garanti ni un intervalle de confiance statistique : des segments non sondés peuvent la dépasser.
 5. Si tous les segments ont été mesurés (notamment une petite playlist), affichage de la somme des **tailles annoncées par le serveur**, sans extrapolation.
 
 L'estimation est refusée pour une fenêtre de direct, un sondage incomplet, une initialisation de taille inconnue ou des durées invalides nécessaires à l'extrapolation. Les sous-titres séparés et le surcoût réseau/reprises ne sont pas compris. Pendant le téléchargement, la progression conserve les octets réels et les segments ; aucun total estimé n'est enregistré comme taille finale réelle en base.
 
-`HlsSizeEstimateTest` ajoute 12 tests : couverture de toute la vidéo, petit début peu représentatif, durée variable, somme complète avec initialisation, direct, sondages manquants, durées invalides, dépassements numériques, sélection réseau 720p et en-têtes transmis. Les 14 tests de qualité/reprise sont aussi réexécutés. Une estimation HLS ne peut pas promettre à l'avance le poids exact sans connaître la taille de tous les segments ; comparaison sur les vrais serveurs toujours nécessaire.
+`HlsSizeEstimateTest` ajoute 13 tests : couverture de toute la vidéo, petit début peu représentatif, scènes légères répétitives, durée variable, somme complète avec initialisation, direct, sondages manquants, durées invalides, dépassements numériques, sélection réseau 720p et en-têtes transmis. Les 14 tests de qualité/reprise sont aussi réexécutés. Une estimation HLS ne peut pas promettre à l'avance le poids exact sans connaître la taille de tous les segments ; comparaison sur les vrais serveurs toujours nécessaire.

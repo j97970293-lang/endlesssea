@@ -23,7 +23,8 @@ object HlsSizeMath {
         when (i) {
             0 -> range.first
             minOf(count, SAMPLE_LIMIT) - 1 -> range.last
-            else -> range.first + (range.last - range.first) / 2
+            // Vary the position inside each region to avoid sampling the same phase of a repeated scene pattern.
+            else -> range.first + (((i * 0.6180339887498949) % 1.0) * (range.last - range.first + 1)).toInt()
         }
     }
 
