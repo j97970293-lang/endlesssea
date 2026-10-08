@@ -75,19 +75,22 @@ object LocalVideos {
         context: Context,
         treeUriString: String,
         includeHidden: Boolean = false,
+        /** Resume scans only the known series folder, never the entire SD card. */
+        folderOnly: Boolean = false,
         /** Retour visuel : (dossiers explorés, vidéos trouvées, dossier courant). */
         onProgress: ((Int, Int, String) -> Unit)? = null,
     ): List<LocalVideoFile> = coroutineScope {
         val tree = Uri.parse(treeUriString)
         val rootId = runCatching {
-            android.provider.DocumentsContract.getTreeDocumentId(tree)
+            if (folderOnly) android.provider.DocumentsContract.getDocumentId(tree)
+            else android.provider.DocumentsContract.getTreeDocumentId(tree)
         }.getOrNull() ?: return@coroutineScope emptyList()
         val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
         val gate = Semaphore(8)
         val scanned = java.util.concurrent.atomic.AtomicInteger(0)
 
         suspend fun walk(docId: String, depth: Int): Unit {
-            if (depth > MAX_DEPTH || out.size >= MAX_FILES_PER_ROOT) return
+            if (depth > (if (folderOnly) 0 else MAX_DEPTH) || out.size >= MAX_FILES_PER_ROOT) return
             val children = android.provider.DocumentsContract
                 .buildChildDocumentsUriUsingTree(tree, docId)
             val dirUri = android.provider.DocumentsContract
@@ -242,16 +245,16 @@ object LocalVideos {
     fun episodeNumber(fileName: String): Int? {
         val base = fileName.substringBeforeLast('.')
         if (Regex("(?i)(?:e(?:p(?:isode)?)?[ ._-]?|^|[ _-])\\d+[.,]\\d+(?![A-Za-z0-9])").containsMatchIn(base)) return null
-        Regex("(?i)s(\\d{1,2})[ ._-]*e(\\d{1,3})").find(base)?.let { return it.groupValues[2].toInt() }
-        Regex("(?i)\\bep?(?:isode)?[ ._-]?(\\d{1,3})\\b").find(base)?.let { return it.groupValues[1].toInt() }
-        Regex("(?i)^(\\d{1,3})[ ._-]").find(base)?.let { return it.groupValues[1].toInt() }
-        Regex("(?i)[ ._-](\\d{1,3})\\s*$").find(base)?.let { return it.groupValues[1].toInt() }
+        Regex("(?i)s(\\d{1,2})[ ._-]*e(\\d{1,5})").find(base)?.let { return it.groupValues[2].toInt() }
+        Regex("(?i)\\bep?(?:isode)?[ ._-]?(\\d{1,5})\\b").find(base)?.let { return it.groupValues[1].toInt() }
+        Regex("(?i)^(\\d{1,5})[ ._-]").find(base)?.let { return it.groupValues[1].toInt() }
+        Regex("(?i)[ ._-](\\d{1,5})\\s*$").find(base)?.let { return it.groupValues[1].toInt() }
         return null
     }
 
     /** Saison conservée pour éviter de synchroniser S02E03 sur une entrée de saison 1. */
     fun episodeSeason(fileName: String): Int? =
-        Regex("(?i)s(\\d{1,2})[ ._-]*e\\d{1,3}").find(fileName)?.groupValues?.get(1)?.toIntOrNull()
+        Regex("(?i)s(\\d{1,2})[ ._-]*e\\d{1,5}").find(fileName)?.groupValues?.get(1)?.toIntOrNull()
 
     /** Titre lisible d'un fichier une fois le numéro retiré (« Le début »). */
     fun episodeTitleFromFileName(fileName: String): String = fileName.substringBeforeLast('.')

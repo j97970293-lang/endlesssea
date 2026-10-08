@@ -1045,6 +1045,7 @@ internal fun playLocal(
     all: List<LocalVideoUi>,
     video: LocalVideoUi,
 ) {
+    val queue = dev.endlesssea.app.local.localPlaybackQueue(all, video)
     fun link(f: LocalVideoUi) = dev.endlesssea.extensions.api.model.VideoLink(
         url = f.uri,
         streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
@@ -1053,7 +1054,7 @@ internal fun playLocal(
     )
     dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
     dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
-        all.map {
+        queue.map {
             dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
                 title = it.displayName, episodeId = it.uri, links = listOf(link(it)),
                 thumbnailUrl = it.customCoverUri ?: it.uri,
@@ -1063,7 +1064,7 @@ internal fun playLocal(
                 markers = dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(it.introStartSec, it.introEndSec, it.outroStartSec),
             )
         },
-        all.indexOfFirst { it.uri == video.uri },
+        queue.indexOfFirst { it.uri == video.uri },
     )
     dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
         title = video.displayName,

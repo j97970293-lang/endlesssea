@@ -193,6 +193,7 @@ fun EsNavGraph(nav: NavHostController) {
             dev.endlesssea.app.ui.history.HistoryScreen(onBack = { nav.popBackStack() })
         }
         composable(Screen.Home.route) {
+            val localResume: dev.endlesssea.app.local.LocalResumeViewModel = androidx.hilt.navigation.compose.hiltViewModel()
             val ctx = androidx.compose.ui.platform.LocalContext.current
             // §barre-haut (conversation 4) : la loupe de la barre ouvre la
             // recherche de la source courante (comme l'ancien bouton flottant).
@@ -206,26 +207,9 @@ fun EsNavGraph(nav: NavHostController) {
                 onMediaClick = { id ->
                     // §historique-local : une carte locale relance directement la vidéo
                     if (id.startsWith("local:")) {
-                        dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
-                        val uri = id.removePrefix("local:")
-                        dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(emptyList(), 0)
-                        dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
-                            title = dev.endlesssea.app.local.LocalNames.pretty(uri),
-                            mediaId = null, episodeId = uri,
-                            links = listOf(
-                                dev.endlesssea.extensions.api.model.VideoLink(
-                                    url = uri,
-                                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
-                                    server = "Fichier local",
-                                ),
-                            ),
-                            startIndex = 0,
-                        )
-                        ctx.startActivity(
-                            android.content.Intent(
-                                ctx, dev.endlesssea.app.ui.player.PlayerActivity::class.java,
-                            ),
+                        localResume.resume(id.removePrefix("local:"),
+                            onReady = { queue, selected -> dev.endlesssea.app.ui.library.playLocal(ctx, queue, selected) },
+                            onError = { message -> android.widget.Toast.makeText(ctx, message, android.widget.Toast.LENGTH_LONG).show() },
                         )
                     } else {
                         openDetails(nav, id)
