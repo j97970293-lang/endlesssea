@@ -14,36 +14,37 @@ import androidx.compose.ui.platform.LocalContext
 import dev.endlesssea.app.di.AppPrefs
 
 // Palette inspiration Anymex : bleu nuit indigo + pervenche (periwinkle)
+// §lisibilite : couleurs plus contrastées pour une meilleure lisibilité
 private val SeaDark = darkColorScheme(
     primary = Color(0xFFB9C1FF),
-    onPrimary = Color(0xFF26315F),
+    onPrimary = Color(0xFF1A2347),
     primaryContainer = Color(0xFF3D4779),
     onPrimaryContainer = Color(0xFFDEE1FF),
     secondary = Color(0xFFC0C2E8),
-    onSecondary = Color(0xFF2A2E4A),
+    onSecondary = Color(0xFF1E243D),
     tertiary = Color(0xFF7AE0E0),
     surface = Color(0xFF0B0E1A),
-    onSurface = Color(0xFFE3E2E9),
+    onSurface = Color(0xFFE8E7EE),  // §lisibilite : blanc plus pur
     surfaceVariant = Color(0xFF141830),
-    onSurfaceVariant = Color(0xFF8D93B8),
+    onSurfaceVariant = Color(0xFFA0A5C8),  // §lisibilite : plus clair
     background = Color(0xFF080A14),
 )
 
 // AMOLED : noir pur + cartes bleu nuit — la référence visuelle (par défaut)
 private val SeaAmoled = darkColorScheme(
     primary = Color(0xFFAFB8FF),
-    onPrimary = Color(0xFF273162),
+    onPrimary = Color(0xFF1A2347),
     primaryContainer = Color(0xFF3E4880),
     onPrimaryContainer = Color(0xFFDEE1FF),
     secondary = Color(0xFFC0C2E8),
-    onSecondary = Color(0xFF242847),
+    onSecondary = Color(0xFF1E243D),
     tertiary = Color(0xFF7AE0E0),
     // §amoled (conversation 3) : noir pur pour les écrans, surfaces #0A0A0A
     // pour les cartes — plus de teinte bleutée sur l'AMOLED.
     surface = Color(0xFF000000),
-    onSurface = Color(0xFFE4E3EE),
+    onSurface = Color(0xFFE8E7EE),  // §lisibilite : blanc plus pur
     surfaceVariant = Color(0xFF0A0A0A),
-    onSurfaceVariant = Color(0xFF8D93B8),
+    onSurfaceVariant = Color(0xFFA0A5C8),  // §lisibilite : plus clair
     background = Color(0xFF000000),
     surfaceContainerHigh = Color(0xFF0A0A0A),
     surfaceContainer = Color(0xFF050505),
@@ -58,7 +59,7 @@ private val SeaLight = lightColorScheme(
     onSecondary = Color(0xFFFFFFFF),
     tertiary = Color(0xFF0E7C8C),
     surface = Color(0xFFFBFDFE),
-    onSurface = Color(0xFF191C1E),
+    onSurface = Color(0xFF171A1C),  // §lisibilite : noir plus foncé
     surfaceVariant = Color(0xFFDCE4E8),
     background = Color(0xFFF6FAFB),
 )

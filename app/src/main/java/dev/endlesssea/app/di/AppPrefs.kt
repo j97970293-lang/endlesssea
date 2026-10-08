@@ -768,7 +768,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     }
 
     /** §luminosite : éclaircissement des surfaces sombres (0..40 %). */
-    private val _uiBrightness = MutableStateFlow(p.getInt("ui_brightness", 0))
+    private val _uiBrightness = MutableStateFlow(p.getInt("ui_brightness", 10))
     val uiBrightness: StateFlow<Int> = _uiBrightness
     fun setUiBrightness(v: Int) {
         val safe = v.coerceIn(0, 40)
