@@ -4,7 +4,10 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 
 /**
  * §bibliothèque-locale — scanner de VIDÉOS dans des dossiers SAF choisis par
@@ -12,7 +15,7 @@ import kotlinx.coroutines.coroutineScope
  *
  * - Sécurité : uniquement l'arborescence autorisée via OpenDocumentTree (persistée).
  * - Formats reconnus : mp4, mkv, ts, avi, webm, mov, m4v, mpg, mpeg, 3gp.
- * - Profondeur de récursion plafonnée (6 niveaux) + 2 000 fichiers max par dossier,
+ * - Profondeur de récursion plafonnée (3 niveaux sous la racine) + 2 000 fichiers max par dossier,
  * pour éviter les scans runaway sur les grosses cartes SD.
  */
 data class LocalVideoFile(
@@ -76,22 +79,29 @@ object LocalVideos {
         folderOnly: Boolean = false,
         /** Retour visuel : (dossiers explorés, vidéos trouvées, dossier courant). */
         onProgress: ((Int, Int, String) -> Unit)? = null,
-    ): List<LocalVideoFile> = coroutineScope {
+    ): List<LocalVideoFile> = withContext(Dispatchers.IO) {
         val tree = Uri.parse(treeUriString)
         val rootId = runCatching {
             if (folderOnly) android.provider.DocumentsContract.getDocumentId(tree)
             else android.provider.DocumentsContract.getTreeDocumentId(tree)
-        }.getOrNull() ?: return@coroutineScope emptyList()
+        }.getOrNull() ?: return@withContext emptyList()
         val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
         val scanned = java.util.concurrent.atomic.AtomicInteger(0)
 
         suspend fun readDirectory(docId: String): List<String> {
+            val scanContext = currentCoroutineContext()
+            fun metadataText(uri: String): String? = try {
+                context.contentResolver.openInputStream(Uri.parse(uri))?.let { stream ->
+                    readLocalMetadataText(stream, checkActive = { scanContext.ensureActive() })
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { null } // Optional metadata must not hide playable videos.
             val children = android.provider.DocumentsContract
                 .buildChildDocumentsUriUsingTree(tree, docId)
             val dirUri = android.provider.DocumentsContract
                 .buildDocumentUriUsingTree(tree, docId).toString()
             val subDirs = mutableListOf<String>()
-            runCatching {
+            try {
                 context.contentResolver.query(
                     children,
                     arrayOf(
@@ -103,6 +113,7 @@ object LocalVideos {
                     null, null, null,
                 )?.use { c ->
                     while (c.moveToNext()) {
+                        scanContext.ensureActive()
                         if (out.size >= MAX_FILES_PER_ROOT) break
                         val id = c.getString(0) ?: continue
                         val name = c.getString(1) ?: continue
@@ -124,10 +135,7 @@ object LocalVideos {
                             // §structure-aniyomi : métadonnées de la série
                             val docUri = android.provider.DocumentsContract
                                 .buildDocumentUriUsingTree(tree, id).toString()
-                            val text = runCatching {
-                                context.contentResolver.openInputStream(Uri.parse(docUri))
-                                    ?.bufferedReader()?.use { r -> r.readText() }
-                            }.getOrNull()
+                            val text = metadataText(docUri)
                             if (text != null) {
                                 val o = runCatching { org.json.JSONObject(text) }.getOrNull()
                                 if (o != null) {
@@ -148,10 +156,7 @@ object LocalVideos {
                             if (name.equals("episodes.json", true)) {
                                 val docUri = android.provider.DocumentsContract
                                     .buildDocumentUriUsingTree(tree, id).toString()
-                                val text = runCatching {
-                                    context.contentResolver.openInputStream(Uri.parse(docUri))
-                                        ?.bufferedReader()?.use { r -> r.readText() }
-                                }.getOrNull()
+                                val text = metadataText(docUri)
                                 val titles = parseEpisodeTitles(text)
                                 if (titles.isNotEmpty()) {
                                     seriesMeta.compute(dirUri) { _, old ->
@@ -170,7 +175,9 @@ object LocalVideos {
                         }
                     }
                 }
-            }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* An inaccessible directory does not abort other roots. */ }
+            scanContext.ensureActive()
             onProgress?.invoke(
                 scanned.incrementAndGet(), out.size,
                 Uri.decode(dirUri.substringAfterLast('/')).substringAfterLast('/'),

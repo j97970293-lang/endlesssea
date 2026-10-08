@@ -93,3 +93,13 @@ Après confirmation et démarrage de la phase d'écriture, une annulation de nav
 Tests supplémentaires : `BackupSessionTest` (11 cas) et `CompleteBackupRestoreTest` (5 cas). Ces tests de logique Kotlin, ainsi que les 6 tests de catégories, peuvent être exécutés sans SDK Android ; ils ne simulent ni une vraie Activity ni le système de fichiers Android.
 
 À ajouter aux essais appareil : rotation pendant l'aperçu/export/import, changement de thème lors de la restauration, double appui sur Fusionner, retour arrière après confirmation et espace de stockage insuffisant pour la copie automatique.
+
+## Lecture bornée des métadonnées de dossiers
+
+- `details.json` et `episodes.json` sont lus en UTF-8 avec une limite de **1 Mio par fichier** et une profondeur JSON maximale de 32. Un BOM UTF-8 est accepté ; les octets invalides et les commentaires/chaînes non standard sont refusés.
+- Les métadonnées illisibles, excessives ou invalides sont ignorées sans retirer les fichiers vidéo du résultat. Le fichier source n'est ni modifié ni supprimé. Cette limite ne concerne pas les vidéos ni les sauvegardes v2 (20 Mio).
+- Les flux sont fermés après succès, erreur et annulation. Des points de contrôle d'annulation sont ajoutés à la lecture et au parcours du curseur ; une annulation n'est plus absorbée par la gestion des erreurs de dossiers.
+- `scanAsync` impose le dispatcher d'entrées/sorties, même si son appelant vient du thread UI. Les appels bloquants d'un fournisseur SAF ne sont toutefois pas rendus instantanément annulables.
+- La libération du `MediaMetadataRetriever` était déjà protégée par `finally` : elle a été vérifiée et conservée, pas réécrite.
+
+`LocalMetadataTextTest` couvre neuf cas : UTF-8, BOM, limite exacte/dépassée, octets multioctets, encodage invalide, imbrication excessive, texte entre guillemets, annulation et erreur de lecture. À vérifier sur appareil : fichiers JSON de plus de 1 Mio, carte SD retirée pendant un scan, annulation d'un scan et réactivité de l'interface.
