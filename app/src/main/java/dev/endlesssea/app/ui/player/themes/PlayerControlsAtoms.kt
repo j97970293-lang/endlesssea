@@ -73,7 +73,7 @@ fun SkinIconButton(
     iconSize: Int = 20,
     enabled: Boolean = true,
     shape: Shape = CircleShape,
-    background: Color = Color.Transparent,
+    background: Color = Color(0xCC101014),
     border: Color? = null,
 ) {
     Box(
@@ -110,7 +110,7 @@ fun SkinPlayButton(
         Modifier
             .size(size.dp)
             .clip(shape)
-            .then(if (filled) Modifier.background(accent) else Modifier)
+            .background(if (filled) accent else Color(0xCC101014))
             .then(
                 if (!filled && accent.alpha > 0f && iconColor != accent) {
                     Modifier.border(2.dp, Color.White.copy(alpha = 0.85f), shape)

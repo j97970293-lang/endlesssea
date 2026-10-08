@@ -246,6 +246,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
     val progressPos by viewModel.progressPosition.collectAsState()
     val toolsPos by viewModel.toolsPosition.collectAsState()
+    val screenBrightness by viewModel.screenBrightness.collectAsState()
+    LaunchedEffect(screenBrightness) {
+        (context as? android.app.Activity)?.window?.let { window ->
+            window.attributes = window.attributes.apply { this.screenBrightness = screenBrightness / 100f }
+        }
+    }
     val megaSide by viewModel.megaSkipSide.collectAsState()
     val progressThickness by viewModel.progressThickness.collectAsState()
     val progressRounded by viewModel.progressRounded.collectAsState()
@@ -738,7 +744,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             )
             val controlsActions = PlayerControlsActions(
                 onBack = onBack,
-                onTogglePlay = { if (viewModel.engine.isPlaying.value) viewModel.engine.pause() else viewModel.engine.play() },
+                onTogglePlay = { viewModel.togglePlayback() },
                 onPrev = { viewModel.playQueueOffset(-1) },
                 onNext = { viewModel.playQueueOffset(1) },
                 onDrag = { slidingPos = it; interactionVersion++ },
@@ -876,6 +882,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text("Luminosité au démarrage : $screenBrightness %")
+                Slider(value = screenBrightness.toFloat(), onValueChange = { viewModel.setScreenBrightness(it.toInt()) }, valueRange = 10f..100f)
                 TextButton(onClick = { showMoreSheet = false; showPlaylist = true }) { Text("Playlist") }
                 Row {
                     TextButton(onClick = { showMoreSheet = false; showQualityDialog = true }) { Text("Qualité") }

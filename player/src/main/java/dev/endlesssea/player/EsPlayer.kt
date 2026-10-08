@@ -306,7 +306,12 @@ class EsPlayer(
         httpFactory.setDefaultRequestProperties(headers)
     }
 
-    override fun play() = player.play()
+    override fun play() {
+        if (player.mediaItemCount == 0) return
+        if (player.playbackState == Player.STATE_ENDED) player.seekTo(player.currentMediaItemIndex, 0L)
+        if (player.playbackState == Player.STATE_IDLE || player.playerError != null) player.prepare()
+        player.play()
+    }
     override fun pause() = player.pause()
     override fun seekTo(ms: Long) = player.seekTo(ms)
     override fun seekBy(deltaMs: Long) = player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0))

@@ -216,6 +216,22 @@ class DetailsViewModel @Inject constructor(
         val playable = dev.endlesssea.app.local.DownloadLocator.resolve(
             context, f.targetUri, f.label.substringBefore(" · "), roots,
         ) ?: f.targetUri
+        val store = dev.endlesssea.app.ui.player.PlayerLaunchStore
+        // A direct tap on an offline file must build its own queue, not inherit another series.
+        if (store.queue.none { it.mediaId == mediaId && it.episodeId == (f.episodeId ?: f.id) }) {
+            store.resolver = null
+            val queue = _uiState.value.deviceFiles.map { file ->
+                val ep = _uiState.value.episodes.firstOrNull { it.id == file.episodeId }
+                store.let { dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
+                    title = file.label, episodeId = file.episodeId ?: file.id, mediaId = mediaId,
+                    episodeNumber = ep?.number, season = ep?.season, downloaded = true,
+                    links = listOf(VideoLink(url = file.targetUri,
+                        streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                        quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargé")),
+                ) }
+            }.sortedWith(compareBy({ it.season ?: 0 }, { it.episodeNumber ?: Float.MAX_VALUE }, { it.title }))
+            store.setQueue(queue, queue.indexOfFirst { it.episodeId == (f.episodeId ?: f.id) })
+        }
         dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
             title = f.label.substringBefore(" · "),
             mediaId = mediaId, episodeId = f.episodeId ?: f.id,

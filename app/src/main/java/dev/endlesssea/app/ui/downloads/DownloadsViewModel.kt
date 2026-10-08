@@ -9,6 +9,7 @@ import dev.endlesssea.downloader.DownloadEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
@@ -45,6 +46,7 @@ data class DownloadsUiState(
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val dao: DownloadsDao,
+    private val episodeDao: dev.endlesssea.data.db.EpisodeDao,
     private val engine: DownloadEngine,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
@@ -226,6 +228,25 @@ class DownloadsViewModel @Inject constructor(
     fun play(id: String, onReady: () -> Unit) = viewModelScope.launch {
         val task = dao.byId(id) ?: return@launch
         if (task.status != DownloadStatus.COMPLETED.name) return@launch
+        val related = dao.observeAllOrdered().first().filter {
+            it.status == DownloadStatus.COMPLETED.name &&
+                (if (task.mediaId != null) it.mediaId == task.mediaId
+                 else it.displayPath.substringBeforeLast('/') == task.displayPath.substringBeforeLast('/'))
+        }
+        val queue = related.map { download ->
+            val episode = download.episodeId?.let { episodeDao.byId(it) }
+            val uri = dev.endlesssea.app.local.DownloadLocator.resolve(context, download.targetUri, download.fileName,
+                listOfNotNull(prefs.storageRoot.value) + prefs.storageHistory.value) ?: download.targetUri
+            dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
+                title = download.fileName, episodeId = download.episodeId ?: download.id, mediaId = download.mediaId,
+                episodeNumber = episode?.number, season = episode?.season, downloaded = true,
+                links = listOf(dev.endlesssea.extensions.api.model.VideoLink(url = uri,
+                    streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargé")),
+            )
+        }.sortedWith(compareBy({ it.season ?: 0 }, { it.episodeNumber ?: Float.MAX_VALUE }, { it.title }))
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(queue, queue.indexOfFirst { it.episodeId == (task.episodeId ?: task.id) })
         dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
             title = task.fileName.removeSuffix(".part"),
             mediaId = task.mediaId, episodeId = task.episodeId ?: id,

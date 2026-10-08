@@ -609,6 +609,18 @@ class PlayerViewModel @Inject constructor(
     fun setSeekBuffer(v: Int) = prefs.setSeekBuffer(v)
     fun setSeekHideThumb(v: Boolean) = prefs.setSeekHideThumb(v)
 
+    fun togglePlayback() {
+        if (engine.player.playWhenReady && engine.player.playbackState != androidx.media3.common.Player.STATE_ENDED) {
+            engine.pause()
+        } else {
+            _uiState.value = _uiState.value.copy(error = null)
+            engine.play()
+        }
+    }
+
+    val screenBrightness get() = prefs.playerScreenBrightness
+    fun setScreenBrightness(value: Int) = prefs.setPlayerScreenBrightness(value)
+
     fun setSpeed(speed: Float) {
         engine.setSpeed(speed)
         _uiState.value = _uiState.value.copy(speed = speed)
