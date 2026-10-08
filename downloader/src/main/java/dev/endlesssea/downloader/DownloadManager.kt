@@ -175,9 +175,9 @@ class DownloadManager(
     private suspend fun runTask(taskId: String) {
         val task = dao.byId(taskId) ?: return
         // Aiguillage par type de source (un m3u8/dash mal renseigné est détecté aussi)
-        val cleanUrl = task.url.substringBefore('?').lowercase()
-        val isHls = task.streamType == "HLS" || cleanUrl.endsWith(".m3u8")
-        val isDash = task.streamType == "DASH" || cleanUrl.endsWith(".mpd")
+        val kind = dev.endlesssea.core.download.downloadSourceKind(task.streamType, task.url)
+        val isHls = kind == dev.endlesssea.core.download.DownloadSourceKind.HLS
+        val isDash = kind == dev.endlesssea.core.download.DownloadSourceKind.DASH
         if (isDash) {
             dao.updateStatus(
                 taskId, DownloadStatus.FAILED.name,
@@ -322,9 +322,8 @@ class DownloadManager(
             publishProgress(
                 DownloadProgress(
                     taskId, DownloadStatus.DOWNLOADING,
-                    // §progression-hls : on affiche des OCTETS (estimés à partir
-                    // du fichier déjà écrit), pas un nombre de segments.
-                    estimateTotal(part, doneCount, totalCount), part.length(), 0, -1,
+                    0, part.length(), 0, -1,
+                    completedSegments = doneCount, totalSegments = totalCount,
                 ),
             )
             val bytes = hlsEngine.download(plan, task.headersMap(), part, fromIdx) { idx ->
@@ -333,8 +332,8 @@ class DownloadManager(
                 publishProgress(
                     DownloadProgress(
                         taskId, DownloadStatus.DOWNLOADING,
-                        estimateTotal(part, doneCount, totalCount), part.length(),
-                        0, etaSeconds = -1,
+                        0, part.length(), 0, etaSeconds = -1,
+                        completedSegments = doneCount, totalSegments = totalCount,
                     ),
                 )
             }
@@ -384,13 +383,6 @@ class DownloadManager(
                 updatedAt = System.currentTimeMillis(),
             ),
         )
-    }
-
-    /** Taille totale estimée d'un flux HLS d'après ce qui est déjà écrit. */
-    private fun estimateTotal(part: File, done: Int, total: Int): Long {
-        val written = part.length()
-        if (done <= 0 || total <= 0 || written <= 0) return 0
-        return written * total / done
     }
 
     // ------------------------------------------------------------ helpers    // ------------------------------------------------------------ helpers

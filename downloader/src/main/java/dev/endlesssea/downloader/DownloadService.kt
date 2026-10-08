@@ -125,8 +125,9 @@ class DownloadService : Service() {
         val n = NotificationCompat.Builder(this, CHANNEL_PROGRESS)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Téléchargement en cours")
-            .setContentText("$pct % · ${p.speedBytesPerSec / 1024} Ko/s")
-            .setProgress(100, pct, p.totalBytes <= 0)
+            .setContentText(if (p.totalSegments > 0) "${p.completedSegments}/${p.totalSegments} segments · taille finale inconnue"
+                else "$pct % · ${p.speedBytesPerSec / 1024} Ko/s")
+            .setProgress(100, pct, p.totalBytes <= 0 && p.totalSegments <= 0)
             .setOngoing(true)
             .addAction(0, "Pause", actionIntent(ACTION_PAUSE, p.taskId))
             .addAction(0, "Annuler", actionIntent(ACTION_CANCEL, p.taskId))

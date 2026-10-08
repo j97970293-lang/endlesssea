@@ -70,17 +70,18 @@ class DownloadsViewModel @Inject constructor(
                             id = t.id,
                             title = t.fileName.removeSuffix(".part"),
                             detail = "${t.server} · ${t.quality}" +
-                                if (t.totalBytes > 0) " · ${formatBytes(t.totalBytes)}" else "" +
+                                (if (t.totalBytes > 0) " · ${formatBytes(t.totalBytes)}" else "") +
                                     (t.displayPath.substringBeforeLast('/')
                                         .takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                             status = t.status,
                             fraction = when {
                                 t.status == DownloadStatus.COMPLETED.name -> 1f
-                                isLive && live!!.totalBytes > 0 ->
-                                    (live.downloadedBytes.toFloat() / live.totalBytes).coerceIn(0f, 1f)
+                                isLive -> live!!.fraction
                                 else -> 0f
                             },
                             progressLabel = when {
+                                isLive && live!!.totalSegments > 0 ->
+                                    "${formatBytes(live.downloadedBytes)} téléchargés · ${live.completedSegments}/${live.totalSegments} segments · taille finale inconnue"
                                 isLive && live!!.totalBytes > 0 ->
                                     "${formatBytes(live.downloadedBytes)} / ${formatBytes(live.totalBytes)}" +
                                         if (live.speedBytesPerSec > 0) " · ${formatBytes(live.speedBytesPerSec)}/s" else ""

@@ -1,5 +1,7 @@
 package dev.endlesssea.app.ui.details
 
+import kotlinx.coroutines.sync.withPermit
+
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -1528,18 +1530,18 @@ private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
 /** Ligne de téléchargement : serveur × qualité, badge lecture seule pour les flux non supportés. */
 @Composable
 private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
-    val direct = link.streamType == StreamType.DIRECT_FILE || link.streamType == StreamType.HLS
-
-    // §taille-avant-téléchargement : un HEAD (ou un GET Range de 0 octet si le
-    // serveur refuse HEAD) donne Content-Length ; pour le HLS on additionne la
-    // taille des premiers segments et on extrapole sur la durée annoncée.
-    var sizeLabel by androidx.compose.runtime.remember(link.url) {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
+    val kind = dev.endlesssea.core.download.downloadSourceKind(link.streamType.name, link.url)
+    val direct = kind == dev.endlesssea.core.download.DownloadSourceKind.DIRECT || kind == dev.endlesssea.core.download.DownloadSourceKind.HLS
+    var sizeLabel by androidx.compose.runtime.remember(link) {
+        androidx.compose.runtime.mutableStateOf(
+            if (kind == dev.endlesssea.core.download.DownloadSourceKind.HLS) "Taille finale inconnue — débit variable"
+            else "Vérification de la taille…",
+        )
     }
-    androidx.compose.runtime.LaunchedEffect(link.url) {
-        if (!direct) return@LaunchedEffect
+    androidx.compose.runtime.LaunchedEffect(link) {
+        if (kind != dev.endlesssea.core.download.DownloadSourceKind.DIRECT) return@LaunchedEffect
         sizeLabel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { probeSize(link) }.getOrNull()
+            probeSize(link) ?: "Taille non annoncée par le serveur"
         }
     }
     Row(
@@ -1557,15 +1559,14 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             val extras = buildList {
-                sizeLabel?.let { add(it) }
+                if (direct) add(sizeLabel)
                 if (link.subtitles.isNotEmpty()) add("${link.subtitles.size} sous-titres")
                 add(
-                    when (link.streamType) {
-                        StreamType.DIRECT_FILE -> "Fichier direct"
-                        StreamType.HLS -> "Flux HLS — assemblé par segments"
-                        StreamType.DASH -> "Flux DASH — lecture seule"
-                        StreamType.EMBED -> "Lecteur externe — lecture seule"
-                        StreamType.TORRENT -> "Torrent — lecture seule"
+                    when (kind) {
+                        dev.endlesssea.core.download.DownloadSourceKind.DIRECT -> "Fichier direct"
+                        dev.endlesssea.core.download.DownloadSourceKind.HLS -> "Flux HLS — assemblé par segments"
+                        dev.endlesssea.core.download.DownloadSourceKind.DASH -> "Flux DASH — lecture seule"
+                        dev.endlesssea.core.download.DownloadSourceKind.UNSUPPORTED -> "Source non téléchargeable"
                     },
                 )
             }.joinToString(" · ")
@@ -1664,40 +1665,14 @@ private fun EpisodeRowAnymex(
 }
 
 
-/**
- * §taille-avant-téléchargement — estime le poids d'un lien.
- *
- * Fichier direct : `Content-Length` de la réponse HEAD (repli sur un GET avec
- * `Range: bytes=0-0`, dont le `Content-Range` porte la taille totale).
- * HLS : somme des segments listés dans la playlist, mesurés sur les trois
- * premiers, extrapolée au nombre total de segments (préfixée « ≈ »).
- */
-private suspend fun probeSize(link: dev.endlesssea.extensions.api.model.VideoLink): String? {
-    val headers = link.headers
-    fun fmt(bytes: Long, approx: Boolean): String {
-        val mo = bytes / 1_048_576.0
-        val txt = if (mo >= 1024) "%.2f Go".format(mo / 1024) else "%.0f Mo".format(mo)
-        return if (approx) "≈ $txt" else txt
-    }
-    if (link.streamType == StreamType.DIRECT_FILE) {
-        val len = dev.endlesssea.core.net.EsNet.contentLength(link.url, headers) ?: return null
-        return if (len > 0) fmt(len, false) else null
-    }
-    if (link.streamType == StreamType.HLS) {
-        val playlist = dev.endlesssea.core.net.EsNet.text(link.url, headers) ?: return null
-        val base = link.url.substringBeforeLast('/', "")
-        val segments = playlist.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
-            .map { if (it.startsWith("http")) it else "$base/$it" }
-            .toList()
-        if (segments.isEmpty()) return null
-        val sampled = segments.take(3).mapNotNull {
-            dev.endlesssea.core.net.EsNet.contentLength(it, headers)
-        }
-        if (sampled.isEmpty()) return null
-        val avg = sampled.average()
-        return fmt((avg * segments.size).toLong(), true)
-    }
-    return null
+private val sizeProbeGate = kotlinx.coroutines.sync.Semaphore(4)
+
+/** No HLS extrapolation: only display the size declared for an actual direct file. */
+private suspend fun probeSize(link: dev.endlesssea.extensions.api.model.VideoLink): String? = sizeProbeGate.withPermit {
+    if (dev.endlesssea.core.download.downloadSourceKind(link.streamType.name, link.url) !=
+        dev.endlesssea.core.download.DownloadSourceKind.DIRECT) return@withPermit null
+    val bytes = dev.endlesssea.core.net.EsNet.contentLength(link.url, link.headers) ?: return@withPermit null
+    val mo = bytes / 1_048_576.0
+    val size = if (mo >= 1024) "%.2f Go".format(mo / 1024) else "%.0f Mo".format(mo)
+    "$size annoncés par le serveur"
 }

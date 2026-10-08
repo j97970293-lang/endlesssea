@@ -22,9 +22,16 @@ data class DownloadProgress(
     val downloadedBytes: Long,
     val speedBytesPerSec: Long,
     val etaSeconds: Long,
+    /** HLS progress is counted in segments, never extrapolated into a promised byte total. */
+    val completedSegments: Int = 0,
+    val totalSegments: Int = 0,
 ) {
     val fraction: Float
-        get() = if (totalBytes <= 0) 0f else (downloadedBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+        get() = when {
+            totalBytes > 0 -> (downloadedBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+            totalSegments > 0 -> (completedSegments.toFloat() / totalSegments).coerceIn(0f, 1f)
+            else -> 0f
+        }
 }
 
 /** Normalized location shown in Settings: "/Téléchargements/EndlessSea/" etc. */
