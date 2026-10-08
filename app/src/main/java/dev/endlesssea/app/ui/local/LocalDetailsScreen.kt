@@ -319,7 +319,7 @@ fun LocalDetailsScreen(
                         // publie episodes.json, sinon le nom de fichier nettoyé.
                         val number = LocalVideos.episodeNumber(video.name)
                         val metaTitle = number?.let { meta?.episodeTitles?.get(it) }
-                        val shownTitle = video.customTitle?.takeUnless { it == title } ?: video.matchedTitle ?: metaTitle
+                        val shownTitle = video.customTitle?.takeUnless { it == title } ?: metaTitle ?: video.matchedTitle
                             ?: LocalVideos.episodeTitleFromFileName(video.name)
                                 .ifBlank { video.displayName }
                         Text(

@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LocalEpisodeMatchTest {
-    data class Item(val id: String, val key: EpisodeMatchKey?)
+    private data class Item(val id: String, val key: EpisodeMatchKey?)
     private fun match(left: List<Item>, right: List<Item>) = matchLocalEpisodes(left, right, { it.key }, { it.key })
     private fun item(id: String, season: Int, episode: Double) = Item(id, EpisodeMatchKey(season, episode))
     @Test fun matchUsesSeasonAndNumberNotListPosition() {
