@@ -27,6 +27,8 @@ object DefaultTheme : PlayerTheme {
             SkinIconButton(Icons.Default.ArrowBack, "Retour", actions.onBack)
             Text(state.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f))
+            SkinIconButton(Icons.Default.SkipPrevious, "Épisode précédent", actions.onPrev, enabled = state.hasPrev)
+            SkinIconButton(Icons.Default.SkipNext, "Épisode suivant", actions.onNext, enabled = state.hasNext)
         }
     }
 

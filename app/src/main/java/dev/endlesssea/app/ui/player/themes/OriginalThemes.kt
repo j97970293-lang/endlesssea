@@ -39,9 +39,7 @@ object ZenTheme : OriginalTheme() {
     override val accent = Color.White
     @Composable
     override fun TopControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
-        Row(modifier.fillMaxWidth().padding(12.dp)) {
-            SkinIconButton(Icons.Default.ArrowBack, "Retour", actions.onBack, tint = Color.White.copy(alpha = 0.7f))
-        }
+        DefaultTheme.TopControls(state, actions, modifier)
     }
     @Composable
     override fun CenterControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
@@ -54,6 +52,7 @@ object ZenTheme : OriginalTheme() {
     @Composable
     override fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
         Column(modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            SkipAndSettings(state, actions, accent)
             SkinSeekBar(state, actions, accent, showTimes = false)
             Text("${fmtTime(state.positionMs)} / ${fmtTime(state.durationMs)}", color = Color.White.copy(alpha = 0.6f),
                 modifier = Modifier.clickable(onClick = actions.onOpenMore).padding(8.dp))
@@ -90,12 +89,15 @@ object CompactBarTheme : OriginalTheme() {
     }
     @Composable
     override fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
-        Row(modifier.fillMaxWidth().padding(8.dp).background(Color(0xDD1A1A1A), RoundedCornerShape(24.dp)), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier.fillMaxWidth().padding(8.dp).background(Color(0xDD1A1A1A), RoundedCornerShape(24.dp))) {
+            SkipAndSettings(state, actions, accent)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             SkinIconButton(Icons.Default.Replay10, "Reculer", { actions.onJumpRelative(-10) }, size = 36)
             SkinIconButton(Icons.Default.Forward10, "Avancer", { actions.onJumpRelative(10) }, size = 36)
             Box(Modifier.weight(1f)) { SkinSeekBar(state, actions, accent, showTimes = false) }
             SkinIconButton(Icons.Default.PlaylistPlay, "Playlist", actions.onOpenPlaylist, size = 36)
             SkinIconButton(Icons.Default.Settings, "Paramètres", actions.onOpenMore, size = 36)
+            }
         }
     }
 }

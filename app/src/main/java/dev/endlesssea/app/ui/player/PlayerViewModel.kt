@@ -498,12 +498,15 @@ class PlayerViewModel @Inject constructor(
     // ------------------------------------------------------------------ sauts
 
     /** Double appui à gauche/droite : avance/recul de [seconds], flash visuel côté écran. */
+    private var skipFlashJob: kotlinx.coroutines.Job? = null
+
     fun jumpBy(seconds: Int) {
         engine.seekBy(seconds * 1000L)
         _uiState.value = _uiState.value.copy(
             skipFlash = if (seconds > 0) "+${seconds} s" else "-${seconds.absoluteValue} s",
         )
-        viewModelScope.launch {
+        skipFlashJob?.cancel()
+        skipFlashJob = viewModelScope.launch {
             delay(700)
             _uiState.value = _uiState.value.copy(skipFlash = null)
         }
@@ -547,30 +550,37 @@ class PlayerViewModel @Inject constructor(
      * pour les vidéos locales (liens déjà connus).
      */
     fun playQueueOffset(offset: Int) = viewModelScope.launch {
+        if (_uiState.value.loading) return@launch
         val queue = PlayerLaunchStore.queue
         val target = PlayerLaunchStore.queueIndex + offset
         if (target !in queue.indices) return@launch
-        persistPosition()
-        val item = queue[target]
         _uiState.value = _uiState.value.copy(loading = true, error = null)
+        val item = queue[target]
+        try {
+        kotlinx.coroutines.withTimeout(90_000) {
+        persistPosition()
         val links = item.links.ifEmpty {
             val id = item.episodeId
             if (id == null) emptyList()
             else runCatching { PlayerLaunchStore.resolver?.invoke(id) ?: emptyList() }.getOrDefault(emptyList())
         }
-        if (links.isEmpty()) {
-            _uiState.value = _uiState.value.copy(
-                loading = false,
-                toast = "Aucun lien pour « ${item.title} »",
-            )
-            return@launch
-        }
+        check(links.isNotEmpty()) { "Aucun lien pour « ${item.title} »" }
         PlayerLaunchStore.queueIndex = target
         PlayerLaunchStore.updateMarkers(item.markers)
         prepare(
             mediaId = item.mediaId ?: mediaId, episodeId = item.episodeId,
             title = item.title, links = links, startIndex = 0,
-        )
+        ).join()
+        }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            _uiState.value = _uiState.value.copy(toast = "La source ne répond pas. Réessayez.")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(toast = e.message ?: "Épisode indisponible")
+        } finally {
+            _uiState.value = _uiState.value.copy(loading = false)
+        }
     }
 
     private suspend fun refreshQueueFlags() {

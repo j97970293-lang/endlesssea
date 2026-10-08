@@ -221,7 +221,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var subResults by remember {
         androidx.compose.runtime.mutableStateOf<List<OnlineSubtitle>>(emptyList())
     }
-    var brightness by remember { mutableStateOf(1f) }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     // §fit : 0 = contenir · 1 = remplir (zoom) · 2 = étirer (déforme)
     var zoomMode by remember { mutableIntStateOf(0) }
@@ -647,18 +646,19 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
 
         // Retour visuel du saut (double appui)
         state.skipFlash?.let { flash ->
+            val forward = flash.startsWith("+")
             Box(
                 Modifier
                     .fillMaxSize()
-                    .padding(bottom = 120.dp),
-                contentAlignment = Alignment.Center,
+                    .padding(horizontal = 32.dp, vertical = 120.dp),
+                contentAlignment = if (forward) Alignment.CenterEnd else Alignment.CenterStart,
             ) {
                 Surface(
                     shape = RoundedCornerShape(28.dp),
                     color = Color.Black.copy(alpha = 0.6f),
                 ) {
                     Text(
-                        flash,
+                        if (forward) "$flash  ▶▶" else "◀◀  $flash",
                         color = Color.White,
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),

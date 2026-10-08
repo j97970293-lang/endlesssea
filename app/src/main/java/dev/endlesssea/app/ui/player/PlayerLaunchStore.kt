@@ -55,7 +55,7 @@ object PlayerLaunchStore {
 
     fun setQueue(items: List<QueueItem>, index: Int) {
         queue = items
-        queueIndex = index
+        queueIndex = index.takeIf { it in items.indices } ?: -1
     }
 
     @Volatile var pending: Launch = Launch()
@@ -66,6 +66,12 @@ object PlayerLaunchStore {
         links: List<VideoLink>, startIndex: Int,
         markers: SkipMarkers = SkipMarkers(),
     ) {
+        // Never reuse an unrelated playlist from an earlier playback session.
+        val matchingIndex = queue.indexOfFirst { episodeId != null && it.episodeId == episodeId && it.mediaId == mediaId }
+        if (matchingIndex >= 0) queueIndex = matchingIndex else {
+            setQueue(listOf(QueueItem(title, episodeId, links, mediaId = mediaId, markers = markers)), 0)
+            resolver = null
+        }
         pending = Launch(title, mediaId, episodeId, links, startIndex)
         lastMarkers = markers
     }
