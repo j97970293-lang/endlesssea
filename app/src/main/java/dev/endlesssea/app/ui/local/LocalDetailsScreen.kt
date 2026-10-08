@@ -2,6 +2,10 @@ package dev.endlesssea.app.ui.local
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,23 +68,24 @@ fun LocalDetailsScreen(
     val history by viewModel.localHistory.collectAsState()
     var confirmAllWatched by remember(folderUri) { mutableStateOf(false) }
     val cached by LocalLibraryCache.files.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(folderUri) { viewModel.scanLocal() }
+    var episodeQuery by androidx.compose.runtime.saveable.rememberSaveable(folderUri) { mutableStateOf("") }
+    var selectedSeason by androidx.compose.runtime.saveable.rememberSaveable(folderUri) { mutableStateOf<Int?>(null) }
 
     // La fiche fonctionne que l'on vienne de la bibliothèque (état chargé) ou
     // d'un lien direct (cache du dernier scan).
     val files = remember(state.localFiles, cached, folderUri, state.localMetaTick) {
-        (state.localFiles.takeIf { it.isNotEmpty() } ?: cached)
-            .filter { it.parentUri == folderUri }
-            // §episodes-json : tri par NUMÉRO d'épisode (S01E02 avant S01E10),
-            // puis par nom — au lieu du tri alphabétique « épisode 10, épisode 2 ».
-            .sortedWith(
-                compareBy(
-                    { LocalVideos.episodeSeason(it.name) ?: 0 },
-                    { LocalVideos.episodeNumber(it.name) ?: Int.MAX_VALUE },
-                    { it.displayName.lowercase() },
-                ),
-            )
+        val candidates = (state.localFiles.takeIf { it.isNotEmpty() } ?: cached).filter { it.parentUri == folderUri }
+        candidates.firstOrNull()?.let { dev.endlesssea.app.local.localPlaybackQueue(candidates, it) }.orEmpty()
     }
-    val meta = LocalVideos.seriesMeta[folderUri]
+    val seasons = remember(files) { files.mapNotNull { LocalVideos.episodeSeason(it.name) }.distinct().sorted() }
+    val visibleEpisodes = remember(files, episodeQuery, selectedSeason) {
+        files.filter { video ->
+            (selectedSeason == null || LocalVideos.episodeSeason(video.name) == selectedSeason) &&
+                (episodeQuery.isBlank() || video.name.contains(episodeQuery.trim(), true) || video.displayName.contains(episodeQuery.trim(), true))
+        }
+    }
+    val meta = viewModel.folderMetadata(folderUri)
     val first = files.firstOrNull()
     val title = meta?.title ?: first?.let {
         dev.endlesssea.app.local.LocalNames.pretty(folderUri)
@@ -115,6 +120,7 @@ fun LocalDetailsScreen(
     var titleDraft by remember(title) { mutableStateOf(title) }
     /** §metadonnees-fichier : édition des métadonnées écrites dans details.json. */
     var editSeriesMeta by remember { mutableStateOf(false) }
+    var editEpisode by remember { mutableStateOf<dev.endlesssea.app.ui.library.LocalVideoUi?>(null) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -178,7 +184,7 @@ fun LocalDetailsScreen(
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
                             files.firstOrNull()?.let { playLocal(context, files, it) }
                         }) { Text("Lire") }
@@ -226,7 +232,7 @@ fun LocalDetailsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = introStart,
                             onValueChange = { introStart = it.filter(Char::isDigit).take(5) },
@@ -269,19 +275,36 @@ fun LocalDetailsScreen(
 
         item {
             Text(
-                "Épisodes",
+                "Épisodes · appui long pour modifier",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }
-        items(files, key = { it.uri }) { video ->
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                OutlinedTextField(value = episodeQuery, onValueChange = { episodeQuery = it }, singleLine = true,
+                    label = { Text("Rechercher un épisode, un numéro ou un nom") }, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.FilterChip(selected = selectedSeason == null,
+                        onClick = { selectedSeason = null }, label = { Text("Toutes les saisons") })
+                    seasons.forEach { season ->
+                        androidx.compose.material3.FilterChip(selected = selectedSeason == season,
+                            onClick = { selectedSeason = season }, label = { Text("Saison $season") })
+                    }
+                }
+                Text("${visibleEpisodes.size} / ${files.size} épisodes", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        items(visibleEpisodes, key = { it.uri }) { video ->
+            androidx.compose.runtime.LaunchedEffect(video.uri) { viewModel.loadLocalDuration(video.uri) }
             GlassCard(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 cornerRadius = 14.dp,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Row(
-                    Modifier.fillMaxWidth().clickable { playLocal(context, files, video) },
+                    Modifier.fillMaxWidth().combinedClickable(onClick = { playLocal(context, files, video) },
+                        onLongClick = { editEpisode = video }),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     coil.compose.AsyncImage(
@@ -297,7 +320,7 @@ fun LocalDetailsScreen(
                         // publie episodes.json, sinon le nom de fichier nettoyé.
                         val number = LocalVideos.episodeNumber(video.name)
                         val metaTitle = number?.let { meta?.episodeTitles?.get(it) }
-                        val shownTitle = metaTitle
+                        val shownTitle = video.customTitle?.takeUnless { it == title } ?: metaTitle
                             ?: LocalVideos.episodeTitleFromFileName(video.name)
                                 .ifBlank { video.displayName }
                         Text(
@@ -325,6 +348,23 @@ fun LocalDetailsScreen(
 
     // §metadonnees-fichier : les métadonnées de la série sont écrites DANS le
     // dossier (details.json) — elles suivent donc la carte SD, pas l'application.
+    editEpisode?.let { video ->
+        var episodeTitle by remember(video.uri) { mutableStateOf(video.customTitle ?: video.name) }
+        var episodeCover by remember(video.uri) { mutableStateOf(video.customCoverUri.orEmpty()) }
+        AlertDialog(onDismissRequest = { editEpisode = null }, title = { Text("Métadonnées de l'épisode") },
+            text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                OutlinedTextField(value = episodeTitle, onValueChange = { episodeTitle = it }, label = { Text("Titre de l'épisode") })
+                OutlinedTextField(value = episodeCover, onValueChange = { episodeCover = it }, label = { Text("Vignette (URL ou URI)") })
+                Text("Le fichier et le numéro d'épisode ne sont pas renommés.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = {
+                viewModel.saveLocalMeta(video.uri, episodeTitle.trim().takeIf { it.isNotEmpty() },
+                    episodeCover.trim().takeIf { it.isNotEmpty() }, video.introStartSec, video.introEndSec, video.outroStartSec)
+                editEpisode = null
+            }) { Text("Enregistrer") } },
+            dismissButton = { TextButton(onClick = { editEpisode = null }) { Text("Annuler") } })
+    }
+
     if (editSeriesMeta) {
         var metaTitle by remember(title) { mutableStateOf(meta?.title ?: title) }
         var metaDescription by remember { mutableStateOf(meta?.description ?: "") }
@@ -342,25 +382,17 @@ fun LocalDetailsScreen(
                         author = metaAuthor.ifBlank { null },
                         genres = metaGenres.split(",").map { it.trim() }.filter { it.isNotBlank() },
                     )
-                    // Le titre de la série s'applique aussi aux fichiers sans titre
-                    // perso, pour que la grille de la bibliothèque suive le dossier.
-                    files.filter { it.customTitle == null }.forEach { f ->
-                        viewModel.saveLocalMeta(
-                            f.uri, metaTitle.takeIf { it.isNotBlank() }, f.customCoverUri,
-                            f.introStartSec, f.introEndSec, f.outroStartSec,
-                        )
-                    }
                     editSeriesMeta = false
-                }) { Text("Enregistrer dans le dossier") }
+                }) { Text("Enregistrer") }
             },
             dismissButton = {
                 TextButton(onClick = { editSeriesMeta = false }) { Text("Annuler") }
             },
             title = { Text("Métadonnées de la série") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Écrites dans « details.json », à côté des vidéos (format Aniyomi).",
+                        "Conservées dans l’application et exportées dans details.json si le dossier est modifiable.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -399,12 +431,6 @@ fun LocalDetailsScreen(
             confirmButton = {
                 Button(onClick = {
                     viewModel.saveSeriesMeta(folderUri, titleDraft, meta?.description, meta?.author, meta?.genres.orEmpty())
-                    files.forEach { f ->
-                        viewModel.saveLocalMeta(
-                            f.uri, titleDraft, f.customCoverUri,
-                            f.introStartSec, f.introEndSec, f.outroStartSec,
-                        )
-                    }
                     editTitle = false
                 }) { Text("Enregistrer") }
             },

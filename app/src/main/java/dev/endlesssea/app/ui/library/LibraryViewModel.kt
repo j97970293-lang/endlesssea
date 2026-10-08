@@ -26,6 +26,7 @@ data class LibraryUiState(
     val filterStatus: String = "ALL",
     /** Vidéos locales scannées sur les dossiers SAF choisis (multi-dossiers). */
     val localFiles: List<LocalVideoUi> = emptyList(),
+    val folderMetadata: Map<String, dev.endlesssea.app.local.SeriesMeta> = emptyMap(),
     val localScanning: Boolean = false,
     /** §retour-visuel : texte de progression du scan. */
     val localScanLabel: String = "",
@@ -92,11 +93,12 @@ data class DownloadedGroupUi(
     val lastAt: Long,
     /** §multi-sources : l'emplacement réel du fichier (carte SD ou interne). */
     val storageKind: String = LibrarySource.DOWNLOADS,
+    val mediaId: String? = null,
 ) {
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(totalBytes)
     /** Carte de bibliothèque correspondante (clic → fiche du groupe). */
     fun toCard() = SearchItemUi(
-        id = "downloaded:$key",
+        id = mediaId ?: "downloaded:$key",
         title = title,
         posterUrl = posterUrl,
         // §cartes-bibliotheque (conversation 6) : nombre d'épisodes + emplacement
@@ -338,8 +340,9 @@ class LibraryViewModel @Inject constructor(
                 groupKey = key,
                 uri = uri,
                 fileName = fileName,
-                displayName = dev.endlesssea.app.local.LocalVideos.episodeTitleFromFileName(fileName)
-                    .ifBlank { dev.endlesssea.app.local.LocalNames.pretty(uri) },
+                displayName = ep?.title?.takeIf { it.isNotBlank() }
+                    ?: dev.endlesssea.app.local.LocalVideos.episodeTitleFromFileName(fileName)
+                        .ifBlank { dev.endlesssea.app.local.LocalNames.pretty(uri) },
                 episodeNumber = dev.endlesssea.app.local.LocalVideos.episodeNumber(fileName),
                 sizeBytes = task.totalBytes,
                 quality = task.quality,
@@ -354,7 +357,7 @@ class LibraryViewModel @Inject constructor(
         val groups = episodes.groupBy { it.groupKey }.map { (key, list) ->
             val media = list.firstNotNullOfOrNull { it.mediaId }?.let { mediaDao.byId(it) }
             DownloadedGroupUi(
-                key = key,
+                key = key, mediaId = media?.id,
                 title = media?.customTitle?.takeIf { it.isNotBlank() }
                     ?: media?.title
                     ?: key.substringAfterLast('/').ifBlank { "Téléchargements" },
@@ -536,18 +539,14 @@ class LibraryViewModel @Inject constructor(
         scanLocal()
     }
 
-    /**
-     * §scan-rapide : scan multi-dossiers SAF.
-     *
-     * Deux étapes : (1) la liste des fichiers s'affiche TOUT DE SUITE (un curseur
-     * par dossier, cf. LocalVideos.scanAsync) ; (2) les durées, qui exigent
-     * d'ouvrir chaque fichier avec MediaMetadataRetriever (très lent : c'était la
-     * cause du scan interminable), sont calculées ensuite en tâche de fond, 4 à la
-     * fois, et viennent enrichir la liste au fil de l'eau.
-     */
-    private var durationJob: kotlinx.coroutines.Job? = null
+    /** Scan file names and metadata first. Durations are fetched only for visible episode rows. */
+    private var scanJob: kotlinx.coroutines.Job? = null
+    private val durationGate = kotlinx.coroutines.sync.Semaphore(3)
+    private val durationPending = mutableSetOf<String>()
 
-    fun scanLocal() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+    fun scanLocal(): kotlinx.coroutines.Job {
+        scanJob?.cancel()
+        return viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
         // §stockage-public : le dossier de stockage (téléchargements + localanime,
         // arborescence Aniyomi) est TOUJOURS scanné, en plus des dossiers ajoutés.
         val dirs = (
@@ -591,36 +590,43 @@ class LibraryViewModel @Inject constructor(
                     outroStartSec = m.outroStartSec,
                 )
             }
-        _uiState.value = _uiState.value.copy(localFiles = files, localScanning = false, localScanLabel = "")
+        val folderMetadata = files.map { it.parentUri }.distinct().mapNotNull { folder ->
+            mediaDao.byId(dev.endlesssea.app.local.LocalMediaIds.series(folder))?.let { saved ->
+                fun strings(json: String): List<String> = runCatching {
+                    val array = org.json.JSONArray(json)
+                    (0 until array.length()).map { array.getString(it) }
+                }.getOrDefault(emptyList())
+                folder to (dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]
+                    ?: dev.endlesssea.app.local.SeriesMeta()).copy(title = saved.title, description = saved.synopsis,
+                        author = strings(saved.studiosJson).firstOrNull(), genres = strings(saved.genresJson))
+            }
+        }.toMap()
+        _uiState.value = _uiState.value.copy(localFiles = files, folderMetadata = folderMetadata,
+            localScanning = false, localScanLabel = "")
         // §fiche-locale : partagé avec l'écran de fiche d'un dossier
         dev.endlesssea.app.local.LocalLibraryCache.publish(files)
 
-        durationJob?.cancel()
-        durationJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val gate = kotlinx.coroutines.sync.Semaphore(4)
-            val todo = files.filter { it.durationMs == null }
-            val found = java.util.Collections.synchronizedMap(mutableMapOf<String, Long>())
-            kotlinx.coroutines.coroutineScope {
-                todo.chunked(25).forEach { chunk ->
-                    chunk.map { f ->
-                        async {
-                            gate.withPermit {
-                                dev.endlesssea.app.local.LocalVideos.durationMs(context, f.uri)
-                                    ?.let { found[f.uri] = it }
-                            }
-                        }
-                    }.forEach { it.await() }
-                    // publication par paquets : la liste se complète sous les yeux
-                    val snap = found.toMap()
-                    _uiState.value = _uiState.value.copy(
-                        localFiles = _uiState.value.localFiles.map { v ->
-                            snap[v.uri]?.let { d -> v.copy(durationMs = d) } ?: v
-                        },
-                    )
-                    dev.endlesssea.app.local.LocalLibraryCache.publish(_uiState.value.localFiles)
+        }.also { scanJob = it }
+    }
+
+    /** Decode durations only for visible episode rows, never for every file in a 1,000-episode folder. */
+    fun loadLocalDuration(uri: String) = viewModelScope.launch {
+        val file = (_uiState.value.localFiles + dev.endlesssea.app.local.LocalLibraryCache.files.value)
+            .firstOrNull { it.uri == uri } ?: return@launch
+        if (file.durationMs != null || !durationPending.add(uri)) return@launch
+        try {
+            val duration = durationGate.withPermit {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dev.endlesssea.app.local.LocalVideos.durationMs(context, uri)
                 }
-            }
-        }
+            } ?: return@launch
+            _uiState.value = _uiState.value.copy(localFiles = _uiState.value.localFiles.map {
+                if (it.uri == uri) it.copy(durationMs = duration) else it
+            })
+            dev.endlesssea.app.local.LocalLibraryCache.publish(dev.endlesssea.app.local.LocalLibraryCache.files.value.map {
+                if (it.uri == uri) it.copy(durationMs = duration) else it
+            })
+        } finally { durationPending.remove(uri) }
     }
 
     /** Persistance de métadonnées locales éditées (§métadonnées-locales + §marqueurs). */
@@ -685,10 +691,6 @@ class LibraryViewModel @Inject constructor(
         }
         result.onSuccess { cover ->
             prefs.setLocalFileMeta("folder:$folderUri", null, cover)
-            val files = _uiState.value.localFiles.filter { it.parentUri == folderUri }
-                .ifEmpty { dev.endlesssea.app.local.LocalLibraryCache.folder(folderUri) }
-            files.forEach { file -> saveLocalMeta(file.uri, file.customTitle, cover,
-                file.introStartSec, file.introEndSec, file.outroStartSec) }
             _uiState.value = _uiState.value.copy(localMetaTick = _uiState.value.localMetaTick + 1,
                 localScanLabel = "Couverture enregistrée dans l'application")
         }.onFailure { error ->
@@ -729,35 +731,50 @@ class LibraryViewModel @Inject constructor(
      * scanner relit ce fichier à chaque scan — les métadonnées survivent donc à
      * une réinstallation et restent lisibles par d'autres applications.
      */
+    fun folderMetadata(uri: String): dev.endlesssea.app.local.SeriesMeta =
+        _uiState.value.folderMetadata[uri] ?: dev.endlesssea.app.local.LocalVideos.seriesMeta[uri]
+        ?: dev.endlesssea.app.local.SeriesMeta()
+
+    fun folderCards(files: List<LocalVideoUi> = _uiState.value.localFiles): List<SearchItemUi> {
+        val managed = _uiState.value.downloadedEpisodes.map { it.uri }.toSet()
+        val covers = prefs.localFileMetadataSnapshot()
+        return indexFolders(files, managed, { it.uri }, { it.parentUri }).map { folder ->
+            val meta = folderMetadata(folder.uri)
+            SearchItemUi(id = "local-folder:${folder.uri}",
+                title = meta.title?.takeIf { it.isNotBlank() } ?: folder.episodes.first().folderName,
+                posterUrl = covers["folder:${folder.uri}"]?.coverUri ?: meta.coverUri
+                    ?: folder.episodes.firstNotNullOfOrNull { it.customCoverUri } ?: folder.episodes.first().uri,
+                subtitle = "${folder.episodes.size} épisodes · Hors ligne")
+        }.sortedBy { it.title.lowercase(java.util.Locale.ROOT) }
+    }
+
     fun saveSeriesMeta(
-        folderUri: String,
-        title: String?,
-        description: String? = null,
-        author: String? = null,
-        genres: List<String> = emptyList(),
-    ) {
-        val ok = dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(
-            context = context,
-            folderUriString = folderUri,
-            title = title,
-            description = description,
-            author = author,
-            genres = genres,
-        )
-        // Cache mémoire : la fiche affiche la modification sans attendre un scan.
-        dev.endlesssea.app.local.LocalVideos.seriesMeta.compute(folderUri) { _, old ->
-            (old ?: dev.endlesssea.app.local.SeriesMeta()).copy(
-                title = title?.takeIf { it.isNotBlank() } ?: old?.title,
-                description = description?.takeIf { it.isNotBlank() } ?: old?.description,
-                author = author?.takeIf { it.isNotBlank() } ?: old?.author,
-                genres = genres.ifEmpty { old?.genres ?: emptyList() },
-            )
+        folderUri: String, title: String?, description: String? = null,
+        author: String? = null, genres: List<String> = emptyList(),
+    ) = viewModelScope.launch {
+        val old = folderMetadata(folderUri)
+        val next = old.copy(title = title?.trim()?.takeIf { it.isNotBlank() },
+            description = description?.trim()?.takeIf { it.isNotBlank() },
+            author = author?.trim()?.takeIf { it.isNotBlank() }, genres = genres)
+        val id = dev.endlesssea.app.local.LocalMediaIds.series(folderUri)
+        val displayTitle = next.title ?: dev.endlesssea.app.local.LocalNames.pretty(folderUri)
+        // Room is authoritative for edits even on read-only SAF folders. No episode title is rewritten.
+        mediaDao.upsertAll(listOf(dev.endlesssea.data.db.MediaEntity(
+            id = id, extensionId = "local", type = "ANIME", title = displayTitle,
+            titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle),
+            synopsis = next.description, posterUrl = folderCover(folderUri) ?: next.coverUri,
+            genresJson = org.json.JSONArray(next.genres).toString(),
+            studiosJson = org.json.JSONArray(listOfNotNull(next.author)).toString(),
+        )))
+        val exported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(context, folderUri, next.title,
+                next.description, next.author, next.genres)
         }
-        _uiState.value = _uiState.value.copy(
+        dev.endlesssea.app.local.LocalVideos.seriesMeta[folderUri] = next
+        _uiState.value = _uiState.value.copy(folderMetadata = _uiState.value.folderMetadata + (folderUri to next),
             localMetaTick = _uiState.value.localMetaTick + 1,
-            localScanLabel = if (ok) "details.json enregistré dans le dossier"
-            else "Métadonnées gardées dans l'app (dossier non modifiable)",
-        )
+            localScanLabel = if (exported) "Métadonnées enregistrées dans l'app et details.json"
+                else "Métadonnées enregistrées dans l'app ; dossier non modifiable")
     }
 
     /** §catégories-perso : catégories créées par l'utilisateur. */
@@ -785,6 +802,14 @@ class LibraryViewModel @Inject constructor(
         prefs.setMergeLocalLibrary(v)
         if (v) scanLocal()
     }
+    fun setFolderCategory(name: String, folder: String, included: Boolean) {
+        val episodes = (_uiState.value.localFiles + dev.endlesssea.app.local.LocalLibraryCache.folder(folder))
+            .filter { it.parentUri == folder }.map { it.uri }.toSet()
+        val marker = "folder:$folder"
+        val rest = prefs.categoryItems(name).filter { it != marker && it !in episodes }
+        prefs.setCategoryItems(name, if (included) rest + marker else rest)
+    }
+
     fun toggleCategoryItem(name: String, item: String) = prefs.toggleCategoryItem(name, item)
 
     /** §métadonnées-éditées : titre/affiche perso sur une source (téléchargée ou non). */

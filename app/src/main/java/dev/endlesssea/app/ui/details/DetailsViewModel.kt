@@ -146,9 +146,14 @@ class DetailsViewModel @Inject constructor(
         }
         remote.onSuccess { details ->
             cacheLocally(details)
-            val episodes = details.seasons.flatMap { it.episodes }
+            val downloadedIds = downloadsDao.completedForMedia(mediaId).mapNotNull { it.episodeId }.toSet()
+            val episodes = (details.seasons.flatMap { it.episodes } +
+                episodeDao.ofMedia(mediaId).first().filter { it.id in downloadedIds }.map { it.toEpisode() })
+                .distinctBy { it.id }.sortedWith(compareBy({ it.season ?: 0 }, { it.number }))
+            val stored = mediaDao.byId(mediaId)
             _uiState.value = _uiState.value.copy(
-                loading = false, details = details, episodes = episodes,
+                loading = false, details = details.copy(title = stored?.customTitle ?: details.title,
+                    posterUrl = stored?.customCoverUri ?: details.posterUrl), episodes = episodes,
             )
             refreshLibraryFlags()
             refreshResume()
@@ -178,7 +183,9 @@ class DetailsViewModel @Inject constructor(
     }
 
     private suspend fun cacheLocally(details: MediaDetails) = withContext(Dispatchers.IO) {
-        mediaDao.upsertAll(listOf(details.toEntity()))
+        val previous = mediaDao.byId(mediaId)
+        mediaDao.upsertAll(listOf(details.toEntity().copy(customTitle = previous?.customTitle,
+            customCoverUri = previous?.customCoverUri, externalIdsJson = previous?.externalIdsJson ?: "{}")))
         val episodes = details.seasons.flatMap { season ->
             season.episodes.map { it.toEntity(mediaId) }
         }
@@ -187,7 +194,8 @@ class DetailsViewModel @Inject constructor(
 
     /** §hors-ligne : fichiers téléchargés affichés sur la fiche (lisibles sans réseau). */
     fun refreshDeviceFiles() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val list = downloadsDao.completedForMedia(mediaId).map { t ->
+        val list = downloadsDao.completedForMedia(mediaId).mapNotNull { t ->
+            if (!dev.endlesssea.app.local.DownloadLocator.exists(context, t.targetUri)) return@mapNotNull null
             DeviceFileUi(
                 id = t.id,
                 label = listOfNotNull(
@@ -233,7 +241,8 @@ class DetailsViewModel @Inject constructor(
             store.setQueue(queue, queue.indexOfFirst { it.episodeId == (f.episodeId ?: f.id) })
         }
         dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
-            title = f.label.substringBefore(" · "),
+            title = _uiState.value.episodes.firstOrNull { it.id == f.episodeId }?.let { buildEpisodeTitle(it) }
+                ?: f.label.substringBefore(" · "),
             mediaId = mediaId, episodeId = f.episodeId ?: f.id,
             links = listOf(
                 dev.endlesssea.extensions.api.model.VideoLink(
@@ -600,20 +609,52 @@ class DetailsViewModel @Inject constructor(
 
     /** Supprime un téléchargement (appui long). */
     fun deleteDeviceFile(f: DeviceFileUi) = viewModelScope.launch {
-        runCatching {
-            val uri = android.net.Uri.parse(f.targetUri)
-            if (uri.scheme == "content") {
-                androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.delete()
-            } else {
-                java.io.File(uri.path ?: "").delete()
-            }
+        val deleted = withContext(Dispatchers.IO) {
+            if (!dev.endlesssea.app.local.DownloadLocator.exists(context, f.targetUri)) true
+            else runCatching {
+                val uri = android.net.Uri.parse(f.targetUri)
+                if (uri.scheme == "content") androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.delete() == true
+                else java.io.File(uri.path ?: f.targetUri).delete()
+            }.getOrDefault(false)
         }
-        runCatching { downloads.cancel(f.id, deleteFiles = true) }
+        if (!deleted) {
+            _uiState.value = _uiState.value.copy(message = "Suppression impossible : le fichier hors ligne est conservé.")
+            return@launch
+        }
+        downloads.cancel(f.id, deleteFiles = true)
         refreshDeviceFiles()
-        _uiState.value = _uiState.value.copy(message = "Téléchargement supprimé")
+        _uiState.value = _uiState.value.copy(message = "Fichier hors ligne supprimé ; l'épisode reste disponible depuis sa source.")
+    }
+
+    /** Select offline/online at the moment of the tap, not from a stale badge. */
+    fun openEpisode(episode: Episode, onReady: () -> Unit, onChooseServer: () -> Unit) = viewModelScope.launch {
+        refreshEpisodeAvailability(episode.id)
+        if (downloadedFor(episode.id) != null) playEpisode(episode, onReady = onReady)
+        else onChooseServer()
+    }
+
+    private suspend fun refreshEpisodeAvailability(id: String) {
+        val file = withContext(Dispatchers.IO) {
+            dev.endlesssea.app.local.readableDownload(downloadsDao.completedForMedia(mediaId), id,
+                { it.episodeId }, { it.targetUri }, { dev.endlesssea.app.local.DownloadLocator.exists(context, it) })
+                ?.let { DeviceFileUi(id = it.id, label = it.fileName.removeSuffix(".part"),
+                    sizeBytes = it.totalBytes, targetUri = it.targetUri, episodeId = it.episodeId,
+                    location = it.displayPath.substringBeforeLast('/', "")) }
+        }
+        _uiState.value = _uiState.value.copy(deviceFiles =
+            _uiState.value.deviceFiles.filterNot { it.episodeId == id } + listOfNotNull(file))
+    }
+
+    private suspend fun offlineLinks(episodeId: String): List<VideoLink> = withContext(Dispatchers.IO) {
+        val task = dev.endlesssea.app.local.readableDownload(downloadsDao.completedForMedia(mediaId), episodeId,
+            { it.episodeId }, { it.targetUri }, { dev.endlesssea.app.local.DownloadLocator.exists(context, it) })
+        task?.let { listOf(VideoLink(url = it.targetUri,
+            streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+            quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Hors ligne")) }.orEmpty()
     }
 
     fun playEpisode(episode: Episode, startIndex: Int = 0, onReady: () -> Unit = {}) = viewModelScope.launch {
+        refreshEpisodeAvailability(episode.id)
         // §épisode-suivant : la file = tous les épisodes de la fiche, dans l'ordre ;
         // les liens des voisins sont résolus à la demande par ce résolveur.
         val all = _uiState.value.episodes
@@ -634,8 +675,11 @@ class DetailsViewModel @Inject constructor(
             all.indexOfFirst { it.id == episode.id },
         )
         dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = { id ->
+            val localLinks = offlineLinks(id)
             val ep = _uiState.value.episodes.firstOrNull { it.id == id }
-            if (ep == null) {
+            if (localLinks.isNotEmpty()) {
+                localLinks
+            } else if (ep == null) {
                 emptyList()
             } else {
                 _uiState.value.linksByEpisode[id] ?: withContext(Dispatchers.IO) {
@@ -850,8 +894,8 @@ class DetailsViewModel @Inject constructor(
     )
 
     private fun MediaEntity.toDetails() = MediaDetails(
-        id = mediaId, url = mediaKey, title = title, synopsis = synopsis,
-        posterUrl = posterUrl, bannerUrl = bannerUrl,
+        id = mediaId, url = mediaKey, title = customTitle ?: title, synopsis = synopsis,
+        posterUrl = customCoverUri ?: posterUrl, bannerUrl = bannerUrl,
         type = runCatching { dev.endlesssea.extensions.api.model.MediaType.valueOf(type) }
             .getOrDefault(dev.endlesssea.extensions.api.model.MediaType.ANIME),
         year = year, episodeCount = episodeCount, durationMin = durationMin,

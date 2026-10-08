@@ -23,8 +23,8 @@ object DownloadLocator {
             val uri = Uri.parse(uriString)
             when (uri.scheme) {
                 "content" -> context.contentResolver.openInputStream(uri)?.use { true } ?: false
-                "file", null -> java.io.File(uri.path ?: uriString).exists()
-                else -> true
+                "file", null -> java.io.File(uri.path ?: uriString).let { it.isFile && it.canRead() }
+                else -> false
             }
         }.getOrDefault(false)
     }

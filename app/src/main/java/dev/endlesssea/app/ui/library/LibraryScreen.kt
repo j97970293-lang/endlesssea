@@ -91,17 +91,7 @@ fun LibraryScreen(
     // normale (même affichage que les titres suivis), activable d'un chip.
     val mergeLocal by viewModel.mergeLocal.collectAsState()
     androidx.compose.runtime.LaunchedEffect(mergeLocal) { if (mergeLocal) viewModel.scanLocal() }
-    val localCards = remember(state.localFiles, mergeLocal) {
-        if (!mergeLocal) emptyList() else state.localFiles.map { f ->
-            SearchItemUi(
-                id = "local:" + f.uri,
-                title = f.displayName,
-                // §vignettes-locales : à défaut d'affiche, la vidéo elle-même
-                posterUrl = f.customCoverUri ?: f.uri,
-                subtitle = "Fichier local",
-            )
-        }
-    }
+    val localCards = if (mergeLocal) viewModel.folderCards() else emptyList()
     /** §métadonnées-éditées : fiche en cours d'édition (appui long dans la grille). */
     var editMediaMeta by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<SearchItemUi?>(null)
@@ -166,8 +156,8 @@ fun LibraryScreen(
         if (currentKey.startsWith("CUSTOM:")) {
             val catName = currentKey.removePrefix("CUSTOM:")
             val uris = remember(catName, catTick) { viewModel.categoryItems(catName).toSet() }
-            val picked = state.localFiles.filter { it.uri in uris }
-            CustomCategoryPanel(viewModel, catName, picked)
+            val picked = state.localFiles.filter { it.uri in uris || "folder:${it.parentUri}" in uris }
+            CustomCategoryPanel(viewModel, catName, picked, onLocalFolderClick)
             return@Column
         }
 
@@ -247,17 +237,9 @@ fun LibraryScreen(
         // source choisie (mémoire interne, carte SD, téléchargements).
         val source = if (state.downloadsOnly) LibrarySource.ALL else state.sourceFilter
         val sourceLocal = when (source) {
-            LibrarySource.ALL, LibrarySource.DOWNLOADS -> localCards
-            else -> state.localFiles
-                .filter { it.storageKind == source }
-                .map { f ->
-                    SearchItemUi(
-                        id = "local:" + f.uri,
-                        title = f.customTitle ?: f.folderName,
-                        posterUrl = f.customCoverUri,
-                        subtitle = f.humanSize + " · " + LibrarySource.label(f.storageKind),
-                    )
-                }
+            LibrarySource.ALL -> localCards
+            LibrarySource.DOWNLOADS -> emptyList()
+            else -> if (mergeLocal) viewModel.folderCards(state.localFiles.filter { it.storageKind == source }) else emptyList()
         }
         val sourceDownloads = if (source == LibrarySource.ALL || source == LibrarySource.DOWNLOADS) {
             state.downloadedGroups.map { it.toCard() }
@@ -280,7 +262,7 @@ fun LibraryScreen(
                         .map { it.toCard() }
             }
             else -> state.items + sourceLocal
-        }
+        }.distinctBy { it.id }
         if (shownItems.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
@@ -361,12 +343,8 @@ fun LibraryScreen(
                         item = item,
                         onClick = {
                             when {
-                                // les cartes locales lancent directement la lecture
-                                item.id.startsWith("local:") -> {
-                                    val uri = item.id.removePrefix("local:")
-                                    val video = state.localFiles.firstOrNull { it.uri == uri }
-                                    if (video != null) playLocal(context, state.localFiles, video)
-                                }
+                                item.id.startsWith("local-folder:") ->
+                                    onLocalFolderClick(item.id.removePrefix("local-folder:"))
                                 // §telecharges-bibliotheque : un groupe téléchargé
                                 // ouvre sa fiche (liste des épisodes sur l'appareil)
                                 item.id.startsWith("downloaded:") ->
@@ -374,7 +352,11 @@ fun LibraryScreen(
                                 else -> onMediaClick(item.id)
                             }
                         },
-                        onLongClick = { editMediaMeta = item },
+                        onLongClick = {
+                            if (item.id.startsWith("local-folder:")) onLocalFolderClick(item.id.removePrefix("local-folder:"))
+                            else if (item.id.startsWith("downloaded:")) onDownloadedFolderClick(item.id.removePrefix("downloaded:"))
+                            else editMediaMeta = item
+                        },
                     )
                 }
             }
@@ -508,501 +490,14 @@ private fun ContinueCard(
  * lecture hors-ligne via le lecteur interne, métadonnées éditables (titre + affiche).
  */
 @Composable
-private fun LocalFilesPanel(
-    viewModel: LibraryViewModel,
-    onLocalFolderClick: (String) -> Unit,
-    state: dev.endlesssea.app.ui.library.LibraryUiState,
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var editMeta by remember { androidx.compose.runtime.mutableStateOf<LocalVideoUi?>(null) }
-    /** §catégories-perso : fichier qu'on range dans une catégorie. */
-    var addToCat by remember { androidx.compose.runtime.mutableStateOf<LocalVideoUi?>(null) }
-    val cats by viewModel.customCategories.collectAsState()
-    val catsTick by viewModel.categoryItemsTick.collectAsState()
-    // §scan-par-dossier (façon Kotatsu / Aniyomi) : tout ce qui est dans un même
-    // dossier forme UNE entrée ; on n'ouvre la liste des fichiers que si on entre
-    // dans le dossier.
-    var openFolder by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
-    val folders = remember(state.localFiles) {
-        state.localFiles.groupBy { it.parentUri }.toList().sortedBy { it.second.first().folderName.lowercase() }
-    }
-    // §affichage-dossiers : « par dossier » (défaut) ou « tous les fichiers »
-    val folderView by viewModel.localFolderView.collectAsState()
-    val hiddenOn by viewModel.showHiddenFiles.collectAsState()
-    val visibleFiles = remember(state.localFiles, openFolder, folderView) {
-        when {
-            folderView == "flat" -> state.localFiles
-            openFolder == null -> emptyList()
-            else -> state.localFiles.filter { it.parentUri == openFolder }
-        }
-    }
-
-    // Choix d'un dossier SAF (persistance longue durée incluse)
-    val dirPicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
-    ) { uri ->
-        uri?.let {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            viewModel.addLocalDir(it.toString())
-        }
-    }
-
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
-        // Glossaire : ajouter un dossier, retirer, scanner à nouveau
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            androidx.compose.material3.AssistChip(
-                onClick = { dirPicker.launch(null) },
-                label = { Text("Ajouter un dossier", maxLines = 1, softWrap = false) },
-            )
-            viewModel.dirs.collectAsState().value.forEach { dir ->
-                androidx.compose.material3.AssistChip(
-                    onClick = { viewModel.removeLocalDir(dir) },
-                    label = {
-                        Text("" + android.net.Uri.parse(dir).path
-                            ?.substringAfterLast(':')?.substringAfterLast('/') ?: dir)
-                    },
-                )
-            }
-            androidx.compose.material3.AssistChip(
-                onClick = { viewModel.scanLocal() },
-                label = { Text("Scanner", maxLines = 1, softWrap = false) },
-            )
-        }
-        Text(
-            "Lecture hors-ligne des vidéos trouvées (y compris celles NON téléchargées via l'app). " +
-                "Touche une vidéo pour la lire, bouton pour renommer/choisir l'affiche.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 8.dp),
-        )
-
-        if (state.localScanning) {
-            // §retour-visuel : on montre ce que le scan est en train de faire
-            Column(
-                Modifier.fillMaxWidth().padding(24.dp),
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-            ) {
-                dev.endlesssea.app.ui.components.EsLoadingIndicator()
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    state.localScanLabel.ifBlank { "Analyse du stockage…" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-            }
-        } else if (state.localFiles.isEmpty()) {
-            Column(
-                Modifier.fillMaxSize().padding(32.dp),
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-            ) {
-                androidx.compose.material3.Icon(
-                    Icons.Filled.VideoLibrary,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    if (state.localFiles.isEmpty() && viewModel.dirs.collectAsState().value.isEmpty())
-                        "Aucun dossier — ajoute-en un avec « Ajouter un dossier » (plusieurs possibles)."
-                    else "Aucune vidéo trouvée dans les dossiers choisis.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 10.dp),
-                )
-            }
-        } else {
-            androidx.compose.foundation.lazy.LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
-            ) {
-                // §affichage-dossiers : barre d'options du panneau local
-                item {
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        androidx.compose.material3.FilterChip(
-                            selected = folderView != "flat",
-                            onClick = { viewModel.setLocalFolderView("folders") },
-                            label = { Text("Par dossier", maxLines = 1, softWrap = false) },
-                        )
-                        androidx.compose.material3.FilterChip(
-                            selected = folderView == "flat",
-                            onClick = { viewModel.setLocalFolderView("flat") },
-                            label = { Text("Tous les fichiers", maxLines = 1, softWrap = false) },
-                        )
-                        androidx.compose.material3.FilterChip(
-                            selected = hiddenOn,
-                            onClick = { viewModel.setShowHiddenFiles(!hiddenOn) },
-                            label = { Text("Fichiers cachés", maxLines = 1, softWrap = false) },
-                        )
-                    }
-                }
-                // ---- Niveau 1 : les dossiers (une carte par dossier)
-                if (openFolder == null && folderView != "flat") {
-                    items(folders, key = { it.first }) { (parent, files) ->
-                        // §structure-aniyomi : métadonnées hors ligne du dossier
-                        val meta = dev.endlesssea.app.local.LocalVideos.seriesMeta[parent]
-                        dev.endlesssea.app.ui.components.GlassCard(
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth().clickable { onLocalFolderClick(parent) },
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                            ) {
-                                if (viewModel.folderCover(parent) != null || meta?.coverUri != null) {
-                                    coil.compose.AsyncImage(
-                                        model = viewModel.folderCover(parent) ?: meta?.coverUri,
-                                        contentDescription = null,
-                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                        modifier = Modifier.padding(end = 12.dp)
-                                            .width(48.dp).height(70.dp)
-                                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
-                                    )
-                                } else {
-                                    androidx.compose.material3.Icon(
-                                        androidx.compose.material.icons.Icons.Filled.Folder,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(end = 12.dp),
-                                    )
-                                }
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        meta?.title ?: files.first().folderName,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        // §cartes-bibliotheque (conversation 6) :
-                                        // nombre d'épisodes + emplacement (interne / SD)
-                                        "${files.size} épisode(s) · " +
-                                            dev.endlesssea.app.local.LocalVideos.humanSize(
-                                                files.sumOf { it.sizeBytes },
-                                            ) +
-                                            " · " + LibrarySource.label(files.first().storageKind),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    meta?.description?.takeIf { it.isNotBlank() }?.let { d ->
-                                        Text(
-                                            d,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                                Text("›", style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    }
-                }
-                // ---- Niveau 2 : les fichiers du dossier ouvert
-                if (openFolder != null) {
-                    item {
-                        androidx.compose.material3.AssistChip(
-                            onClick = { openFolder = null },
-                            label = {
-                                Text("‹ " + (visibleFiles.firstOrNull()?.folderName ?: "Tous les dossiers"))
-                            },
-                        )
-                    }
-                }
-                items(visibleFiles, key = { it.uri }) { video ->
-                    dev.endlesssea.app.ui.components.GlassCard(
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
-                    ) {
-                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            // Affiche : éditée > icône vidéo
-                            if (video.customCoverUri != null) {
-                                dev.endlesssea.app.SafeAsyncImage(
-                                    url = video.customCoverUri,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp),
-                                    placeholderModifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp),
-                                )
-                            } else if (true) {
-                                // §vignettes-locales : image extraite de la vidéo
-                                coil.compose.AsyncImage(
-                                    model = coil.request.ImageRequest.Builder(
-                                        androidx.compose.ui.platform.LocalContext.current,
-                                    ).data(video.uri).crossfade(dev.endlesssea.app.ui.motion.LocalAppMotion.current.duration(180)).build(),
-                                    contentDescription = null,
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                    modifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp)
-                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
-                                )
-                            } else {
-                                androidx.compose.material3.Icon(
-                                    androidx.compose.material.icons.Icons.Filled.Movie,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(end = 10.dp),
-                                )
-                            }
-                            Column(Modifier.weight(1f)) {
-                                // §episodes-json : « Ép. 3 · Le début » quand le numéro
-                                // d'épisode est déductible du nom de fichier.
-                                val epNum = video.episodeNumber
-                                dev.endlesssea.app.ui.components.ExpandableText(
-                                    text = if (epNum != null && video.customTitle == null) {
-                                        "Ép. $epNum · ${video.prettyName}"
-                                    } else {
-                                        video.displayName
-                                    },
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    dialogTitle = "Fichier local",
-                                )
-                                Text(
-                                    listOfNotNull(video.humanSize.ifBlank { null }, video.humanDuration.ifBlank { null })
-                                        .joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                video.customTitle?.let {
-                                    Text(
-                                        "Fichier : ${video.name}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                            androidx.compose.material3.TextButton(onClick = { addToCat = video }) {
-                                Text("+")
-                            }
-                            androidx.compose.material3.IconButton(onClick = { editMeta = video }) {
-                                androidx.compose.material3.Icon(
-                                    androidx.compose.material.icons.Icons.Filled.Edit,
-                                    contentDescription = "Métadonnées",
-                                )
-                            }
-                            androidx.compose.material3.Button(onClick = {
-                                playLocal(context, visibleFiles, video)
-                            }) { Text("Lire") }
-                        }
-                    }
-                }
-            }
-        }
-
-        // §catégories-perso : choix des catégories qui contiennent ce fichier
-        addToCat?.let { video ->
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { addToCat = null },
-                confirmButton = {
-                    androidx.compose.material3.TextButton(onClick = { addToCat = null }) { Text("Fermer") }
-                },
-                title = { Text("Ranger dans une catégorie") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (cats.isEmpty()) {
-                            Text(
-                                "Aucune catégorie : crée-en une avec « + Catégorie » " +
-                                    "en haut de la bibliothèque.",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        cats.forEach { c ->
-                            val inside = remember(c, catsTick, video.uri) {
-                                video.uri in viewModel.categoryItems(c)
-                            }
-                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                androidx.compose.material3.Checkbox(
-                                    checked = inside,
-                                    onCheckedChange = { viewModel.toggleCategoryItem(c, video.uri) },
-                                )
-                                Text(c)
-                            }
-                        }
-                    }
-                },
-            )
-        }
-
-        // Dialogue métadonnées §métadonnées-locales
-        editMeta?.let { video ->
-            var title by androidx.compose.runtime.remember(video.uri) {
-                androidx.compose.runtime.mutableStateOf(video.customTitle ?: "")
-            }
-            var cover by androidx.compose.runtime.remember(video.uri) {
-                androidx.compose.runtime.mutableStateOf(video.customCoverUri ?: "")
-            }
-            var introStart by androidx.compose.runtime.remember(video.uri) {
-                androidx.compose.runtime.mutableStateOf(video.introStartSec?.toString() ?: "")
-            }
-            var introEnd by androidx.compose.runtime.remember(video.uri) {
-                androidx.compose.runtime.mutableStateOf(video.introEndSec?.toString() ?: "")
-            }
-            var outroStart by androidx.compose.runtime.remember(video.uri) {
-                androidx.compose.runtime.mutableStateOf(video.outroStartSec?.toString() ?: "")
-            }
-            var wholeFolder by androidx.compose.runtime.remember(video.uri) {
-                androidx.compose.runtime.mutableStateOf(false)
-            }
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { editMeta = null },
-                confirmButton = {
-                    androidx.compose.material3.Button(onClick = {
-                        viewModel.saveLocalMeta(
-                            video.uri,
-                            title.takeIf { it.isNotBlank() },
-                            cover.takeIf { it.isNotBlank() },
-                            introStart.toIntOrNull(),
-                            introEnd.toIntOrNull(),
-                            outroStart.toIntOrNull(),
-                        )
-                        // §métadonnées-dossier : même affiche et mêmes marqueurs partout
-                        if (wholeFolder) {
-                            viewModel.saveFolderMeta(
-                                video.parentUri,
-                                cover.takeIf { it.isNotBlank() },
-                                introStart.toIntOrNull(),
-                                introEnd.toIntOrNull(),
-                                outroStart.toIntOrNull(),
-                            )
-                        }
-                        editMeta = null
-                    }) { Text("Enregistrer") }
-                },
-                dismissButton = {
-                    androidx.compose.material3.TextButton(onClick = { editMeta = null }) { Text("Annuler") }
-                },
-                title = { Text("Métadonnées du fichier") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            video.name,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        androidx.compose.material3.OutlinedTextField(
-                            value = title, onValueChange = { title = it },
-                            label = { Text("Titre affiché", maxLines = 1, softWrap = false) }, singleLine = true,
-                        )
-                        androidx.compose.material3.OutlinedTextField(
-                            value = cover, onValueChange = { cover = it },
-                            label = { Text("Affiche (URL ou content://)") }, singleLine = true,
-                        )
-                        // §marqueurs intro/outro (secondes)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            androidx.compose.material3.OutlinedTextField(
-                                value = introStart,
-                                onValueChange = { v -> introStart = v.filter(Char::isDigit).take(5) },
-                                label = { Text("Intro déb. (s)") }, singleLine = true,
-                                modifier = Modifier.weight(1f),
-                            )
-                            androidx.compose.material3.OutlinedTextField(
-                                value = introEnd,
-                                onValueChange = { v -> introEnd = v.filter(Char::isDigit).take(5) },
-                                label = { Text("Intro fin (s)") }, singleLine = true,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        androidx.compose.material3.OutlinedTextField(
-                            value = outroStart,
-                            onValueChange = { v -> outroStart = v.filter(Char::isDigit).take(5) },
-                            label = { Text("Générique de fin — début (s)") }, singleLine = true,
-                        )
-                        Text(
-                            "Pendant la lecture, un bouton « Passer » apparaîtra dans ces plages. " +
-                                "Laisse les champs vides pour ne rien afficher.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            androidx.compose.material3.Checkbox(
-                                checked = wholeFolder,
-                                onCheckedChange = { wholeFolder = it },
-                            )
-                            Text(
-                                "Appliquer l'affiche et les marqueurs à tout le dossier",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Text(
-                            "Laisse vide pour revenir aux informations du fichier. " +
-                                "Les modifications sont conservées par l'app.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
-        }
-    }
+private fun LocalFilesPanel(viewModel: LibraryViewModel, onLocalFolderClick: (String) -> Unit, state: LibraryUiState) {
+    LocalFolderLibrary(viewModel, state, onLocalFolderClick)
 }
 
-/** §catégories-perso : contenu d'une catégorie créée par l'utilisateur. */
 @Composable
-private fun CustomCategoryPanel(
-    viewModel: LibraryViewModel,
-    name: String,
-    files: List<LocalVideoUi>,
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            androidx.compose.material3.TextButton(onClick = { viewModel.removeCategory(name) }) {
-                Text("Supprimer")
-            }
-        }
-        if (files.isEmpty()) {
-            Text(
-                "Catégorie vide — ouvre « Fichiers », puis « + » sur une vidéo pour la ranger ici.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return@Column
-        }
-        androidx.compose.foundation.lazy.LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(files, key = { it.uri }) { video ->
-                dev.endlesssea.app.ui.components.GlassCard(
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
-                ) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        if (video.customCoverUri != null) {
-                            dev.endlesssea.app.SafeAsyncImage(
-                                url = video.customCoverUri,
-                                contentDescription = null,
-                                modifier = Modifier.padding(end = 10.dp).width(48.dp).height(72.dp),
-                                placeholderModifier = Modifier.padding(end = 10.dp).width(48.dp).height(72.dp),
-                            )
-                        } else {
-                            androidx.compose.material3.Icon(
-                                androidx.compose.material.icons.Icons.Filled.Movie,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(end = 10.dp),
-                            )
-                        }
-                        Text(video.displayName, maxLines = 2, modifier = Modifier.weight(1f))
-                        androidx.compose.material3.TextButton(
-                            onClick = { viewModel.toggleCategoryItem(name, video.uri) },
-                        ) { Text("Retirer") }
-                        androidx.compose.material3.Button(onClick = {
-                            playLocal(context, files, video)
-                        }) { Text("Lire") }
-                    }
-                }
-            }
-        }
-    }
+private fun CustomCategoryPanel(viewModel: LibraryViewModel, name: String, files: List<LocalVideoUi>, onFolder: (String) -> Unit) {
+    LocalFolderLibrary(viewModel, viewModel.uiState.collectAsState().value, onFolder,
+        files = files, categoryName = name)
 }
 
 /** §lecture-locale : prépare la file (tout le lot affiché) puis ouvre le lecteur. */

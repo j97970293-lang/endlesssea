@@ -713,6 +713,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 statsVisible = state.statsVisible,
                 skipLoading = state.skipLoading,
                 megaSkipSeconds = state.megaSkipSeconds,
+                skipSeconds = state.skipSeconds,
                 megaSkipLeft = megaSide == "left",
                 activeSkip = state.activeSkip,
                 skipCountdown = state.skipCountdown,
@@ -778,10 +779,14 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             } else Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
                 activeTheme.TopControls(controlsState, controlsActions)
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                    dev.endlesssea.app.ui.player.themes.PlayerBarContent(
-                        controlsState, controlsActions,
-                        activeTheme.accent ?: MaterialTheme.colorScheme.primary, top = true,
-                    )
+                    if (activeTheme.id == "cinema") {
+                        dev.endlesssea.app.ui.player.themes.CinemaTheme.Sections(controlsState, controlsActions, top = true)
+                    } else {
+                        dev.endlesssea.app.ui.player.themes.PlayerBarContent(
+                            controlsState, controlsActions,
+                            activeTheme.accent ?: MaterialTheme.colorScheme.primary, top = true,
+                        )
+                    }
                 }
             }
             if (!state.locked) {

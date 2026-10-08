@@ -168,6 +168,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
          * sert uniquement à l'aperçu du sélecteur ; 0 = couleur de l'application.
          */
         val PLAYER_THEMES = linkedMapOf(
+            "cinema" to Pair(0xFF73B7FFL, "Essentiel"),
             "default" to Pair(0xFF00BCD4L, "Défaut"),
             "zen" to Pair(0xFFFFFFFFL, "Zen"),
             "orbit" to Pair(0xFF00BCD4L, "Orbit"),
@@ -534,6 +535,11 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         _categoryItemsTick.value++
     }
 
+    fun setCategoryItems(name: String, items: List<String>) {
+        p.edit().putString("lib_cat_items_" + name, org.json.JSONArray(items.distinct()).toString()).apply()
+        _categoryItemsTick.value++
+    }
+
     /** Merge only portable user collections; no storage permissions or arbitrary preference keys. */
     fun mergeBackupCollections(categories: Map<String, List<String>>, metadata: Map<String, LocalFileMeta>) {
         val merged = dev.endlesssea.app.backup.mergeBackupCategories(
@@ -626,7 +632,14 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
      * §theme-lecteur : habillage du lecteur. Les couleurs viennent de [PLAYER_THEMES] ;
      * Les anciennes valeurs inconnues sont migrées vers "default".
      */
-    private val _playerTheme = MutableStateFlow(migratePlayerTheme(p.getString("player_theme", "default")))
+    private val _playerTheme = MutableStateFlow(run {
+        // Make the requested visual rebuild visible once; keep the old choice recoverable.
+        if (!p.getBoolean("player_essential_v1", false)) {
+            p.edit().putString("player_theme_before_essential", p.getString("player_theme", "default"))
+                .putString("player_theme", "cinema").putBoolean("player_essential_v1", true).apply()
+            "cinema"
+        } else migratePlayerTheme(p.getString("player_theme", "cinema"))
+    })
     val playerTheme: StateFlow<String> = _playerTheme
     fun setPlayerTheme(v: String) {
         p.edit().putString("player_theme", v).apply(); _playerTheme.value = v

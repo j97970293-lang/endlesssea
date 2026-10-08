@@ -42,6 +42,7 @@ data class PlayerControlsState(
     val statsVisible: Boolean = false,
     val skipLoading: Boolean = false,
     val megaSkipSeconds: Int = 85,
+    val skipSeconds: Int = 10,
     /** La pastille mégaskip et le bouton de saut actif vivent-ils à gauche ? */
     val megaSkipLeft: Boolean = false,
     val activeSkip: SkipSegment? = null,
@@ -122,6 +123,7 @@ interface PlayerTheme {
 /** Registre unique des interfaces originales. Les anciens choix reviennent au défaut. */
 object ThemeProvider {
     val all: Map<String, PlayerTheme> = linkedMapOf(
+        "cinema" to CinemaTheme,
         "default" to DefaultTheme,
         "zen" to ZenTheme,
         "orbit" to OrbitTheme,

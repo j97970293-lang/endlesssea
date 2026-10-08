@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -671,8 +673,12 @@ fun DetailsScreen(
                             EpisodeRowAnymex(
                                 episode = episode,
                                 loading = state.linksLoadingEpisode == episode.id,
-                                onPlay = { playSheetEpisode = episode },
-                                onDownload = { downloadSheetEpisode = episode },
+                                onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
+                                downloaded = viewModel.downloadedFor(episode.id) != null,
+                                onDownload = {
+                                    val local = viewModel.downloadedFor(episode.id)
+                                    if (local != null) deleteCandidate = local else downloadSheetEpisode = episode
+                                },
                                 isMovie = true,
                                 mediaTitle = state.details?.title,
                             )
@@ -692,14 +698,18 @@ fun DetailsScreen(
                         EpisodeRowAnymex(
                             episode = episode,
                             loading = state.linksLoadingEpisode == episode.id,
-                            onPlay = { playSheetEpisode = episode },
-                            onDownload = { downloadSheetEpisode = episode },
+                            onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
+                                downloaded = viewModel.downloadedFor(episode.id) != null,
+                            onDownload = {
+                                    val local = viewModel.downloadedFor(episode.id)
+                                    if (local != null) deleteCandidate = local else downloadSheetEpisode = episode
+                                },
                         )
                     }
                 }
 
                 // ---- §hors-ligne : « Sur l'appareil » — fichiers téléchargés de cette fiche
-                if (state.deviceFiles.isNotEmpty()) {
+                if (state.deviceFiles.any { f -> state.episodes.none { it.id == f.episodeId } }) {
                     item {
                         Text(
                             "Sur l'appareil",
@@ -707,7 +717,7 @@ fun DetailsScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
-                    items(state.deviceFiles, key = { "dev_" + it.id }) { f ->
+                    items(state.deviceFiles.filter { f -> state.episodes.none { it.id == f.episodeId } }, key = { "dev_" + it.id }) { f ->
                         GlassCard(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             cornerRadius = 14.dp,
@@ -808,7 +818,7 @@ fun DetailsScreen(
             dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
             title = { Text("Serveurs & priorité") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(Modifier.heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.65f).verticalScroll(rememberScrollState())) {
                     Text(
                         "Maintiens la poignée ≡ et glisse pour classer : le serveur le plus haut " +
                             "est essayé en premier pour chaque épisode. Désactive ceux à ignorer.",
@@ -893,7 +903,8 @@ fun DetailsScreen(
         // et la liste se remplit au fil de l'eau (serveur par serveur).
         LaunchedEffect(episode.id) { viewModel.loadLinks(episode) }
         ModalBottomSheet(onDismissRequest = { playSheetEpisode = null }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.8f)
+                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
                     "Lire — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
@@ -1087,7 +1098,8 @@ fun DetailsScreen(
         // et la liste se remplit au fil de l'eau (serveur par serveur).
         LaunchedEffect(episode.id) { viewModel.loadLinks(episode) }
         ModalBottomSheet(onDismissRequest = { downloadSheetEpisode = null }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.8f)
+                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
                     "Télécharger — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
@@ -1346,7 +1358,7 @@ private fun TrackerCard(
     selectedMatch?.let { hit ->
         AlertDialog(onDismissRequest = { selectedMatch = null },
             title = { Text("Confirmer le rattachement") },
-            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            text = { Column(Modifier.heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.65f).verticalScroll(rememberScrollState())) {
                 Text("Lier cette fiche à ${hit.title}" + (hit.year?.let { " ($it)" } ?: "") + " ?")
                 dev.endlesssea.app.ui.tracking.EpisodeMatchingControls(autoMatch, matchSeason, matchSeasons) { enabled, season ->
                     autoMatch = enabled; matchSeason = season
@@ -1594,6 +1606,7 @@ private fun EpisodeRowAnymex(
     /** §film-et-serie : un film n'a ni saison ni numéro d'épisode à afficher. */
     isMovie: Boolean = false,
     mediaTitle: String? = null,
+    downloaded: Boolean = false,
 ) {
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1647,6 +1660,7 @@ private fun EpisodeRowAnymex(
                     dialogTitle = "Titre de l'épisode",
                 )
                 val meta = buildList {
+                    if (downloaded) add("Hors ligne")
                     if (isMovie) add("Film") else episode.season?.let { add("Saison $it") }
                     episode.durationMs?.let { add("${it / 60_000} min") }
                 }.joinToString(" · ")
@@ -1659,7 +1673,7 @@ private fun EpisodeRowAnymex(
                 dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
             } else {
                 IconButton(onClick = onDownload) {
-                    Icon(Icons.Filled.Download, "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (downloaded) Icons.Filled.Delete else Icons.Filled.Download, if (downloaded) "Supprimer le fichier hors ligne" else "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }

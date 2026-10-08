@@ -10,11 +10,15 @@ class ThemeProviderTest {
             assertSame(DefaultTheme, ThemeProvider.of(it))
         }
     }
-    @Test fun sevenOriginalInterfacesHaveStableIds() {
-        assertEquals(7, ThemeProvider.all.size)
+    @Test fun mainPlayerAndLegacyInterfacesHaveStableIds() {
+        assertEquals(8, ThemeProvider.all.size)
         ThemeProvider.all.forEach { (id, theme) ->
             assertEquals(id, theme.id)
             assertEquals(id, ThemeProvider.migrate(id))
         }
+    }
+    @Test fun essentialPlayerIsRegistered() {
+        assertSame(CinemaTheme, ThemeProvider.of("cinema"))
+        assertEquals("cinema", ThemeProvider.migrate("cinema"))
     }
 }

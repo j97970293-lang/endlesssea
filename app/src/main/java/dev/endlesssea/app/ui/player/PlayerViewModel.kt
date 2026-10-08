@@ -579,11 +579,10 @@ class PlayerViewModel @Inject constructor(
         try {
         kotlinx.coroutines.withTimeout(90_000) {
         persistPosition()
-        val links = item.links.ifEmpty {
-            val id = item.episodeId
-            if (id == null) emptyList()
-            else runCatching { PlayerLaunchStore.resolver?.invoke(id) ?: emptyList() }.getOrDefault(emptyList())
-        }
+        // The resolver rechecks local availability, so deletion/download during playback takes effect.
+        val resolver = PlayerLaunchStore.resolver
+        val id = item.episodeId
+        val links = if (resolver != null && id != null) resolver(id) else item.links
         check(links.isNotEmpty()) { "Aucun lien pour « ${item.title} »" }
         PlayerLaunchStore.queueIndex = target
         PlayerLaunchStore.updateMarkers(item.markers)
