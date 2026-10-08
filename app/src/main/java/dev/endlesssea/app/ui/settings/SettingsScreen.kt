@@ -40,6 +40,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import dev.endlesssea.app.ui.motion.motionClickable
+import dev.endlesssea.app.ui.motion.motionReveal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -180,7 +182,7 @@ fun SettingsScreen(
 
     androidx.compose.foundation.layout.Box {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().motionReveal(openCategoryFull),
             contentPadding = PaddingValues(vertical = 4.dp, horizontal = 0.dp),
         ) {
             // Entête « ← Paramètres » quand on est DANS une catégorie.
@@ -1376,7 +1378,7 @@ fun SettingsScreen(
                             Row(
                                 Modifier.fillMaxWidth().padding(12.dp),
                                 horizontalArrangement = Arrangement.Center,
-                            ) { androidx.compose.material3.CircularProgressIndicator(Modifier.width(28.dp).height(28.dp), strokeWidth = 2.dp) }
+                            ) { dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.width(28.dp).height(28.dp), strokeWidth = 2.dp) }
                         }
                     }
                 }
@@ -1859,7 +1861,7 @@ private fun SettingCategory(
     Surface(
         modifier = Modifier.fillMaxWidth()
             .padding(vertical = 3.dp)
-            .clickable(onClick = onToggle),
+            .motionClickable(onClick = onToggle),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
         tonalElevation = if (expanded) 2.dp else 0.dp,
@@ -1903,7 +1905,7 @@ private fun SettingCategory(
 @Composable
 private fun SettingRow(title: String, subtitle: String?, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp),
+        modifier = Modifier.fillMaxWidth().motionClickable(onClick = onClick).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {

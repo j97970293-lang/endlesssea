@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -272,6 +274,12 @@ private fun ConnectForm(
         Button(
             onClick = { onSubmit(token.trim(), apiKey.trim(), clientId.trim(), refresh.trim()) },
             enabled = !busy && (if (isTmdb) apiKey.isNotBlank() else token.isNotBlank()),
-        ) { Text(if (busy) "Vérification…" else "Enregistrer et vérifier") }
+        ) {
+            if (busy) {
+                dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(if (busy) "Vérification…" else "Enregistrer et vérifier")
+        }
     }
 }

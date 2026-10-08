@@ -61,7 +61,7 @@ internal fun LocalTrackerCard(
                 services.forEach { id -> FilterChip(selected = service == id, onClick = { service = id }, label = { Text(TrackerRegistry.LABELS[id] ?: id) }) }
             }
             TextButton(enabled = !busy && query.isNotBlank(), onClick = { service?.let { viewModel.search(it, query) } }) { Text("Rechercher") }
-            if (busy) CircularProgressIndicator(Modifier.size(24.dp))
+            if (busy) dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(24.dp))
             hits.forEach { hit ->
                 Row(Modifier.fillMaxWidth().clickable { selected = hit }.padding(vertical = 6.dp)) {
                     coil.compose.AsyncImage(model = hit.posterUrl, contentDescription = null, modifier = Modifier.width(44.dp).height(64.dp))

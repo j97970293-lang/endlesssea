@@ -203,6 +203,7 @@ fun DownloadsScreen(
                 if (seriesKey !in collapsedSeries) items(episodes, key = { it.id }) { task ->
                 DownloadCard(
                     row = task,
+                    modifier = if (dev.endlesssea.app.ui.motion.LocalAppMotion.current.enabled) Modifier.animateItem() else Modifier,
                     onPause = { viewModel.pause(task.id) },
                     onResume = { viewModel.resume(task.id) },
                     onCancel = { viewModel.cancel(task.id) },
@@ -232,6 +233,7 @@ fun DownloadsScreen(
 @Composable
 private fun DownloadCard(
     row: DownloadRowUi,
+    modifier: Modifier = Modifier,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -241,9 +243,14 @@ private fun DownloadCard(
     onMove: () -> Unit = {},
     onLongPress: () -> Unit = {},
 ) {
+    val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
+    val visualProgress = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (row.fraction.isFinite()) row.fraction.coerceIn(0f, 1f) else 0f,
+        animationSpec = androidx.compose.animation.core.tween(motion.duration(220)), label = "downloadProgress",
+    )
     // Conteneur « verre » (liquid glass sur toutes les surfaces, pas seulement les boutons)
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onPlay,
@@ -306,7 +313,7 @@ private fun DownloadCard(
             if (row.status == DownloadStatus.DOWNLOADING.name || row.status == DownloadStatus.QUEUED.name || row.status == DownloadStatus.PAUSED.name) {
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { row.fraction },
+                    progress = { visualProgress.value },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(4.dp))

@@ -39,7 +39,9 @@ fun SplashScreen(tintArgb: Long?, logoId: String = dev.endlesssea.app.branding.A
     var titleVisible by remember { mutableStateOf(false) }
     var gone by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
+    LaunchedEffect(motion.enabled) {
+        if (!motion.enabled) { onFinished(); return@LaunchedEffect }
         visible = true
         delay(180)
         titleVisible = true

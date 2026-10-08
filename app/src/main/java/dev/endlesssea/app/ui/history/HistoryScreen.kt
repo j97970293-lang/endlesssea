@@ -84,7 +84,9 @@ fun HistoryScreen(onBack: () -> Unit, viewModel: HistoryViewModel = androidx.hil
                 }
                 false
             })
-            SwipeToDismissBox(state = dismissState, backgroundContent = {
+            SwipeToDismissBox(
+                modifier = if (dev.endlesssea.app.ui.motion.LocalAppMotion.current.enabled) Modifier.animateItem() else Modifier,
+                state = dismissState, backgroundContent = {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(16.dp),
                     contentAlignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd) {
                     Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = MaterialTheme.colorScheme.onErrorContainer)

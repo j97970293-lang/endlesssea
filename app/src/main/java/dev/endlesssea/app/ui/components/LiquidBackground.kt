@@ -47,16 +47,9 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
 
     // §anymex-theme : Bloom amplifie les halos (~1.6×) sans changer la durée.
     val strength = (liquid / 100f) * if (bloom) 1.6f else 1f
-    val flow = rememberInfiniteTransition(label = "liquidFlow")
-    val p1 by flow.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(26_000, easing = LinearEasing)), label = "p1",
-    )
-    val p2 by flow.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(34_000, easing = LinearEasing)), label = "p2",
-    )
-    val p3 by flow.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(47_000, easing = LinearEasing)), label = "p3",
-    )
+    val p1 = dev.endlesssea.app.ui.motion.rememberMotionPhase(26_000, 0.2f)
+    val p2 = dev.endlesssea.app.ui.motion.rememberMotionPhase(34_000, 0.4f)
+    val p3 = dev.endlesssea.app.ui.motion.rememberMotionPhase(47_000, 0.6f)
 
     Canvas(modifier.fillMaxSize()) {
         val w = size.width
@@ -81,22 +74,22 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
         // Nappe principale (accent) — grande orbite lente en haut
         blob(
             accent, 0.240f,
-            0.30f + 0.28f * cos(p1 * tau),
-            0.24f + 0.18f * sin(p1 * tau * 0.9f + 0.6f),
+            0.30f + 0.28f * cos(p1.value * tau),
+            0.24f + 0.18f * sin(p1.value * tau * 0.9f + 0.6f),
             0.72f,
         )
         // Nappe secondaire — contre-orbite au milieu
         blob(
             second, 0.176f,
-            0.72f + 0.24f * cos(p2 * tau + 2.1f),
-            0.52f + 0.22f * sin(p2 * tau * 1.1f),
+            0.72f + 0.24f * cos(p2.value * tau + 2.1f),
+            0.52f + 0.22f * sin(p2.value * tau * 1.1f),
             0.80f,
         )
         // Petite lueur tertiaire en bas — mouvement de houle
         blob(
             third, 0.152f,
-            0.42f + 0.30f * sin(p3 * tau * 0.8f),
-            0.86f + 0.14f * cos(p3 * tau + 4.0f),
+            0.42f + 0.30f * sin(p3.value * tau * 0.8f),
+            0.86f + 0.14f * cos(p3.value * tau + 4.0f),
             0.62f,
         )
     }

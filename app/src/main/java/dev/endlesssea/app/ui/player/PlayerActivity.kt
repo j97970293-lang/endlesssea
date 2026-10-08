@@ -118,7 +118,8 @@ class PlayerActivity : ComponentActivity() {
             startIndex = launch.startIndex,
         )
         setContent {
-            EndlessSeaTheme {
+            val motionEnabled by prefs.enableAnimation.collectAsState()
+            EndlessSeaTheme(animationsEnabled = motionEnabled) {
                 PlayerScreen(viewModel = viewModel, onBack = { finish() })
             }
         }
@@ -805,7 +806,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
 
         if (state.loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                dev.endlesssea.app.ui.components.EsLoadingIndicator()
             }
         }
         state.error?.let { error ->
@@ -1105,7 +1106,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(8.dp))
                     if (subLoading) {
-                        CircularProgressIndicator()
+                        dev.endlesssea.app.ui.components.EsLoadingIndicator()
                     } else if (subResults.isEmpty()) {
                         Text(
                             "Aucun résultat pour l'instant — lancez une recherche.",

@@ -383,7 +383,7 @@ fun DetailsScreen(
             if (state.loading) {
                 item {
                     Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        dev.endlesssea.app.ui.components.EsLoadingIndicator()
                     }
                 }
             } else if (state.error != null && state.details == null) {
@@ -515,7 +515,7 @@ fun DetailsScreen(
                                 modifier = Modifier.weight(1.4f),
                             ) {
                                 if (state.batchRunning) {
-                                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                                     Spacer(Modifier.width(6.dp))
                                 } else {
                                     Icon(Icons.Filled.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
@@ -904,7 +904,7 @@ fun DetailsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (searching) {
-                            CircularProgressIndicator()
+                            dev.endlesssea.app.ui.components.EsLoadingIndicator()
                             Spacer(Modifier.height(10.dp))
                             Text(
                                 "Recherche des serveurs…",
@@ -1098,7 +1098,7 @@ fun DetailsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (searching) {
-                            CircularProgressIndicator()
+                            dev.endlesssea.app.ui.components.EsLoadingIndicator()
                             Spacer(Modifier.height(10.dp))
                             Text(
                                 "Recherche des serveurs…",
@@ -1653,7 +1653,7 @@ private fun EpisodeRowAnymex(
                 }
             }
             if (loading) {
-                CircularProgressIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
+                dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
             } else {
                 IconButton(onClick = onDownload) {
                     Icon(Icons.Filled.Download, "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)

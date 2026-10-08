@@ -178,6 +178,11 @@ fun SearchScreen(
             }
         }
 
+        if (state.loading) {
+            if (state.results.isEmpty()) dev.endlesssea.app.ui.components.CatalogLoadingSkeleton()
+            else dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(8.dp))
+        }
+
         if (state.results.isEmpty() && state.query.isNotBlank() && !state.loading) {
             Text("Aucun résultat", modifier = Modifier.padding(16.dp))
         }

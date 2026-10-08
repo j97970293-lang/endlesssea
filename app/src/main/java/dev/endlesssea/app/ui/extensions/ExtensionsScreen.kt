@@ -177,7 +177,7 @@ fun ExtensionsScreen(
                     Row(
                         Modifier.fillMaxWidth().padding(8.dp),
                         horizontalArrangement = Arrangement.Center,
-                    ) { CircularProgressIndicator() }
+                    ) { dev.endlesssea.app.ui.components.EsLoadingIndicator() }
                 }
             }
 

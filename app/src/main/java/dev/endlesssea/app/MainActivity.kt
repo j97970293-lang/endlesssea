@@ -153,6 +153,7 @@ class MainActivity : ComponentActivity() {
             }
 
             EndlessSeaTheme(
+                animationsEnabled = animationsOn,
                 themeMode = themeMode,
                 accentArgb = AppPrefs.ACCENTS[accentName] ?: 0xFFB9C1FF,
                 uiBrightness = uiBrightness,

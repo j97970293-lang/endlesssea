@@ -74,6 +74,7 @@ fun EsBottomBar(
     /** §anymex-ui : barre translucide (verre) ou fond plein pour un maximum de lisibilité. */
     translucent: Boolean = true,
 ) {
+    val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
     val byRoute = allTabScreens.associateBy { it.route }
     val shown = order.mapNotNull { byRoute[it] }.filter { it.route in tabs }.ifEmpty { listOf(Screen.Home) }
     Row(
@@ -92,14 +93,17 @@ fun EsBottomBar(
         ) {
             shown.forEach { screen ->
                 val selected = currentRoute == screen.route
+                val pillColor = androidx.compose.animation.animateColorAsState(
+                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.Transparent,
+                    animationSpec = androidx.compose.animation.core.tween(motion.duration(140)), label = "tabColor",
+                ).value
                 if (style == "dynamic") {
                     // §barre-dynamique : l'onglet actif s'étire en pilule avec son libellé
                     Row(
                         modifier = Modifier
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                             .background(
-                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                                else Color.Transparent,
+                                pillColor,
                             )
                             .clickable {
                                 nav.navigate(screen.route) {
@@ -109,7 +113,7 @@ fun EsBottomBar(
                                 }
                             }
                             .padding(horizontal = 13.dp, vertical = 9.dp)
-                            .animateContentSize(),
+                            .animateContentSize(animationSpec = androidx.compose.animation.core.tween(motion.duration(220))),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
@@ -159,6 +163,8 @@ fun EsNavGraph(nav: NavHostController) {
     // L'id composite « ext:url » peut contenir des caractères spéciaux → encodage
     fun openDetails(nav: NavHostController, id: String) = nav.navigate("details/${Uri.encode(id)}")
 
+    val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
+    val tabs = allTabScreens.map { it.route }.toSet()
     // §animations : transitions douces entre tous les écrans (fondu + léger glissé)
     val enterAnim = androidx.compose.animation.fadeIn(
         androidx.compose.animation.core.tween(220),
@@ -184,10 +190,20 @@ fun EsNavGraph(nav: NavHostController) {
     NavHost(
         navController = nav,
         startDestination = Screen.Home.route,
-        enterTransition = { enterAnim },
-        exitTransition = { exitAnim },
-        popEnterTransition = { popEnterAnim },
-        popExitTransition = { popExitAnim },
+        enterTransition = {
+            if (!motion.enabled) androidx.compose.animation.EnterTransition.None
+            else if (initialState.destination.route in tabs && targetState.destination.route in tabs)
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180))
+            else enterAnim
+        },
+        exitTransition = {
+            if (!motion.enabled) androidx.compose.animation.ExitTransition.None
+            else if (initialState.destination.route in tabs && targetState.destination.route in tabs)
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140))
+            else exitAnim
+        },
+        popEnterTransition = { if (motion.enabled) popEnterAnim else androidx.compose.animation.EnterTransition.None },
+        popExitTransition = { if (motion.enabled) popExitAnim else androidx.compose.animation.ExitTransition.None },
     ) {
         composable("history") {
             dev.endlesssea.app.ui.history.HistoryScreen(onBack = { nav.popBackStack() })

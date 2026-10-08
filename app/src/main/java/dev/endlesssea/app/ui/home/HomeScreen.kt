@@ -90,7 +90,7 @@ fun HomeScreen(
             state.sourceFilter,
         )
     }
-    val animationsOn by dev.endlesssea.app.ui.components.UiTuning.animations.collectAsState()
+    val animationsOn = dev.endlesssea.app.ui.motion.LocalAppMotion.current.loop
 
     // §accueil-actualiser : tirer vers le bas recharge les catalogues des extensions
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
@@ -134,7 +134,7 @@ fun HomeScreen(
                 )
             } else if (state.loading) {
                 Box(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    dev.endlesssea.app.ui.components.CatalogLoadingSkeleton()
                 }
             } else {
                 EmptyHome(onBrowseExtensions = { /* navigate handled by parent later */ })

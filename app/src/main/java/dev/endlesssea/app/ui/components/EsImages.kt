@@ -221,7 +221,7 @@ fun SafeAsyncImage(
         coil.compose.SubcomposeAsyncImage(
             model = ImageRequest.Builder(context)
                 .data(safeUrl) // null → Coil part direct en Empty → placeholder
-                .crossfade(true)
+                .crossfade(dev.endlesssea.app.ui.motion.LocalAppMotion.current.duration(180))
                 .build(),
             contentDescription = contentDescription,
             imageLoader = loader,

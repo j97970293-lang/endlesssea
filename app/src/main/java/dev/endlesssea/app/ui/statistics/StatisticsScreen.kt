@@ -44,7 +44,7 @@ fun StatisticsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading) dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(28.dp))
             state.error?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
                 TextButton(onClick = viewModel::refresh) { Text("Réessayer") }

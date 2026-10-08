@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
@@ -77,6 +78,7 @@ fun EndlessSeaTheme(
     textOutline: Boolean = true,     // §lisibilite : ombre portée sur les textes
     dynamicColor: Boolean = false,   // verre + AMOLED demandent la palette fixe « mer »
     fontId: String = "system",       // police choisie dans Réglages (téléchargeable)
+    animationsEnabled: Boolean? = null,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -145,7 +147,10 @@ fun EndlessSeaTheme(
         secondary = secondary, onSecondary = foreground(secondary),
         tertiary = tertiary, onTertiary = foreground(tertiary),
         onSurfaceVariant = readable(tinted.onSurfaceVariant))
-    MaterialTheme(colorScheme = accessible, typography = typography, content = content)
+    val sharedMotion = dev.endlesssea.app.ui.components.UiTuning.animations.collectAsState().value
+    dev.endlesssea.app.ui.motion.AppMotionProvider(animationsEnabled ?: sharedMotion) {
+        MaterialTheme(colorScheme = accessible, typography = typography, content = content)
+    }
 }
 
 // ----------------------------------------------------------------- polices §37

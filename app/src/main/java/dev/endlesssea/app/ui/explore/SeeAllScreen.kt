@@ -69,7 +69,7 @@ fun SeeAllScreen(
         }
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                dev.endlesssea.app.ui.components.CatalogLoadingSkeleton()
             }
             state.error != null && state.items.isEmpty() -> Column(
                 Modifier.fillMaxSize().padding(24.dp),
@@ -99,7 +99,7 @@ fun SeeAllScreen(
                 if (state.loadingMore) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(Modifier.height(28.dp), strokeWidth = 2.dp)
+                            dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.height(28.dp), strokeWidth = 2.dp)
                         }
                     }
                 }

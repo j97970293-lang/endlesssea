@@ -1,5 +1,6 @@
 package dev.endlesssea.app.ui.components
 
+import dev.endlesssea.app.ui.motion.motionReveal
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -56,6 +57,7 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
     val roundnessMult by UiTuning.roundness.collectAsState()
     val glowMult by UiTuning.glow.collectAsState()
     val animate by UiTuning.cardAnimation.collectAsState()
+    val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
 
     val corner = (18.dp * roundnessMult.coerceIn(0f, 5f)).coerceIn(0.dp, 48.dp)
     val shape = RoundedCornerShape(corner)
@@ -64,13 +66,15 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (animate && pressed) 0.94f else 1f,
+        targetValue = if (animate && motion.enabled && pressed) 0.975f else 1f,
+        animationSpec = androidx.compose.animation.core.tween(motion.duration(140)),
         label = "cardPress",
     )
 
     Column(
         modifier = Modifier
             .width(130.dp)
+            .motionReveal(item.id)
             .scale(scale)
             .combinedClickable(
                 interactionSource = interaction,
@@ -110,7 +114,7 @@ fun MediaCard(item: SearchItemUi, onClick: () -> Unit, onLongClick: (() -> Unit)
                     // §4-placeholder : mêmes clés mémoire → pas de flash vide
                     // quand on passe de la grille à la fiche (Coil réutilise l'image).
                     .memoryCacheKey(item.posterUrl)
-                    .crossfade(180)
+                    .crossfade(motion.duration(180))
                     .build(),
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,

@@ -147,7 +147,7 @@ fun ExploreScreen(
 
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                dev.endlesssea.app.ui.components.CatalogLoadingSkeleton()
             }
             state.extensionCount == 0 -> Column(
                 Modifier.fillMaxSize().padding(32.dp),

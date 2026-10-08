@@ -37,6 +37,10 @@ Endless Sea est une application Android moderne et légère inspirée des meille
 - 🛡️ **CAPTCHA/anti-bot** : écran de vérification WebView déclenché quand le site l'autorise, cookies conservés
 - 📱 Android 8.0+ (API 26 → 15), stockage interne ou carte SD (SAF)
 
+### Animations et chargements
+
+Les composants partagés proposent des chargements animés, des placeholders de catalogue, des entrées de cartes, des retours d’appui et des transitions courtes. Les nouveaux effets respectent la réduction du mouvement et arrêtent leurs boucles en arrière-plan. [Périmètre et checklist appareil](docs/maintenance/motion-and-loading.md).
+
 ### État des lieux & audit
 
 Les travaux actuels et la checklist appareil sont décrits dans [Fiabilité et sauvegardes](docs/maintenance/reliability-and-backups.md). Les tests unitaires et la compilation en CI ne remplacent pas une validation sur téléphone.

@@ -623,7 +623,7 @@ private fun LocalFilesPanel(
                 Modifier.fillMaxWidth().padding(24.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             ) {
-                androidx.compose.material3.CircularProgressIndicator()
+                dev.endlesssea.app.ui.components.EsLoadingIndicator()
                 Spacer(Modifier.height(10.dp))
                 Text(
                     state.localScanLabel.ifBlank { "Analyse du stockage…" },
@@ -772,7 +772,7 @@ private fun LocalFilesPanel(
                                 coil.compose.AsyncImage(
                                     model = coil.request.ImageRequest.Builder(
                                         androidx.compose.ui.platform.LocalContext.current,
-                                    ).data(video.uri).crossfade(true).build(),
+                                    ).data(video.uri).crossfade(dev.endlesssea.app.ui.motion.LocalAppMotion.current.duration(180)).build(),
                                     contentDescription = null,
                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                     modifier = Modifier.padding(end = 10.dp).width(56.dp).height(84.dp)
