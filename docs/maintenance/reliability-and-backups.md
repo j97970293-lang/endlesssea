@@ -85,3 +85,11 @@ Le workflow Android CI lance les tests des sept modules, assemble l'APK debug pu
 ## Durcissement après la première passe
 
 Les catégories importées qui ne diffèrent que par la casse (par exemple `Anime`, `ANIME`, `anime`) sont fusionnées dans un résultat accumulé. Les éléments d'une variante ne remplacent plus ceux de la variante précédente ; l'ordre et l'orthographe des catégories déjà présentes sont conservés. `BackupCategoryMergeTest` couvre six cas, dont une seconde importation et des listes vides.
+
+L'aperçu, la case de restauration des réglages et les opérations manuelles appartiennent désormais au ViewModel : une recréation de l'écran ne les réinitialise plus. Les doubles appuis et actions concurrentes sont ignorés pendant une opération. Une erreur conserve l'aperçu pour permettre une nouvelle tentative ; une annulation de coroutine n'est pas présentée comme un fichier invalide.
+
+Après confirmation et démarrage de la phase d'écriture, une annulation de navigation ne coupe plus la séquence entre la transaction Room et l'application des préférences. **Cela ne protège pas contre la mort du processus et ne crée pas de transaction entre les deux stockages.** Un appel déjà annulé ne commence aucune écriture. Les erreurs de la copie automatique sont affichées dans les réglages Sauvegarde au lieu d'être silencieuses.
+
+Tests supplémentaires : `BackupSessionTest` (11 cas) et `CompleteBackupRestoreTest` (5 cas). Ces tests de logique Kotlin, ainsi que les 6 tests de catégories, peuvent être exécutés sans SDK Android ; ils ne simulent ni une vraie Activity ni le système de fichiers Android.
+
+À ajouter aux essais appareil : rotation pendant l'aperçu/export/import, changement de thème lors de la restauration, double appui sur Fusionner, retour arrière après confirmation et espace de stockage insuffisant pour la copie automatique.

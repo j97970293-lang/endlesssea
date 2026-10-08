@@ -43,6 +43,7 @@ data class SettingsUiState(
     val skipSeconds: Int = 10,
     val autoBackup: Boolean = true,
     val lastBackupAt: Long = 0,
+    val autoBackupError: String? = null,
     val themeMode: Int = AppPrefs.THEME_SYSTEM,
     val glassOverlay: Int = 12,
     val glassScrim: Int = 25,
@@ -467,23 +468,44 @@ class SettingsViewModel @Inject constructor(
 
     // ------------------------------------------------------------ sauvegarde
 
-    /** Snapshot versionné ; aucun jeton ni réglage d'extension n'est exporté. */
-    suspend fun buildBackupJson(): String = backups.export()
-
-    suspend fun restoreBackup(snapshot: dev.endlesssea.app.backup.BackupSnapshot, restorePreferences: Boolean): String =
-        backups.restore(snapshot, restorePreferences)
+    private val backupSession = dev.endlesssea.app.backup.BackupSession<dev.endlesssea.app.backup.BackupSnapshot>(
+        scope = viewModelScope,
+        read = { uri ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val stream = context.contentResolver.openInputStream(android.net.Uri.parse(uri))
+                    ?: error("Impossible de lire ce fichier")
+                dev.endlesssea.app.backup.BackupCodec.decode(dev.endlesssea.app.backup.BackupCodec.read(stream))
+            }
+        },
+        write = { uri ->
+            val json = backups.export()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val stream = context.contentResolver.openOutputStream(android.net.Uri.parse(uri), "wt")
+                    ?: error("Impossible d'ouvrir le fichier en écriture")
+                stream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+            }
+        },
+        restore = { snapshot, preferences -> backups.restore(snapshot, preferences) },
+    )
+    val backupState = backupSession.state
+    fun previewBackup(uri: android.net.Uri) = backupSession.preview(uri.toString())
+    fun exportBackup(uri: android.net.Uri) = backupSession.export(uri.toString())
+    fun dismissBackupPreview() = backupSession.dismiss()
+    fun setBackupRestorePreferences(value: Boolean) = backupSession.setRestorePreferences(value)
+    fun confirmBackupRestore() = backupSession.confirm()
+    fun clearBackupMessage(message: String) = backupSession.clearMessage(message)
 
     private suspend fun maybeAutoBackup() {
         if (!prefs.autoBackup.value) return
         val now = System.currentTimeMillis()
         if (now - prefs.lastAutoBackupAt < BACKUP_INTERVAL_MS) return
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching {
+        try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val dir = (context.getExternalFilesDir(null) ?: context.filesDir)
                     .resolve("EndlessSea/backups").apply { mkdirs() }
                 val stamp = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                     .format(java.util.Date(now))
-                val json = buildBackupJson() // Finish serialization before touching the previous backup.
+                val json = backups.export() // Finish serialization before touching the previous backup.
                 val atomic = android.util.AtomicFile(dir.resolve("endlesssea-backup-$stamp.json"))
                 val stream = atomic.startWrite()
                 try {
@@ -494,13 +516,13 @@ class SettingsViewModel @Inject constructor(
                     throw e
                 }
                 prefs.lastAutoBackupAt = now
-                set { copy(lastBackupAt = now) }
             }
+            set { copy(lastBackupAt = now, autoBackupError = null) }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
+            set { copy(autoBackupError = e.message ?: "Erreur de stockage") }
         }
     }
-
-    fun onBackupExported(ok: Boolean) = toastState(if (ok) "Fichier de sauvegarde écrit" else "Export annulé")
-    fun onBackupImported(message: String) = toastState(message)
 
     fun toastState(message: String) { set { copy(message = message) } }
     fun clearMessage() { set { copy(message = null) } }

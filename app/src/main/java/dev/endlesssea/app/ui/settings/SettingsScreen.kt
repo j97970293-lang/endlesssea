@@ -68,10 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.di.AppPrefs
 import dev.endlesssea.app.navigation.allTabScreens
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.ArrowBack
-import kotlinx.coroutines.withContext
 
 /**
  * Paramètres — chaque entrée est fonctionnelle et persistée :
@@ -91,7 +88,6 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
 
     // §réglages-recherche : filtre instantané sur le titre et le sous-titre
@@ -135,46 +131,24 @@ fun SettingsScreen(
         } ?: viewModel.onStorageChosen(null)
     }
 
-    // Validate and preview before any database or preference writes.
-    var pendingBackup by remember { mutableStateOf<dev.endlesssea.app.backup.BackupSnapshot?>(null) }
-    var backupBusy by remember { mutableStateOf(false) }
-    var restorePreferences by remember { mutableStateOf(true) }
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null && !backupBusy) {
-            scope.launch {
-                backupBusy = true
-                try {
-                    val json = viewModel.buildBackupJson()
-                    withContext(Dispatchers.IO) {
-                        val stream = context.contentResolver.openOutputStream(uri, "wt") ?: error("Impossible d'ouvrir le fichier en écriture")
-                        stream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
-                    }
-                    viewModel.onBackupExported(true)
-                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                catch (e: Exception) { viewModel.toastState("Échec de l'export : ${e.message ?: "erreur d'écriture"}. Le fichier de destination peut être incomplet.") }
-                finally { backupBusy = false }
-            }
+    // ViewModel state survives Activity recreation (including imported theme changes).
+    val backupState by viewModel.backupState.collectAsState()
+    val backupBusy = backupState.busy
+    LaunchedEffect(backupState.message) {
+        backupState.message?.let { message ->
+            snackbar.showSnackbar(message)
+            viewModel.clearBackupMessage(message)
         }
+    }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) viewModel.exportBackup(uri)
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && !backupBusy) {
-            scope.launch {
-                backupBusy = true
-                try {
-                    pendingBackup = withContext(Dispatchers.IO) {
-                        val stream = context.contentResolver.openInputStream(uri) ?: error("Impossible de lire ce fichier")
-                        dev.endlesssea.app.backup.BackupCodec.decode(dev.endlesssea.app.backup.BackupCodec.read(stream))
-                    }
-                    restorePreferences = true
-                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                catch (e: Exception) { viewModel.toastState("Import refusé : ${e.message ?: "fichier invalide"}. Aucune donnée modifiée.") }
-                finally { backupBusy = false }
-            }
-        }
+        if (uri != null) viewModel.previewBackup(uri)
     }
-    pendingBackup?.let { snapshot ->
+    backupState.pending?.let { snapshot ->
         AlertDialog(
-            onDismissRequest = { if (!backupBusy) pendingBackup = null },
+            onDismissRequest = viewModel::dismissBackupPreview,
             title = { Text("Fusionner cette sauvegarde ?") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -185,25 +159,17 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Text("Les vidéos, images et jetons de connexion ne sont pas inclus. Sur un autre appareil, réautorise les dossiers et réinstalle les extensions.")
                     if (snapshot.preferences != null) Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.Checkbox(checked = restorePreferences, enabled = !backupBusy, onCheckedChange = { restorePreferences = it })
+                        androidx.compose.material3.Checkbox(checked = backupState.restorePreferences, enabled = !backupBusy, onCheckedChange = viewModel::setBackupRestorePreferences)
                         Text("Importer aussi les réglages inclus (apparence, lecteur et enregistrement de l'historique)")
                     }
                 }
             },
             confirmButton = {
-                TextButton(enabled = !backupBusy, onClick = {
-                    backupBusy = true
-                    scope.launch {
-                        try {
-                            viewModel.onBackupImported(viewModel.restoreBackup(snapshot, restorePreferences))
-                            pendingBackup = null
-                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                        catch (e: Exception) { viewModel.toastState("Échec de la restauration : ${e.message ?: "erreur de stockage"}") }
-                        finally { backupBusy = false }
-                    }
-                }) { Text(if (backupBusy) "Fusion en cours…" else "Fusionner") }
+                TextButton(enabled = !backupBusy, onClick = viewModel::confirmBackupRestore) {
+                    Text(if (backupBusy) "Fusion en cours…" else "Fusionner")
+                }
             },
-            dismissButton = { TextButton(enabled = !backupBusy, onClick = { pendingBackup = null }) { Text("Annuler") } },
+            dismissButton = { TextButton(enabled = !backupBusy, onClick = viewModel::dismissBackupPreview) { Text("Annuler") } },
         )
     }
 
@@ -1462,9 +1428,9 @@ fun SettingsScreen(
                 SettingSwitch(
                     title = "Sauvegarde automatique locale",
                     subtitle = "À l'ouverture des réglages, au plus une fois par jour. Fichier daté dans le dossier privé de l'app ; supprimé à la désinstallation. Exporte une copie ailleurs." +
-                        if (state.lastBackupAt > 0)
+                        (if (state.lastBackupAt > 0)
                             "\nDernière : ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.FRANCE).format(java.util.Date(state.lastBackupAt))}"
-                        else "",
+                        else "") + (state.autoBackupError?.let { "\nÉchec de la copie automatique : $it. Exporte une copie manuelle." } ?: ""),
                     checked = state.autoBackup,
                     onChange = viewModel::setAutoBackup,
                 )
