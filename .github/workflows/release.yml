@@ -50,6 +50,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if gh release view v0.28.0 > /dev/null 2>&1; then
+            echo "Release v0.28.0 existe déjà — rien à faire"
+            exit 0
+          fi
           cat > RELEASE_NOTES.md << 'EOF'
           # EndlessSea 0.28.0 — Refonte UI du lecteur
 
