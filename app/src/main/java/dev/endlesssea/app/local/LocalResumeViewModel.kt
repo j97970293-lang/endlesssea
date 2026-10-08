@@ -39,19 +39,20 @@ class LocalResumeViewModel @Inject constructor(
                     val folder = cached.firstOrNull { it.uri == uri }?.parentUri?.takeIf { it.isNotBlank() }
                         ?: saved?.mediaId?.takeIf { it.startsWith("local:") }?.removePrefix("local:")?.takeIf { it.isNotBlank() }
                         ?: parentDocument(document)
+                    val metadataByUri = prefs.localFileMetadataSnapshot()
                     val siblings = when {
                         folder == null -> emptyList()
                         DocumentsContract.isTreeUri(Uri.parse(folder)) ->
                             LocalVideos.scanAsync(context, folder, includeHidden = prefs.showHiddenFiles.value, folderOnly = true)
                                 .map { file ->
-                                    val metadata = prefs.localFileMeta(file.uri)
+                                    val metadata = metadataByUri[file.uri] ?: AppPrefs.LocalFileMeta()
                                     LocalVideoUi(file.uri, file.displayName, file.parentUri, file.sizeBytes,
                                         customTitle = metadata.title, customCoverUri = metadata.coverUri,
                                         introStartSec = metadata.introStartSec, introEndSec = metadata.introEndSec, outroStartSec = metadata.outroStartSec)
                                 }
                         else -> cached.filter { it.parentUri == folder }
                     }
-                    val metadata = prefs.localFileMeta(uri)
+                    val metadata = metadataByUri[uri] ?: AppPrefs.LocalFileMeta()
                     val selected = siblings.firstOrNull { it.uri == uri } ?: cached.firstOrNull { it.uri == uri }
                         ?: LocalVideoUi(uri, LocalNames.fileName(uri), folder.orEmpty(), 0,
                             durationMs = saved?.durationMs, customTitle = metadata.title, customCoverUri = metadata.coverUri,

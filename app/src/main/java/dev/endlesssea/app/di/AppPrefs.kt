@@ -512,12 +512,12 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val clean = name.trim().replace("\"", "'").take(24)
         if (clean.isBlank() || _customCategories.value.any { it.equals(clean, true) }) return
         val next = _customCategories.value + clean
-        p.edit().putString("lib_categories", "[\"" + next.joinToString("\",\"") + "\"]").apply()
+        p.edit().putString("lib_categories", org.json.JSONArray(next).toString()).apply()
         _customCategories.value = next
     }
     fun removeCustomCategory(name: String) {
         val next = _customCategories.value.filterNot { it == name }
-        p.edit().putString("lib_categories", "[\"" + next.joinToString("\",\"") + "\"]").apply()
+        p.edit().putString("lib_categories", org.json.JSONArray(next).toString()).apply()
         _customCategories.value = next
         p.edit().remove("lib_cat_items_" + name).apply()
         _categoryItemsTick.value++
@@ -530,8 +530,25 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     fun toggleCategoryItem(name: String, item: String) {
         val cur = categoryItems(name)
         val next = if (item in cur) cur - item else cur + item
-        p.edit().putString("lib_cat_items_" + name, "[\"" + next.joinToString("\",\"") { it.replace("\"", " ") } + "\"]").apply()
+        p.edit().putString("lib_cat_items_" + name, org.json.JSONArray(next).toString()).apply()
         _categoryItemsTick.value++
+    }
+
+    /** Merge only portable user collections; no storage permissions or arbitrary preference keys. */
+    fun mergeBackupCollections(categories: Map<String, List<String>>, metadata: Map<String, LocalFileMeta>) {
+        val names = _customCategories.value.toMutableList()
+        val edit = p.edit()
+        categories.forEach { (incoming, items) ->
+            val name = names.firstOrNull { it.equals(incoming, true) } ?: incoming.also { names += it }
+            edit.putString("lib_cat_items_" + name, org.json.JSONArray((categoryItems(name) + items).distinct()).toString())
+        }
+        edit.putString("lib_categories", org.json.JSONArray(names).toString())
+        // Existing local edits win over imported values.
+        edit.putString("local_file_meta", dev.endlesssea.app.local.LocalMetadataCodec.encode(metadata + localFileMetadataSnapshot()))
+        edit.apply()
+        _customCategories.value = names
+        _categoryItemsTick.value++
+        _visibleLocalMetaTick.value++
     }
 
     /** §bordures : force des liserés de l'interface (0 = aucune, 100 = marquées). */
@@ -793,10 +810,10 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val storageRoot: StateFlow<String?> get() = storageUri
     fun setStorageRoot(uri: String?) = setStorageUri(uri)
 
-    private fun loadJsonStringList(key: String): List<String> =
-        p.getString(key, null)?.let { json ->
-            Regex("\"([^\"]*)\"").findAll(json).map { it.groupValues[1] }.toList()
-        } ?: emptyList()
+    private fun loadJsonStringList(key: String): List<String> = runCatching {
+        val values = org.json.JSONArray(p.getString(key, "[]") ?: "[]")
+        (0 until values.length()).map { values.getString(it) }
+    }.getOrDefault(emptyList())
 
     /** Variante Glass §24 : teinte dominante du verre ("auto" ou nom de ACCENTS). */
     private val _glassVariant = MutableStateFlow(p.getString("glass_variant", "auto") ?: "auto")

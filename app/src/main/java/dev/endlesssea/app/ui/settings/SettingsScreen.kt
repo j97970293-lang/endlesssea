@@ -38,6 +38,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -133,31 +135,76 @@ fun SettingsScreen(
         } ?: viewModel.onStorageChosen(null)
     }
 
-    // Sauvegarde : export (créer un fichier) + import (ouvrir un fichier)
+    // Validate and preview before any database or preference writes.
+    var pendingBackup by remember { mutableStateOf<dev.endlesssea.app.backup.BackupSnapshot?>(null) }
+    var backupBusy by remember { mutableStateOf(false) }
+    var restorePreferences by remember { mutableStateOf(true) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) {
+        if (uri != null && !backupBusy) {
             scope.launch {
-                val json = viewModel.buildBackupJson()
-                val ok = withContext(Dispatchers.IO) {
-                    runCatching {
-                        context.contentResolver.openOutputStream(uri)!!
-                            .use { it.write(json.toByteArray()) }
-                    }.isSuccess
-                }
-                viewModel.onBackupExported(ok)
-            }
-        } else viewModel.onBackupExported(false)
-    }
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                val text = withContext(Dispatchers.IO) {
-                    runCatching { context.contentResolver.openInputStream(uri)!!.bufferedReader().readText() }.getOrNull()
-                }
-                if (text != null) viewModel.onBackupImported(viewModel.restoreBackup(text))
-                else viewModel.onBackupImported("Impossible de lire ce fichier")
+                backupBusy = true
+                try {
+                    val json = viewModel.buildBackupJson()
+                    withContext(Dispatchers.IO) {
+                        val stream = context.contentResolver.openOutputStream(uri, "wt") ?: error("Impossible d'ouvrir le fichier en écriture")
+                        stream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                    }
+                    viewModel.onBackupExported(true)
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { viewModel.toastState("Échec de l'export : ${e.message ?: "erreur d'écriture"}. Le fichier de destination peut être incomplet.") }
+                finally { backupBusy = false }
             }
         }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && !backupBusy) {
+            scope.launch {
+                backupBusy = true
+                try {
+                    pendingBackup = withContext(Dispatchers.IO) {
+                        val stream = context.contentResolver.openInputStream(uri) ?: error("Impossible de lire ce fichier")
+                        dev.endlesssea.app.backup.BackupCodec.decode(dev.endlesssea.app.backup.BackupCodec.read(stream))
+                    }
+                    restorePreferences = true
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { viewModel.toastState("Import refusé : ${e.message ?: "fichier invalide"}. Aucune donnée modifiée.") }
+                finally { backupBusy = false }
+            }
+        }
+    }
+    pendingBackup?.let { snapshot ->
+        AlertDialog(
+            onDismissRequest = { if (!backupBusy) pendingBackup = null },
+            title = { Text("Fusionner cette sauvegarde ?") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text("${snapshot.library.size} entrée(s) de bibliothèque · ${snapshot.history.size} épisode(s) dans l'historique\n" +
+                        "${snapshot.media.size} fiche(s) · ${snapshot.customCategories.size} catégorie(s) personnelle(s) · ${snapshot.localMetadata.size} fichier(s) annoté(s).")
+                    Spacer(Modifier.height(12.dp))
+                    Text("Les fiches et annotations déjà présentes sont conservées. Pour la progression, la date la plus récente gagne. Aucun élément existant n'est supprimé.")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Les vidéos, images et jetons de connexion ne sont pas inclus. Sur un autre appareil, réautorise les dossiers et réinstalle les extensions.")
+                    if (snapshot.preferences != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = restorePreferences, enabled = !backupBusy, onCheckedChange = { restorePreferences = it })
+                        Text("Importer aussi les réglages inclus (apparence, lecteur et enregistrement de l'historique)")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !backupBusy, onClick = {
+                    backupBusy = true
+                    scope.launch {
+                        try {
+                            viewModel.onBackupImported(viewModel.restoreBackup(snapshot, restorePreferences))
+                            pendingBackup = null
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { viewModel.toastState("Échec de la restauration : ${e.message ?: "erreur de stockage"}") }
+                        finally { backupBusy = false }
+                    }
+                }) { Text(if (backupBusy) "Fusion en cours…" else "Fusionner") }
+            },
+            dismissButton = { TextButton(enabled = !backupBusy, onClick = { pendingBackup = null }) { Text("Annuler") } },
+        )
     }
 
     // Retour système sur la page de catégorie → revient à la liste (§réglages-pleine-page).
@@ -1414,8 +1461,7 @@ fun SettingsScreen(
             item {
                 SettingSwitch(
                     title = "Sauvegarde automatique locale",
-                    subtitle = "Chaque jour : bibliothèque + historique + favoris endlesssea-backup-AAAAMMJJ.json" +
-                        "(dossier privé de l'app)" +
+                    subtitle = "À l'ouverture des réglages, au plus une fois par jour. Fichier daté dans le dossier privé de l'app ; supprimé à la désinstallation. Exporte une copie ailleurs." +
                         if (state.lastBackupAt > 0)
                             "\nDernière : ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.FRANCE).format(java.util.Date(state.lastBackupAt))}"
                         else "",
@@ -1425,16 +1471,16 @@ fun SettingsScreen(
             }
             item {
                 SettingRow(
-                    title = "Exporter la bibliothèque + historique",
-                    subtitle = "fichier JSON dans le dossier de votre choix",
-                    onClick = { exportLauncher.launch("endless-sea-backup.json") },
+                    title = if (backupBusy) "Sauvegarde en cours…" else "Exporter mes données",
+                    subtitle = "Bibliothèque, historique complet, fiches, genres, catégories, annotations locales et réglages sélectionnés. JSON non chiffré, sans vidéos, images ni jetons.",
+                    onClick = { if (!backupBusy) exportLauncher.launch("endless-sea-backup.json") },
                 )
             }
             item {
                 SettingRow(
                     title = "Importer une sauvegarde",
-                    subtitle = "restaure bibliothèque, favoris et positions de lecture",
-                    onClick = { importLauncher.launch(arrayOf("application/json")) },
+                    subtitle = "Vérification et aperçu avant fusion · JSON de 20 Mio maximum · anciennes sauvegardes acceptées",
+                    onClick = { if (!backupBusy) importLauncher.launch(arrayOf("application/json", "text/plain")) },
                 )
             }
 

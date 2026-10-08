@@ -24,6 +24,7 @@ import androidx.room.RoomDatabase
     exportSchema = true,
 )
 abstract class EsDatabase : RoomDatabase() {
+    abstract fun backupDao(): BackupDao
     /** §megaskip — segments mis en cache + boutons de saut personnalisés. */
     abstract fun skipDao(): SkipDao
 

@@ -6,17 +6,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.endlesssea.app.di.AppPrefs
 import dev.endlesssea.data.db.GenreDao
 import dev.endlesssea.data.db.GenreEntity
-import dev.endlesssea.data.db.LibraryDao
-import dev.endlesssea.data.db.LibraryEntity
-import dev.endlesssea.data.db.WatchHistoryDao
-import dev.endlesssea.data.db.WatchHistoryEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 import javax.inject.Inject
 
 data class GenreUi(val id: Long, val name: String, val visible: Boolean, val position: Int)
@@ -82,8 +75,7 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val prefs: AppPrefs,
     private val genreDao: GenreDao,
-    private val libraryDao: LibraryDao,
-    private val historyDao: WatchHistoryDao,
+    private val backups: dev.endlesssea.app.backup.BackupRepository,
     private val updateChecker: dev.endlesssea.app.update.UpdateChecker,
     private val extensionDao: dev.endlesssea.data.db.ExtensionDao,
     private val appLogoManager: dev.endlesssea.app.branding.AppLogoManager,
@@ -474,86 +466,12 @@ class SettingsViewModel @Inject constructor(
 
     // ------------------------------------------------------------ sauvegarde
 
-    /** Produit le JSON de sauvegarde (bibliothèque, favoris, historique). */
-    suspend fun buildBackupJson(): String {
-        val library = libraryDao.observeByCategory("ANIME").first() +
-            libraryDao.observeByCategory("FILM").first() +
-            libraryDao.observeByCategory("SERIE").first() +
-            libraryDao.observeByCategory("OVA").first() +
-            libraryDao.observeByCategory("ONA").first() +
-            libraryDao.observeFavorites().first()
-        val uniqueLib = library.distinctBy { it.mediaId }
-        val history = historyDao.observeContinueWatching(500).first()
+    /** Snapshot versionné ; aucun jeton ni réglage d'extension n'est exporté. */
+    suspend fun buildBackupJson(): String = backups.export()
 
-        val root = JSONObject().apply {
-            put("app", "endless_sea")
-            put("version", 1)
-            put("exportedAt", System.currentTimeMillis())
-            put("library", JSONArray().apply {
-                uniqueLib.forEach {
-                    put(JSONObject().apply {
-                        put("mediaId", it.mediaId)
-                        put("category", it.category)
-                        put("favorite", it.favorite)
-                        put("addedAt", it.addedAt)
-                    })
-                }
-            })
-            put("history", JSONArray().apply {
-                history.forEach {
-                    put(JSONObject().apply {
-                        put("episodeId", it.episodeId)
-                        put("mediaId", it.mediaId)
-                        put("positionMs", it.positionMs)
-                        put("durationMs", it.durationMs)
-                        put("watched", it.watched)
-                        put("updatedAt", it.updatedAt)
-                    })
-                }
-            })
-        }
-        return root.toString(2)
-    }
+    suspend fun restoreBackup(snapshot: dev.endlesssea.app.backup.BackupSnapshot, restorePreferences: Boolean): String =
+        backups.restore(snapshot, restorePreferences)
 
-    /** Restaure le JSON produit par [buildBackupJson]. Retourne un message de bilan. */
-    suspend fun restoreBackup(json: String): String = runCatching {
-        val root = JSONObject(json)
-        var libCount = 0
-        root.optJSONArray("library")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val e = arr.getJSONObject(i)
-                libraryDao.upsert(
-                    LibraryEntity(
-                        mediaId = e.getString("mediaId"),
-                        category = e.optString("category", "ANIME"),
-                        favorite = e.optBoolean("favorite", false),
-                        addedAt = e.optLong("addedAt", System.currentTimeMillis()),
-                    ),
-                )
-                libCount++
-            }
-        }
-        var histCount = 0
-        root.optJSONArray("history")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val e = arr.getJSONObject(i)
-                historyDao.upsert(
-                    WatchHistoryEntity(
-                        episodeId = e.getString("episodeId"),
-                        mediaId = e.optString("mediaId", ""),
-                        positionMs = e.optLong("positionMs", 0),
-                        durationMs = e.optLong("durationMs", 0),
-                        watched = e.optBoolean("watched", false),
-                        updatedAt = e.optLong("updatedAt", System.currentTimeMillis()),
-                    ),
-                )
-                histCount++
-            }
-        }
-        "Sauvegarde restaurée : $libCount entrée(s) de bibliothèque, $histCount historique(s)"
-    }.getOrElse { "Sauvegarde illisible : ${it.message}" }
-
-    /** Sauvegarde planifiée locale : une fois par jour, fichiers datés dans le dossier privé. */
     private suspend fun maybeAutoBackup() {
         if (!prefs.autoBackup.value) return
         val now = System.currentTimeMillis()
@@ -564,7 +482,16 @@ class SettingsViewModel @Inject constructor(
                     .resolve("EndlessSea/backups").apply { mkdirs() }
                 val stamp = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                     .format(java.util.Date(now))
-                dir.resolve("endlesssea-backup-$stamp.json").writeText(buildBackupJson())
+                val json = buildBackupJson() // Finish serialization before touching the previous backup.
+                val atomic = android.util.AtomicFile(dir.resolve("endlesssea-backup-$stamp.json"))
+                val stream = atomic.startWrite()
+                try {
+                    stream.write(json.toByteArray(Charsets.UTF_8))
+                    atomic.finishWrite(stream)
+                } catch (e: Exception) {
+                    atomic.failWrite(stream)
+                    throw e
+                }
                 prefs.lastAutoBackupAt = now
                 set { copy(lastBackupAt = now) }
             }

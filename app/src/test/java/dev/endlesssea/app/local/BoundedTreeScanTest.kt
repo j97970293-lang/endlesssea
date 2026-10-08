@@ -14,7 +14,8 @@ class BoundedTreeScanTest {
         val peak = AtomicInteger()
         withTimeout(3000) {
             scanTreeBounded("root", 3) { id ->
-                peak.updateAndGet { maxOf(it, active.incrementAndGet()) }
+                val current = active.incrementAndGet()
+                peak.updateAndGet { maxOf(it, current) }
                 delay(5)
                 visited += id
                 active.decrementAndGet()

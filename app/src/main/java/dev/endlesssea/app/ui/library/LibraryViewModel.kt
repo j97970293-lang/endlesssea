@@ -557,6 +557,7 @@ class LibraryViewModel @Inject constructor(
             localScanning = true, localScanLabel = "Analyse en cours…",
         )
         val known = _uiState.value.localFiles.associate { it.uri to it.durationMs }
+        val metadataByUri = prefs.localFileMetadataSnapshot()
         val files = dirs
             .flatMap {
                 dev.endlesssea.app.local.LocalVideos.scanAsync(
@@ -572,7 +573,7 @@ class LibraryViewModel @Inject constructor(
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
-                val m = prefs.localFileMeta(f.uri)
+                val m = metadataByUri[f.uri] ?: AppPrefs.LocalFileMeta()
                 LocalVideoUi(
                     uri = f.uri,
                     name = dev.endlesssea.app.local.LocalNames.fileName(f.displayName)
