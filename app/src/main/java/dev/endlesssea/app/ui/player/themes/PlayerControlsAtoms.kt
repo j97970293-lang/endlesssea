@@ -17,23 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Audiotrack
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.ScreenRotation
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -44,10 +30,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.skip.CustomSkipButton
 import dev.endlesssea.app.skip.SkipSegment
+
+/**
+ * §ui-lecteur-v2 : briques visuelles repensées façon lecteurs modernes
+ * (YouTube / Netflix / MX) —
+ *  - boutons icône TRANSPARENTS par défaut (plus de pastilles opaques) ;
+ *  - bouton lecture en verre avec anneau discret ;
+ *  - barre fine, buffer visible, curseur avec halo blanc ;
+ *  - chips pilulaires (pill) en verre fumé.
+ * Les signatures publiques sont inchangées : les thèmes et PlayerActivity
+ * compilent sans modification.
+ */
 
 /** « 1:02:03 » / « 12:34 » — jamais de zéro inutile. */
 fun fmtTime(ms: Long): String {
@@ -58,7 +54,11 @@ fun fmtTime(ms: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-/** Bouton d'icône commun — rond, carré ou sans fond selon le thème. */
+/** Verre fumé partagé : noir translucide, jamais opaque. */
+internal val GlassDark: Color = Color(0x59000000)
+internal val Hairline: Color = Color(0x2EFFFFFF)
+
+/** Bouton d'icône commun — transparent par défaut (façon YouTube), verre au besoin. */
 @Composable
 fun SkinIconButton(
     icon: ImageVector,
@@ -69,7 +69,7 @@ fun SkinIconButton(
     iconSize: Int = 20,
     enabled: Boolean = true,
     shape: Shape = CircleShape,
-    background: Color = Color(0xCC101014),
+    background: Color = Color.Transparent,
     border: Color? = null,
 ) {
     Box(
@@ -90,7 +90,7 @@ fun SkinIconButton(
     }
 }
 
-/** Bouton lecture central : plein (accent) ou contour, rond ou carré. */
+/** Bouton lecture central : anneau de verre, icône blanche nette. */
 @Composable
 fun SkinPlayButton(
     playing: Boolean,
@@ -101,15 +101,15 @@ fun SkinPlayButton(
     square: Boolean = false,
     iconColor: Color = Color.White,
 ) {
-    val shape = if (square) RoundedCornerShape(4.dp) else CircleShape
+    val shape = if (square) RoundedCornerShape(6.dp) else CircleShape
     Box(
         Modifier
             .size(size.dp)
             .clip(shape)
-            .background(if (filled) accent else Color(0xCC101014))
+            .background(if (filled) accent else Color(0x66000000))
             .then(
-                if (!filled && accent.alpha > 0f && iconColor != accent) {
-                    Modifier.border(2.dp, Color.White.copy(alpha = 0.85f), shape)
+                if (!filled) {
+                    Modifier.border(1.5.dp, Color.White.copy(alpha = 0.55f), shape)
                 } else Modifier,
             )
             .clickable(onClick = onClick),
@@ -119,11 +119,15 @@ fun SkinPlayButton(
             if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
             if (playing) "Pause" else "Lecture",
             tint = if (filled) Color.Black else iconColor,
-            modifier = Modifier.size(((size * 0.62f).toInt()).dp),
+            modifier = Modifier.size(((size * 0.58f).toInt()).dp),
         )
     }
 }
 
+/**
+ * Barre de progression moderne : piste fine grisée, buffer visible,
+ * progression accent, curseur avec anneau blanc (halo façon YouTube).
+ */
 @Composable
 fun SkinSeekBar(
     state: PlayerControlsState,
@@ -149,7 +153,7 @@ fun SkinSeekBar(
             Text(
                 fmtTime(state.dragFraction?.let { (it * duration).toLong() } ?: state.positionMs),
                 color = timeColor,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
             )
         }
         Slider(
@@ -157,13 +161,14 @@ fun SkinSeekBar(
             onValueChange = { actions.onDrag(it) },
             onValueChangeFinished = { actions.onDragFinished(fraction) },
             enabled = state.durationMs > 0,
-            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
             thumb = {
                 Box(
                     Modifier
                         .size((if (state.autoHideThumb && state.dragFraction == null) 0 else thumbSize).dp)
                         .clip(CircleShape)
-                        .background(accent),
+                        .background(accent)
+                        .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                 )
             },
             track = { sliderState ->
@@ -174,13 +179,13 @@ fun SkinSeekBar(
                         .fillMaxWidth()
                         .height(maxOf(thickness, state.bufferThickness).dp)
                         .clip(shape)
-                        .background(Color.White.copy(alpha = 0.28f)),
+                        .background(Color.White.copy(alpha = 0.20f)),
                 ) {
                     Box(
                         Modifier.align(Alignment.CenterStart)
                             .fillMaxWidth((state.bufferedPositionMs.toFloat() / duration).coerceIn(0f, 1f))
                             .height(state.bufferThickness.dp)
-                            .background(Color.White.copy(alpha = 0.45f)),
+                            .background(Color.White.copy(alpha = 0.38f)),
                     )
                     Box(
                         Modifier.align(Alignment.CenterStart)
@@ -196,13 +201,13 @@ fun SkinSeekBar(
             Text(
                 if (remaining) "-" + fmtTime(duration - state.positionMs) else fmtTime(duration),
                 color = timeColor,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
             )
         }
     }
 }
 
-/** Petite puce d'action (cadrage, vitesse, statut) avec ou sans contour. */
+/** Puce d'action pilulaire en verre fumé — active = accent plein, texte noir. */
 @Composable
 fun SkinChip(
     label: String,
@@ -213,19 +218,21 @@ fun SkinChip(
     border: Boolean = true,
     textColor: Color = Color.White,
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(50)
     Row(
         Modifier
             .clip(shape)
             .then(
                 when {
                     active -> Modifier.background(accent)
-                    border -> Modifier.border(1.dp, Color.White.copy(alpha = 0.35f), shape)
-                    else -> Modifier
+                    else -> Modifier.background(GlassDark)
                 },
             )
+            .then(
+                if (!active && border) Modifier.border(1.dp, Hairline, shape) else Modifier,
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
@@ -234,7 +241,7 @@ fun SkinChip(
                 tint = if (active) Color.Black else textColor,
                 modifier = Modifier.size(16.dp),
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(5.dp))
         }
         Text(
             label,
