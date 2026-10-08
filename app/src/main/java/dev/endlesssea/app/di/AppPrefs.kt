@@ -973,25 +973,6 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val swapVolumeBrightness: StateFlow<Boolean> = _swapVolumeBrightness
     fun setSwapVolumeBrightness(v: Boolean) { p.edit().putBoolean("gesture_swap_vb", v).apply(); _swapVolumeBrightness.value = v }
 
-    // ---------------------------------------------------------------- suivi (conversation 11)
-    /**
-     * §suivi : identifiants des services connectés, sérialisés en JSON
-     * (`{"ANILIST":{"token":"…","userName":"…"}}`). Rien n'est envoyé tant que
-     * l'utilisateur n'a pas connecté un service.
-     */
-    private val _trackerAccounts = MutableStateFlow(p.getString("tracker_accounts", "{}") ?: "{}")
-    val trackerAccounts: StateFlow<String> = _trackerAccounts
-    fun setTrackerAccounts(json: String) {
-        p.edit().putString("tracker_accounts", json).apply(); _trackerAccounts.value = json
-    }
-
-    /** §suivi : rattachements fiche locale ↔ entrée du service. */
-    private val _trackerLinks = MutableStateFlow(p.getString("tracker_links", "{}") ?: "{}")
-    val trackerLinks: StateFlow<String> = _trackerLinks
-    fun setTrackerLinks(json: String) {
-        p.edit().putString("tracker_links", json).apply(); _trackerLinks.value = json
-    }
-
     /** §suivi : marquer automatiquement l'épisode suivant comme vu sur les services. */
     private val _autoMarkWatched = MutableStateFlow(p.getBoolean("tracker_auto_mark", true))
     val autoMarkWatched: StateFlow<Boolean> = _autoMarkWatched

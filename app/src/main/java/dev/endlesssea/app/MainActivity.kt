@@ -369,7 +369,3 @@ private fun EsNavGraphContainer(
 ) {
     androidx.compose.foundation.layout.Box(modifier) { EsNavGraph(nav) }
 }
-
-@Suppress("unused")
-@androidx.compose.runtime.Composable
-private fun IsDark(amoled: Boolean): Boolean = amoled || isSystemInDarkTheme()

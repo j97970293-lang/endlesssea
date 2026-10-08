@@ -50,8 +50,5 @@ class LocalTrackerViewModel @Inject constructor(private val trackers: TrackerRep
         val sent = trackers.setProgress(link.mediaId, progress)
         notice.value = if (sent) "Progression synchronisée" else "Progression conservée, synchronisation en attente"
     }
-    fun next(link: TrackerLinkEntity) = viewModelScope.launch {
-        val sent = trackers.setProgress(link.mediaId, link.progress + 1)
-        notice.value = if (sent) "Progression synchronisée" else "Progression conservée, synchronisation en attente"
-    }
+    fun next(link: TrackerLinkEntity) = setProgress(link, link.progress + 1)
 }

@@ -49,8 +49,6 @@ class ExtensionSettingsStore @Inject constructor(@ApplicationContext context: Co
         prefs.edit().putString(pkg + SEP + key, value).apply()
     }
 
-    fun holderKey(pkg: String, key: String) = pkg + SEP + key
-
     /**
      * Réécrit les clés de l'ancien format (`<id>\u0000<clé>`) avec [SEP].
      * En pratique elles n'ont jamais survécu à un redémarrage, mais la migration

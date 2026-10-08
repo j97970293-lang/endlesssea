@@ -89,11 +89,6 @@ class TrackerRepository @Inject constructor(
     private suspend fun activeAccount(id: String): TrackerAccountEntity? =
         dao.account(id)?.takeIf { it.enabled && it.userName.isNotBlank() }
 
-    /** §tracker-auto-link : récupère le premier service activé pour la création automatique de lien. */
-    private suspend fun getFirstEnabledService(): String? = withContext(Dispatchers.IO) {
-        dao.observeAccounts().first().firstOrNull { it.enabled && it.userName.isNotBlank() }?.service
-    }
-
     private suspend fun renewMal(account: TrackerAccountEntity): TrackerAccountEntity? {
         val mal = service("MAL") as? MalService ?: return null
         val token = mal.refresh(account) ?: return null
@@ -211,28 +206,6 @@ class TrackerRepository @Inject constructor(
                 push(updated, progress, total, newStatus)
             }
         }
-
-    /**
-     * §tracker-force : force la mise à jour de la progression même si l'épisode
-     * a déjà été marqué comme vu (utile pour les relectures ou corrections manuelles).
-     */
-    suspend fun forceMarkEpisodeWatched(
-        mediaId: String, episodeId: String, number: Float?, season: Int?,
-        service: String? = null,
-    ): Boolean = withContext(Dispatchers.IO) {
-        progressMutex.withLock {
-            val link = dao.link(mediaId)?.takeIf { it.remoteId.isNotBlank() } ?: return@withLock false
-            val episode = number?.toInt() ?: return@withLock false
-            val total = link.totalEpisodes.takeIf { it > 0 }
-            val status = if (total != null && episode >= total) "COMPLETED" else "WATCHING"
-            val updated = link.copy(
-                progress = episode, status = status, lastEpisodeId = episodeId,
-                pendingSync = true, updatedAt = System.currentTimeMillis(),
-            )
-            dao.upsertLink(updated)
-            push(updated, episode, total, status)
-        }
-    }
 
     /** Pousse l'état vers le service ; en cas d'échec le drapeau reste levé. */
     private suspend fun push(

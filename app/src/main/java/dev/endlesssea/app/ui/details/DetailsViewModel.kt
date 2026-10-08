@@ -678,48 +678,14 @@ class DetailsViewModel @Inject constructor(
 
     /** Téléchargement en un clic : met en file le lien choisi (spec §14). */
     fun enqueue(episode: Episode, link: VideoLink) = viewModelScope.launch {
-        val title = buildEpisodeTitle(episode)
-        val quality = link.quality.name
-        val fileName = FileNames.sanitize(
-            "$title [$quality]${if (link.subtitles.isNotEmpty()) " [subs]" else ""}",
-        ) + extensionFor(link)
-        // §stockage-public (arborescence Aniyomi) :
-        //   downloads/<Source>/<Série>/<Épisode>/<fichier>
-        val sourceName = runCatching { registry.instance(extensionId).info.name }
-            .getOrDefault(extensionId)
-        val seriesName = _uiState.value.details?.title ?: mediaId
-        // §structure-plate : un dossier par SÉRIE, les épisodes dedans
-        // (pas de sous-dossier par épisode — demande utilisateur).
-        val relDirs = listOf(
-            dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR,
-            sourceName, seriesName,
-        )
-        writeOfflineMetadata(relDirs, sourceName, seriesName)
-        val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
-        val task = DownloadTaskEntity(
-            id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
-            mediaId = mediaId, episodeId = episode.id,
-            url = link.url,
-            headersJson = if (link.headers.isEmpty()) "{}" else
-                link.headers.entries.joinToString(",", "{", "}") { (k, v) ->
-                    "\"${k.replace("\"", "")}\":\"${v.replace("\"", "'")}\""
-                },
-            server = link.server, quality = quality,
-            streamType = link.streamType.name,
-            targetUri = File(dir, fileName).toURI().toString(),
-            fileName = fileName,
-            displayPath = (relDirs + fileName).joinToString("/"),
-            status = "QUEUED",
-        )
-        downloads.enqueue(task)
-        startDownloadService()
+        val fileName = enqueueAndWait(episode, link)
         _uiState.value = _uiState.value.copy(message = "Téléchargement ajouté : $fileName")
     }
 
     /**
      * « Tout télécharger » : pour chaque épisode, résout les liens et met en file
-     * la meilleure qualité en fichier direct (les flux HLS/embed ne sont pas
-     * téléchargeables — ils restent en lecture seule).
+     * un fichier direct ou HLS compatible avec les filtres. Les embeds restent
+     * réservés à la lecture.
      */
     private suspend fun resolveBatchLinks(episode: Episode): List<VideoLink> {
         _uiState.value.linksByEpisode[episode.id]?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -794,20 +760,20 @@ class DetailsViewModel @Inject constructor(
         } finally { _uiState.value = _uiState.value.copy(batchRunning = false) }
     }
 
-    private suspend fun enqueueAndWait(episode: Episode, link: VideoLink) {
+    private suspend fun enqueueAndWait(episode: Episode, link: VideoLink): String {
         val title = buildEpisodeTitle(episode)
         val quality = link.quality.name
         val fileName = FileNames.sanitize(
             "$title [$quality]${if (link.subtitles.isNotEmpty()) " [subs]" else ""}",
         ) + extensionFor(link)
-        val sourceName2 = runCatching { registry.instance(extensionId).info.name }
+        val sourceName = runCatching { registry.instance(extensionId).info.name }
             .getOrDefault(extensionId)
-        val seriesName2 = _uiState.value.details?.title ?: mediaId
+        val seriesName = _uiState.value.details?.title ?: mediaId
         val relDirs = listOf(
             dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR,
-            sourceName2, seriesName2,
+            sourceName, seriesName,
         )
-        writeOfflineMetadata(relDirs, sourceName2, seriesName2)
+        writeOfflineMetadata(relDirs, sourceName, seriesName)
         val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
         val task = DownloadTaskEntity(
             id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
@@ -826,6 +792,7 @@ class DetailsViewModel @Inject constructor(
         )
         downloads.enqueue(task)
         startDownloadService()
+        return fileName
     }
 
     /**

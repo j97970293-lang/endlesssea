@@ -2,6 +2,7 @@ package dev.endlesssea.app.ui.player
 
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import dev.endlesssea.app.ui.player.themes.fmtTime as formatTime
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -168,15 +169,6 @@ private val BUILTIN_PRESETS = listOf(
     VideoFilterPreset("Froid", 0f, 8f, -14f),
     VideoFilterPreset("Chaud", 2f, 6f, 14f),
 )
-
-private fun formatTime(ms: Long): String {
-    if (ms <= 0) return "0:00"
-    val total = ms / 1000
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
-}
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @kotlin.OptIn(
@@ -1435,25 +1427,6 @@ private fun TextButtonBack(onBack: () -> Unit) {
     TextButton(onClick = onBack) { Text("Retour") }
 }
 
-
-/** §lecteur-redessiné : pastille de grand saut (mégaskip), façon « +85 s ». */
-@Composable
-private fun MegaSkipPill(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.92f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-    ) {
-        Text(
-            label,
-            color = Color.Black,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-        )
-    }
-}
 
 /**
  * §stats — surimpression technique demandée dans la conversation « lecteur
