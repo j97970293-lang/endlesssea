@@ -31,6 +31,28 @@ class TrackerRepositoryTest {
     private fun seed(dao: MemoryDao, auto: Boolean = true) {
         dao.stored["local:folder"] = TrackerLinkEntity("local:folder", "ANILIST", "42", totalEpisodes = 12, autoMatchEpisodes = auto, autoMatchSeason = 1)
     }
+    @Test fun neverCreatesAnUnmatchedRemoteLinkAutomatically() = runBlocking {
+        val dao = MemoryDao()
+        val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
+        assertFalse(repo.markEpisodeWatched("new", "ep1", 1f, 1))
+        assertNull(dao.link("new"))
+    }
+    @Test fun changingTitleDoesNotCopyUnrelatedProgress() = runBlocking {
+        val dao = MemoryDao(); seed(dao)
+        dao.stored["local:folder"] = dao.stored.getValue("local:folder").copy(progress = 10)
+        val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
+        assertTrue(repo.link("local:folder", "MAL", TrackerSearchHit("99", "Other", 1000)))
+        assertEquals(0, dao.link("local:folder")!!.progress)
+    }
+    @Test fun bulkProgressUsesOneOperationForLongSeries() = runBlocking {
+        val dao = MemoryDao(); seed(dao)
+        dao.stored["local:folder"] = dao.stored.getValue("local:folder").copy(totalEpisodes = 1000)
+        val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
+        repo.setProgress("local:folder", 850)
+        assertEquals(850, dao.link("local:folder")!!.progress)
+        assertTrue(dao.link("local:folder")!!.pendingSync)
+    }
+
     @Test fun offlineProgressIsNumberBasedAndRewatchSafe() = runBlocking {
         val dao = MemoryDao(); seed(dao)
         val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))

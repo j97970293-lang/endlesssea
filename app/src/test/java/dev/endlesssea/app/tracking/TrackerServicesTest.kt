@@ -20,6 +20,33 @@ class TrackerServicesTest {
         }.build()
     private fun Request.text(): String = Buffer().also { body?.writeTo(it) }.readUtf8()
 
+    @Test fun readsAniListProgressBeforeWriting() = runBlocking {
+        val service = AniListService(client { request ->
+            assertTrue(request.text().contains("mediaListEntry"))
+            assertFalse(request.text().contains("mutation"))
+            200 to """{"data":{"Media":{"mediaListEntry":{"progress":850,"status":"CURRENT"}}}}"""
+        })
+        assertEquals(850, service.readProgress(TrackerAccountEntity("ANILIST", accessToken = "test"), "42")!!.progress)
+    }
+    @Test fun readsMalProgressAndDoesNotTreatAuthFailureAsZero() = runBlocking {
+        val service = MalService(client { request ->
+            assertEquals("my_list_status", request.url.queryParameter("fields"))
+            200 to """{"id":42,"my_list_status":{"num_episodes_watched":850,"status":"watching"}}"""
+        })
+        assertEquals(850, service.readProgress(TrackerAccountEntity("MAL", accessToken = "test"), "42")!!.progress)
+        try {
+            MalService(client { 401 to "{}" }).readProgress(TrackerAccountEntity("MAL", accessToken = "test"), "42")
+            fail("An authentication error must not reset progression")
+        } catch (_: TrackerError) { }
+    }
+    @Test fun readsShikimoriExistingRate() = runBlocking {
+        val service = ShikimoriService(client { request ->
+            if (request.url.encodedPath.endsWith("whoami")) 200 to """{"id":7}"""
+            else 200 to """[{"target_id":42,"target_type":"Anime","episodes":850,"status":"watching"}]"""
+        })
+        assertEquals(850, service.readProgress(TrackerAccountEntity("SHIKIMORI", accessToken = "test"), "42")!!.progress)
+    }
+
     @Test fun shikimoriUpdatesExistingRateRatherThanPostingDuplicate() = runBlocking {
         var updated = false
         val http = client { request ->

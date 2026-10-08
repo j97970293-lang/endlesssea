@@ -32,6 +32,8 @@ class TrackerRepository @Inject constructor(
 
     private val services: List<TrackerService> = TrackerRegistry.all(http)
 
+    val defaultService get() = prefs.defaultTrackerService
+
     val accounts: Flow<List<TrackerAccountEntity>> = dao.observeAccounts()
     val links: Flow<List<TrackerLinkEntity>> = dao.observeLinks()
 
@@ -131,25 +133,28 @@ class TrackerRepository @Inject constructor(
         autoMatchEpisodes: Boolean = false, autoMatchSeason: Int? = null,
     ) =
         withContext(Dispatchers.IO) {
-            val existing = dao.link(mediaId)
-            // §tracker-no-reset : si un lien existe déjà, conserver sa progression et statut
-            val progress = existing?.progress ?: 0
-            val existingStatus = existing?.status ?: status
-            val existingAutoMatch = existing?.autoMatchEpisodes ?: autoMatchEpisodes
-            val existingSeason = existing?.autoMatchSeason ?: autoMatchSeason
-            dao.upsertLink(
-                TrackerLinkEntity(
-                    mediaId = mediaId,
-                    service = service,
-                    remoteId = hit.remoteId,
-                    title = hit.title,
+            if (hit.remoteId.isBlank() || service == "TMDB") return@withContext false
+            progressMutex.withLock {
+                val existing = dao.link(mediaId)?.takeIf { it.service == service && it.remoteId == hit.remoteId }
+                val account = activeAccount(service)
+                val remote = if (account == null) null else try {
+                    withFreshAccount(account) { service(service)?.readProgress(it, hit.remoteId) }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) {
+                    dao.setLastError(service, "Impossible de lire la progression : ${e.message}")
+                    return@withLock false
+                }
+                val progress = maxOf(existing?.progress ?: 0, remote?.progress ?: 0)
+                dao.upsertLink(TrackerLinkEntity(
+                    mediaId = mediaId, service = service, remoteId = hit.remoteId, title = hit.title,
                     totalEpisodes = hit.totalEpisodes ?: existing?.totalEpisodes ?: 0,
                     progress = progress,
-                    status = existingStatus,
-                    autoMatchEpisodes = existingAutoMatch,
-                    autoMatchSeason = existingSeason,
-                ),
-            )
+                    status = if (remote != null && remote.progress >= (existing?.progress ?: 0)) remote.status else existing?.status ?: status,
+                    autoMatchEpisodes = autoMatchEpisodes, autoMatchSeason = autoMatchSeason,
+                    pendingSync = existing?.pendingSync ?: false,
+                ))
+                true
+            }
         }
 
     suspend fun unlink(mediaId: String) = withContext(Dispatchers.IO) { dao.deleteLink(mediaId) }
@@ -174,26 +179,7 @@ class TrackerRepository @Inject constructor(
         service: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         progressMutex.withLock {
-            val link = dao.link(mediaId) ?: run {
-                // §tracker-auto-link : si aucun lien n'existe, en créer un automatique
-                // avec le service par défaut ou le premier disponible et activé.
-                val targetService = service ?: getDefaultService() ?: getFirstEnabledService() ?: return@withLock false
-                val account = account(targetService) ?: return@withLock false
-                // Créer un lien par défaut avec progress = 0
-                val newLink = TrackerLinkEntity(
-                    mediaId = mediaId,
-                    service = targetService,
-                    remoteId = "",
-                    title = "",
-                    totalEpisodes = 0,
-                    progress = 0,
-                    status = "WATCHING",
-                    autoMatchEpisodes = true,
-                    autoMatchSeason = season,
-                )
-                dao.upsertLink(newLink)
-                newLink
-            }
+            val link = dao.link(mediaId)?.takeIf { it.remoteId.isNotBlank() } ?: return@withLock false
             val next = EpisodeMatching.nextProgress(
                 link.autoMatchEpisodes, link.autoMatchSeason, season, number,
                 link.progress, link.totalEpisodes,
@@ -235,22 +221,7 @@ class TrackerRepository @Inject constructor(
         service: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         progressMutex.withLock {
-            val link = dao.link(mediaId) ?: run {
-                val targetService = service ?: getDefaultService() ?: getFirstEnabledService() ?: return@withLock false
-                val newLink = TrackerLinkEntity(
-                    mediaId = mediaId,
-                    service = targetService,
-                    remoteId = "",
-                    title = "",
-                    totalEpisodes = 0,
-                    progress = 0,
-                    status = "WATCHING",
-                    autoMatchEpisodes = true,
-                    autoMatchSeason = season,
-                )
-                dao.upsertLink(newLink)
-                newLink
-            }
+            val link = dao.link(mediaId)?.takeIf { it.remoteId.isNotBlank() } ?: return@withLock false
             val episode = number?.toInt() ?: return@withLock false
             val total = link.totalEpisodes.takeIf { it > 0 }
             val status = if (total != null && episode >= total) "COMPLETED" else "WATCHING"
@@ -270,10 +241,19 @@ class TrackerRepository @Inject constructor(
         total: Int?,
         status: String,
     ): Boolean {
+        if (link.remoteId.isBlank()) return false
         val account = activeAccount(link.service) ?: return false
         val svc = service(link.service) ?: return false
+        var reconciled = link
         val ok = runCatching {
-            withFreshAccount(account) { svc.pushProgress(it, link.remoteId, progress, total, status) }
+            withFreshAccount(account) { fresh ->
+                val remote = svc.readProgress(fresh, link.remoteId)
+                if (remote != null && remote.progress > progress) {
+                    reconciled = link.copy(progress = remote.progress, status = remote.status)
+                    dao.upsertLink(reconciled)
+                }
+                svc.pushProgress(fresh, link.remoteId, reconciled.progress, total, reconciled.status)
+            }
         }.getOrElse { e ->
             dao.setLastError(link.service, e.message)
             TrackerRegistry.log("push", "${link.service} : ${e.message}")
@@ -281,7 +261,7 @@ class TrackerRepository @Inject constructor(
         }
         if (ok) {
             dao.setLastError(link.service, null)
-            dao.acknowledge(link.mediaId, link.remoteId, link.service, progress, status, link.updatedAt)
+            dao.acknowledge(link.mediaId, link.remoteId, link.service, reconciled.progress, reconciled.status, reconciled.updatedAt)
         }
         return ok
     }

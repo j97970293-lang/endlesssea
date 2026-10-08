@@ -35,6 +35,10 @@ interface TrackerService {
         query: String,
     ): List<TrackerSearchHit>
 
+    /** Null means confirmed absence; network/auth failures must throw, never mean zero. */
+    suspend fun readProgress(account: dev.endlesssea.data.db.TrackerAccountEntity, remoteId: String): RemoteTrackerProgress? =
+        throw TrackerError("Ce service ne fournit pas de progression")
+
     /** Écrit progression et statut sur le service. False = à rejouer plus tard. */
     suspend fun pushProgress(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
@@ -50,6 +54,8 @@ interface TrackerService {
         remoteId: String,
     ): TrackerDetails? = null
 }
+
+data class RemoteTrackerProgress(val progress: Int, val status: String)
 
 /** Résultat de recherche d'un service (proposé au rattachement manuel). */
 data class TrackerSearchHit(
@@ -161,6 +167,17 @@ class AniListService(private val http: OkHttpClient) : TrackerService {
         }
     }
 
+    override suspend fun readProgress(account: dev.endlesssea.data.db.TrackerAccountEntity, remoteId: String): RemoteTrackerProgress? = withContext(Dispatchers.IO) {
+        val token = account.accessToken ?: throw TrackerError("Compte non connecté")
+        val query = "query (${'$'}id: Int) { Media(id: ${'$'}id, type: ANIME) { mediaListEntry { progress status } } }"
+        val payload = JSONObject().put("query", query).put("variables", JSONObject().put("id", remoteId.toInt())).toString()
+        val response = JSONObject(http.postJson(ENDPOINT, payload, token))
+        if (response.has("errors")) throw TrackerError("Lecture de la progression AniList impossible")
+        val media = response.getJSONObject("data").getJSONObject("Media")
+        val entry = media.optJSONObject("mediaListEntry") ?: return@withContext null
+        RemoteTrackerProgress(entry.getInt("progress"), entry.getString("status").let { if (it == "CURRENT") "WATCHING" else it })
+    }
+
     override suspend fun pushProgress(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
         remoteId: String,
@@ -180,7 +197,7 @@ class AniListService(private val http: OkHttpClient) : TrackerService {
         // envoyer 12/12 avec le statut « en cours » serait incohérent côté AniList.
         val effective = if (totalEpisodes != null && progress >= totalEpisodes && totalEpisodes > 0) {
             "COMPLETED"
-        } else status
+        } else if (status == "WATCHING") "CURRENT" else status
         val payload = JSONObject()
             .put("query", gql)
             .put(
@@ -243,6 +260,21 @@ class MalService(private val http: OkHttpClient) : TrackerService {
         }
     }
 
+    override suspend fun readProgress(account: dev.endlesssea.data.db.TrackerAccountEntity, remoteId: String): RemoteTrackerProgress? = withContext(Dispatchers.IO) {
+        val token = account.accessToken ?: throw TrackerError("Compte non connecté")
+        require(remoteId.toLongOrNull() != null)
+        val response = JSONObject(http.getJson("$API/anime/$remoteId?fields=my_list_status", token))
+        require(response.has("id")) { "Réponse MAL invalide" }
+        val entry = response.optJSONObject("my_list_status") ?: return@withContext null
+        RemoteTrackerProgress(entry.getInt("num_episodes_watched"), when (entry.getString("status")) {
+            "completed" -> "COMPLETED"
+            "dropped" -> "DROPPED"
+            "plan_to_watch" -> "PLANNING"
+            "on_hold" -> "PAUSED"
+            else -> "WATCHING"
+        })
+    }
+
     override suspend fun pushProgress(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
         remoteId: String,
@@ -257,6 +289,7 @@ class MalService(private val http: OkHttpClient) : TrackerService {
             "COMPLETED" -> "completed"
             "DROPPED" -> "dropped"
             "PLANNING" -> "plan_to_watch"
+            "PAUSED" -> "on_hold"
             else -> "watching"
         }
         val form = "num_watched_episodes=$progress&status=$effective"
@@ -338,6 +371,24 @@ class ShikimoriService(private val http: OkHttpClient) : TrackerService {
         }
     }
 
+    override suspend fun readProgress(account: dev.endlesssea.data.db.TrackerAccountEntity, remoteId: String): RemoteTrackerProgress? = withContext(Dispatchers.IO) {
+        val token = account.accessToken ?: throw TrackerError("Compte non connecté")
+        require(remoteId.toLongOrNull() != null)
+        val user = JSONObject(http.getJson("$API/users/whoami", token)).getLong("id")
+        require(user > 0)
+        val rates = JSONArray(http.getJson("$API/v2/user_rates?user_id=$user&target_id=$remoteId&target_type=Anime", token))
+        val entry = (0 until rates.length()).map { rates.getJSONObject(it) }
+            .firstOrNull { it.optString("target_id") == remoteId && it.optString("target_type") == "Anime" }
+            ?: return@withContext null
+        RemoteTrackerProgress(entry.getInt("episodes"), when (entry.getString("status")) {
+            "completed" -> "COMPLETED"
+            "dropped" -> "DROPPED"
+            "planned" -> "PLANNING"
+            "on_hold" -> "PAUSED"
+            else -> "WATCHING"
+        })
+    }
+
     override suspend fun pushProgress(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
         remoteId: String,
@@ -351,6 +402,7 @@ class ShikimoriService(private val http: OkHttpClient) : TrackerService {
             status.equals("COMPLETED", true) -> "completed"
             status.equals("DROPPED", true) -> "dropped"
             status.equals("PLANNING", true) -> "planned"
+            status.equals("PAUSED", true) -> "on_hold"
             else -> "watching"
         }
         val user = JSONObject(http.getJson("$API/users/whoami", token)).optLong("id")

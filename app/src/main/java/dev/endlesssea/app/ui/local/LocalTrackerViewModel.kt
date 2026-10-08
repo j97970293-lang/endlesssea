@@ -14,6 +14,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class LocalTrackerViewModel @Inject constructor(private val trackers: TrackerRepository) : ViewModel() {
+    val defaultService get() = trackers.defaultService
     val accounts = trackers.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val links = trackers.links.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _hits = MutableStateFlow<List<TrackerSearchHit>>(emptyList())
@@ -35,7 +36,8 @@ class LocalTrackerViewModel @Inject constructor(private val trackers: TrackerRep
     }
 
     fun link(folderUri: String, service: String, hit: TrackerSearchHit, autoMatch: Boolean, season: Int?) = viewModelScope.launch {
-        trackers.link(LocalMediaIds.series(folderUri), service, hit, "WATCHING", autoMatch, season)
+        val linked = trackers.link(LocalMediaIds.series(folderUri), service, hit, "WATCHING", autoMatch, season)
+        if (!linked) { notice.value = "Rattachement annulé : progression distante non vérifiée. Réessayez."; return@launch }
         clearSearch()
         notice.value = "Rattaché : ${hit.title}"
     }
@@ -43,6 +45,10 @@ class LocalTrackerViewModel @Inject constructor(private val trackers: TrackerRep
     fun unlink(folderUri: String) = viewModelScope.launch { trackers.unlink(LocalMediaIds.series(folderUri)) }
     fun setMatching(folderUri: String, enabled: Boolean, season: Int?) = viewModelScope.launch {
         trackers.setEpisodeMatching(LocalMediaIds.series(folderUri), enabled, season)
+    }
+    fun setProgress(link: TrackerLinkEntity, progress: Int) = viewModelScope.launch {
+        val sent = trackers.setProgress(link.mediaId, progress)
+        notice.value = if (sent) "Progression synchronisée" else "Progression conservée, synchronisation en attente"
     }
     fun next(link: TrackerLinkEntity) = viewModelScope.launch {
         val sent = trackers.setProgress(link.mediaId, link.progress + 1)

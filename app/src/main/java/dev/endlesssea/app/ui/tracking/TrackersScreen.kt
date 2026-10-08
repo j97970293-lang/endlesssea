@@ -43,6 +43,7 @@ fun TrackersScreen(
     viewModel: TrackersViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val defaultService by viewModel.defaultService.collectAsState()
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -86,6 +87,14 @@ fun TrackersScreen(
                     Switch(checked = state.enrichTmdb, onCheckedChange = { viewModel.setEnrichTmdb(it) })
                 }
             }
+        }
+        item {
+            Text("Tracker préféré pour les nouveaux rattachements", style = MaterialTheme.typography.titleSmall)
+            state.accounts.filter { it.enabled && it.userName.isNotBlank() && it.service != "TMDB" }.forEach { account ->
+                androidx.compose.material3.FilterChip(selected = defaultService == account.service,
+                    onClick = { viewModel.setDefaultService(account.service) }, label = { Text(viewModel.label(account.service)) })
+            }
+            Text("Chaque fiche conserve son tracker jusqu'à un changement explicite.", style = MaterialTheme.typography.bodySmall)
         }
         state.notice?.let { notice ->
             item {

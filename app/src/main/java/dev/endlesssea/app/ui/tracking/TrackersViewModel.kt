@@ -65,6 +65,9 @@ class TrackersViewModel @Inject constructor(
         }
     }
 
+    val defaultService get() = repo.defaultService
+    fun setDefaultService(service: String) = viewModelScope.launch { repo.setDefaultService(service) }
+
     val services: List<String> = TrackerRegistry.LABELS.keys.toList()
 
     fun label(id: String): String = TrackerRegistry.LABELS[id] ?: id

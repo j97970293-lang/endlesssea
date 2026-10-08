@@ -21,7 +21,9 @@ internal fun LocalTrackerCard(
     folderUri: String, title: String, files: List<LocalVideoUi>,
     viewModel: LocalTrackerViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
+    var changeTracker by remember(folderUri) { mutableStateOf(false) }
     val accounts by viewModel.accounts.collectAsState()
+    val defaultService by viewModel.defaultService.collectAsState()
     val links by viewModel.links.collectAsState()
     val hits by viewModel.hits.collectAsState()
     val busy by viewModel.busy.collectAsState()
@@ -30,19 +32,23 @@ internal fun LocalTrackerCard(
     val link = links.firstOrNull { it.mediaId == LocalMediaIds.series(folderUri) }
     val seasons = files.map { LocalVideos.episodeSeason(it.name) }.distinct().ifEmpty { listOf(null) }
     var query by remember(folderUri, title) { mutableStateOf(title) }
-    var service by remember(services) { mutableStateOf(services.firstOrNull()) }
+    var service by remember(services, defaultService) { mutableStateOf(defaultService?.takeIf { it in services } ?: services.firstOrNull()) }
     var selected by remember(folderUri) { mutableStateOf<TrackerSearchHit?>(null) }
     var autoMatch by remember(folderUri) { mutableStateOf(false) }
     var season by remember(folderUri, seasons) { mutableStateOf(seasons.firstOrNull()) }
+    LaunchedEffect(link?.service, link?.remoteId) { changeTracker = false }
     LaunchedEffect(folderUri, service) { viewModel.clearSearch() }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Suivi de la série locale", style = MaterialTheme.typography.titleMedium)
-        if (link != null) {
+        if (changeTracker) TextButton(onClick = { changeTracker = false }) { Text("Annuler le changement") }
+        if (link != null && !changeTracker) {
             Text("${link.title} · ${TrackerRegistry.LABELS[link.service] ?: link.service}")
             Text("${link.progress}" + (link.totalEpisodes.takeIf { it > 0 }?.let { " / $it" } ?: "") + " épisode(s)")
             if (link.pendingSync) Text("Synchronisation en attente", style = MaterialTheme.typography.bodySmall)
             EpisodeMatchingControls(link.autoMatchEpisodes, link.autoMatchSeason, seasons) { enabled, s -> viewModel.setMatching(folderUri, enabled, s) }
+            dev.endlesssea.app.ui.tracking.TrackerProgressEditor(link.progress, link.totalEpisodes) { viewModel.setProgress(link, it) }
+            TextButton(onClick = { changeTracker = true }) { Text("Changer de tracker / de titre") }
             Row {
                 TextButton(onClick = { viewModel.next(link) }) { Text("+1 épisode vu") }
                 TextButton(onClick = { viewModel.unlink(folderUri) }) { Text("Ne plus suivre") }

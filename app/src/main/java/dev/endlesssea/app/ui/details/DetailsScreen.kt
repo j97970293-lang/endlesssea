@@ -1326,6 +1326,7 @@ private fun TrackerCard(
     viewModel: dev.endlesssea.app.ui.details.DetailsViewModel,
     onOpenTrackers: () -> Unit,
 ) {
+    var changeTracker by remember { mutableStateOf(false) }
     var matchQuery by remember { mutableStateOf("") }
     val detailsState by viewModel.uiState.collectAsState()
     val matchSeasons = detailsState.episodes.map { it.season }.distinct().ifEmpty { listOf(null) }
@@ -1334,10 +1335,11 @@ private fun TrackerCard(
     var selectedMatch by remember { mutableStateOf<dev.endlesssea.app.tracking.TrackerSearchHit?>(null) }
     val link by viewModel.trackerLink.collectAsState()
     val services by viewModel.connectedServices.collectAsState()
+    val preferredTracker by viewModel.defaultTrackerService.collectAsState()
     val search by viewModel.trackerSearch.collectAsState()
     val tick by viewModel.trackerTick.collectAsState()
     // tick force la relecture après une action (progression/statut/détachement)
-    remember(tick) { link }
+    LaunchedEffect(tick) { changeTracker = false }
 
     selectedMatch?.let { hit ->
         AlertDialog(onDismissRequest = { selectedMatch = null },
@@ -1357,10 +1359,11 @@ private fun TrackerCard(
     ) {
         Column {
             Text("Suivi", style = MaterialTheme.typography.titleMedium)
+            if (changeTracker) TextButton(onClick = { changeTracker = false }) { Text("Annuler le changement") }
             Spacer(Modifier.height(4.dp))
 
             when {
-                link != null -> {
+                link != null && !changeTracker -> {
                     val l = link!!
                     Text(
                         "${l.title.ifBlank { l.remoteId }} · ${l.progress}" +
@@ -1396,6 +1399,8 @@ private fun TrackerCard(
                     dev.endlesssea.app.ui.tracking.EpisodeMatchingControls(l.autoMatchEpisodes, l.autoMatchSeason, matchSeasons) { enabled, season ->
                         viewModel.setEpisodeMatching(enabled, season)
                     }
+                    dev.endlesssea.app.ui.tracking.TrackerProgressEditor(l.progress, l.totalEpisodes) { viewModel.setTrackerProgress(it) }
+                    TextButton(onClick = { changeTracker = true }) { Text("Changer de tracker / de titre") }
                     TextButton(onClick = { viewModel.unlinkTracker() }) { Text("Ne plus suivre") }
                 }
                 services.isEmpty() -> {
@@ -1422,7 +1427,7 @@ private fun TrackerCard(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        services.forEach { id ->
+                        services.sortedBy { if (it == preferredTracker) 0 else 1 }.forEach { id ->
                             androidx.compose.material3.FilterChip(
                                 selected = false,
                                 onClick = { viewModel.searchTracker(id) },

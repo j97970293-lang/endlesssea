@@ -385,6 +385,7 @@ class DetailsViewModel @Inject constructor(
 
     /** Tic de recomposition du bloc « Suivi » (mises à jour manuelles). */
     val trackerTick = MutableStateFlow(0)
+    val defaultTrackerService get() = trackers.defaultService
 
     private fun refreshTracker() = viewModelScope.launch {
         _trackerLink.value = trackers.linkOf(mediaId)
@@ -413,7 +414,11 @@ class DetailsViewModel @Inject constructor(
         autoMatch: Boolean = false, season: Int? = null,
     ) {
         viewModelScope.launch {
-            trackers.link(mediaId, service, hit, status = "WATCHING", autoMatchEpisodes = autoMatch, autoMatchSeason = season)
+            val linked = trackers.link(mediaId, service, hit, status = "WATCHING", autoMatchEpisodes = autoMatch, autoMatchSeason = season)
+            if (!linked) {
+                _uiState.value = _uiState.value.copy(message = "Rattachement annulé : impossible de vérifier la progression distante. Réessayez.")
+                return@launch
+            }
             _trackerSearch.value = TrackerSearchState()
             refreshTracker()
             trackerTick.value += 1
@@ -447,6 +452,13 @@ class DetailsViewModel @Inject constructor(
         refreshTracker()
         trackerTick.value += 1
         _uiState.value = _uiState.value.copy(message = "Rattachement supprimé")
+    }
+
+    fun setTrackerProgress(progress: Int) = viewModelScope.launch {
+        val sent = trackers.setProgress(mediaId, progress)
+        refreshTracker()
+        trackerTick.value += 1
+        _uiState.value = _uiState.value.copy(message = if (sent) "Progression synchronisée" else "Progression conservée, synchronisation en attente")
     }
 
     /** Bouton « +1 » : marque l'épisode suivant comme vu (envoi immédiat si possible). */
