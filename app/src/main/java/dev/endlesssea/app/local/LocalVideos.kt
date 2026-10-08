@@ -4,10 +4,7 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 
 /**
  * §bibliothèque-locale — scanner de VIDÉOS dans des dossiers SAF choisis par
@@ -86,11 +83,9 @@ object LocalVideos {
             else android.provider.DocumentsContract.getTreeDocumentId(tree)
         }.getOrNull() ?: return@coroutineScope emptyList()
         val out = java.util.Collections.synchronizedList(mutableListOf<LocalVideoFile>())
-        val gate = Semaphore(8)
         val scanned = java.util.concurrent.atomic.AtomicInteger(0)
 
-        suspend fun walk(docId: String, depth: Int): Unit {
-            if (depth > (if (folderOnly) 0 else MAX_DEPTH) || out.size >= MAX_FILES_PER_ROOT) return
+        suspend fun readDirectory(docId: String): List<String> {
             val children = android.provider.DocumentsContract
                 .buildChildDocumentsUriUsingTree(tree, docId)
             val dirUri = android.provider.DocumentsContract
@@ -180,16 +175,12 @@ object LocalVideos {
                 scanned.incrementAndGet(), out.size,
                 Uri.decode(dirUri.substringAfterLast('/')).substringAfterLast('/'),
             )
-            // sous-dossiers en parallèle (8 curseurs max simultanés)
-            coroutineScope {
-                val jobs = subDirs.map { sub ->
-                    async(Dispatchers.IO) { gate.withPermit { walk(sub, depth + 1) } }
-                }
-                jobs.forEach { it.await() }
-            }
+            return subDirs
         }
 
-        gate.withPermit { walk(rootId, 0) }
+        scanTreeBounded(rootId, if (folderOnly) 0 else MAX_DEPTH,
+            shouldStop = { out.size >= MAX_FILES_PER_ROOT },
+            readDirectory = ::readDirectory)
         out.toList()
     }
 
