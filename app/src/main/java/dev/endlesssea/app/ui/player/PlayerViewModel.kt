@@ -501,7 +501,7 @@ class PlayerViewModel @Inject constructor(
     fun jumpBy(seconds: Int) {
         engine.seekBy(seconds * 1000L)
         _uiState.value = _uiState.value.copy(
-            skipFlash = if (seconds > 0) "+${seconds} s" else "−${seconds.absoluteValue} s",
+            skipFlash = if (seconds > 0) "+${seconds} s" else "-${seconds.absoluteValue} s",
         )
         viewModelScope.launch {
             delay(700)

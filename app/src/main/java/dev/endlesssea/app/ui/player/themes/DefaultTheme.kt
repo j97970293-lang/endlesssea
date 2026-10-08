@@ -53,7 +53,6 @@ object DefaultTheme : PlayerTheme {
 internal fun SkipAndSettings(state: PlayerControlsState, actions: PlayerControlsActions, accent: Color) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            SkinChip("+${state.megaSkipSeconds}s", false, accent, actions.onMegaJump, border = false)
             state.activeSkip?.let {
                 SkinChip("Passer ${it.type.label}" + (state.skipCountdown?.let { n -> " ($n)" } ?: ""), false, accent, actions.onSkipSegment, border = false)
             }
@@ -61,6 +60,8 @@ internal fun SkipAndSettings(state: PlayerControlsState, actions: PlayerControls
                 SkinChip(button.label, false, accent, { actions.onCustomSkip(button) }, border = false)
             }
         }
+        // §megaskip-right : déplacer le bouton megaskip à droite
+        SkinChip("+${state.megaSkipSeconds}s", false, accent, actions.onMegaJump, border = false)
         SkinIconButton(Icons.Default.Settings, "Paramètres du lecteur", actions.onOpenMore)
         SkinIconButton(Icons.Default.Info, "Informations techniques", actions.onToggleStats)
     }

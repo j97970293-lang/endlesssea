@@ -106,7 +106,7 @@ object NeonFrameTheme : OriginalTheme() {
     override val accent = Color(0xFF00E5FF)
     @Composable
     override fun CenterControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
-        Row(modifier.border(1.dp, accent, RoundedCornerShape(40.dp)).padding(8.dp),
+        Row(modifier.border(1.dp, accent, RoundedCornerShape(40.dp)).padding(8.dp).background(Color(0xE61A1A1A)),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             SkinIconButton(Icons.Default.Replay10, "Reculer", { actions.onJumpRelative(-10) }, tint = accent)
             SkinPlayButton(state.playing, actions.onTogglePlay, accent, 64, iconColor = accent)
@@ -115,7 +115,7 @@ object NeonFrameTheme : OriginalTheme() {
     }
     @Composable
     override fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
-        super.BottomControls(state, actions, modifier.padding(8.dp).border(1.dp, accent, RoundedCornerShape(16.dp)))
+        super.BottomControls(state, actions, modifier.padding(8.dp).border(1.dp, accent, RoundedCornerShape(16.dp)).background(Color(0xE61A1A1A)))
     }
 }
 
@@ -141,20 +141,21 @@ object FloatingCardsTheme : OriginalTheme() {
     override val label = "Floating Cards"
     @Composable
     override fun TopControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
-        DefaultTheme.TopControls(state, actions, modifier.padding(12.dp).background(Color(0xBB1A1A1A), RoundedCornerShape(16.dp)))
+        DefaultTheme.TopControls(state, actions, modifier.padding(12.dp).background(Color(0xE61A1A1A), RoundedCornerShape(16.dp)))
     }
     @Composable
     override fun CenterControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
         Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SkinPlayButton(state.playing, actions.onTogglePlay, accent, 72, filled = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SkinIconButton(Icons.Default.Replay10, "Reculer", { actions.onJumpRelative(-10) }, background = Color(0xDD1A1A1A))
-                SkinIconButton(Icons.Default.Forward10, "Avancer", { actions.onJumpRelative(10) }, background = Color(0xDD1A1A1A))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                SkinIconButton(Icons.Default.Replay10, "Reculer", { actions.onJumpRelative(-10) }, background = Color(0xE61A1A1A))
+                Spacer(Modifier.width(24.dp))
+                SkinIconButton(Icons.Default.Forward10, "Avancer", { actions.onJumpRelative(10) }, background = Color(0xE61A1A1A))
             }
         }
     }
     @Composable
     override fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier) {
-        super.BottomControls(state, actions, modifier.padding(12.dp).background(Color(0xBB1A1A1A), RoundedCornerShape(16.dp)))
+        super.BottomControls(state, actions, modifier.padding(12.dp).background(Color(0xE61A1A1A), RoundedCornerShape(16.dp)))
     }
 }

@@ -738,7 +738,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             )
             val controlsActions = PlayerControlsActions(
                 onBack = onBack,
-                onTogglePlay = { if (isPlaying) viewModel.engine.pause() else viewModel.engine.play() },
+                onTogglePlay = { if (viewModel.engine.isPlaying.value) viewModel.engine.pause() else viewModel.engine.play() },
                 onPrev = { viewModel.playQueueOffset(-1) },
                 onNext = { viewModel.playQueueOffset(1) },
                 onDrag = { slidingPos = it; interactionVersion++ },
