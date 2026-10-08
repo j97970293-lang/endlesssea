@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
@@ -692,55 +693,77 @@ class DetailsViewModel @Inject constructor(
      * la meilleure qualité en fichier direct (les flux HLS/embed ne sont pas
      * téléchargeables — ils restent en lecture seule).
      */
+    private suspend fun resolveBatchLinks(episode: Episode): List<VideoLink> {
+        _uiState.value.linksByEpisode[episode.id]?.takeIf { it.isNotEmpty() }?.let { return it }
+        val links = mutableListOf<VideoLink>()
+        kotlinx.coroutines.withTimeout(90_000) {
+            withContext(Dispatchers.IO) {
+                registry.instance(extensionId).linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
+                    .collect { links += it }
+            }
+        }
+        val resolved = links.distinctBy { Triple(it.url, it.audioLang, it.quality) }
+        if (resolved.isNotEmpty()) _uiState.value = _uiState.value.copy(
+            linksByEpisode = _uiState.value.linksByEpisode + (episode.id to resolved),
+        )
+        return resolved
+    }
+
+    val batchScanProgress = MutableStateFlow<String?>(null)
+    private var batchScanJob: kotlinx.coroutines.Job? = null
+    fun scanBatchServers() {
+        if (batchScanJob?.isActive == true) return
+        batchScanJob = viewModelScope.launch {
+            var failed = 0
+            try {
+                val episodes = _uiState.value.episodes
+                episodes.forEachIndexed { index, episode ->
+                    batchScanProgress.value = "Scan des serveurs : ${index + 1}/${episodes.size}"
+                    try { resolveBatchLinks(episode) }
+                    catch (e: kotlinx.coroutines.TimeoutCancellationException) { failed++ }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (e: Exception) { failed++ }
+                }
+                if (failed > 0) _uiState.value = _uiState.value.copy(message = "$failed épisode(s) sans réponse pendant le scan")
+            } finally { batchScanProgress.value = null }
+        }
+    }
+    fun cancelBatchScan() { batchScanJob?.cancel() }
+
     fun enqueueAll(
         episodes: List<Episode> = this._uiState.value.episodes,
         serverPriority: List<String> = prefs.serverOrder.value,
+        excludedServers: Set<String> = emptySet(),
+        language: dev.endlesssea.extensions.api.model.AudioLang? = null,
+        quality: dev.endlesssea.extensions.api.model.Quality? = null,
     ) = viewModelScope.launch {
         if (_uiState.value.batchRunning || episodes.isEmpty()) return@launch
         _uiState.value = _uiState.value.copy(batchRunning = true, message = "Résolution des liens…")
-        val extInstance = registry.instance(extensionId)
         var added = 0; var streamOnly = 0; var failed = 0
+        try {
         episodes.forEachIndexed { i, episode ->
-            _uiState.value = _uiState.value.copy(
-                message = "Résolution des liens… (${i + 1}/${episodes.size})",
-            )
-            val cached = _uiState.value.linksByEpisode[episode.id]
-            val links = if (cached != null) cached else runCatching {
-                extInstance.loadLinks(LinkRequest(episode = episode, mediaId = mediaId))
-            }.getOrNull()
-            if (links == null) { failed++; return@forEachIndexed }
-            if (cached == null && links.isNotEmpty()) {
-                _uiState.value = _uiState.value.copy(
-                    linksByEpisode = _uiState.value.linksByEpisode + (episode.id to links),
-                )
-            }
-            // Serveurs par ordre de priorité (glisser-déposer utilisateur) : on essaie
-            // le serveur n°1 d'abord ; s'il n'existe pas pour cet épisode → le suivant.
-            fun linksFor(server: String?): List<dev.endlesssea.extensions.api.model.VideoLink> =
-                if (server == null) links else links.filter { it.server.equals(server, true) }
-            val pool = serverPriority.asSequence()
-                .map { linksFor(it) }.firstOrNull { it.isNotEmpty() } ?: links
-            // Meilleur lien téléchargeable du pool choisi : direct > HLS, puis qualité
-            val downloadable = pool.filter {
-                it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE ||
-                    it.streamType == dev.endlesssea.extensions.api.model.StreamType.HLS
-            }
-            val best = downloadable
-                .filter { it.streamType == dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE }
-                .maxByOrNull { it.quality.pixels }
-                ?: downloadable.maxByOrNull { it.quality.pixels }
-            if (best == null) { streamOnly++; return@forEachIndexed }
-            enqueueAndWait(episode, best); added++
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            _uiState.value = _uiState.value.copy(message = "Résolution des liens… (${i + 1}/${episodes.size})")
+            try {
+                val links = resolveBatchLinks(episode)
+                val best = selectBatchDownload(links, serverPriority, excludedServers, language, quality)
+                if (best == null) { streamOnly++; return@forEachIndexed }
+                enqueueAndWait(episode, best)
+                added++
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) { failed++ }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { failed++ }
         }
         val parts = buildList {
             if (added > 0) add("$added téléchargement${if (added > 1) "s" else ""} ajouté${if (added > 1) "s" else ""}")
-            if (streamOnly > 0) add("$streamOnly en lecture seule (flux)")
+            if (streamOnly > 0) add("$streamOnly sans lien correspondant aux filtres")
             if (failed > 0) add("$failed sans réponse de la source")
         }
         _uiState.value = _uiState.value.copy(
             batchRunning = false,
             message = if (parts.isEmpty()) "Aucun fichier téléchargeable trouvé" else parts.joinToString(" · "),
         )
+        } finally { _uiState.value = _uiState.value.copy(batchRunning = false) }
     }
 
     private suspend fun enqueueAndWait(episode: Episode, link: VideoLink) {

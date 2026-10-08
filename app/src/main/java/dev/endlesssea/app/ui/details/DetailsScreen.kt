@@ -120,6 +120,9 @@ fun DetailsScreen(
     var batchSelectDialog by remember { mutableStateOf(false) }
     /** Priorité de serveurs choisie dans l'étape 1 du « Tout télécharger ». */
     var batchPriority by remember { mutableStateOf<List<String>?>(null) }
+    var batchExcluded by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var batchLanguage by remember { mutableStateOf<dev.endlesssea.extensions.api.model.AudioLang?>(null) }
+    var batchQuality by remember { mutableStateOf<dev.endlesssea.extensions.api.model.Quality?>(null) }
     // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
@@ -772,6 +775,11 @@ fun DetailsScreen(
     // ---- Feuille « Télécharger » — groupée par langue audio, flux exclus
     // ---------------- Dialogue serveurs + priorité (glisser-déposer) §glisser-serveurs
     if (serverOrderDialog) {
+        val scanProgress by viewModel.batchScanProgress.collectAsState()
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            viewModel.scanBatchServers()
+            onDispose { viewModel.cancelBatchScan() }
+        }
         val storedOrder by viewModel.serverOrder.collectAsState()
         val detected = remember(state.linksByEpisode) {
             state.linksByEpisode.values.flatten()
@@ -790,6 +798,7 @@ fun DetailsScreen(
                     viewModel.saveServerOrder(ordered)
                     // §telecharge-tout-sélect : étape 2 — choix des épisodes
                     batchPriority = active
+                    batchExcluded = inactive
                     batchSelectDialog = true
                     serverOrderDialog = false
                 }) { Text("Choisir les épisodes") }
@@ -804,6 +813,12 @@ fun DetailsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    scanProgress?.let {
+                        Text(it)
+                        TextButton(onClick = { viewModel.cancelBatchScan() }) { Text("Arrêter le scan") }
+                    }
+                    BatchDownloadFilters(batchLanguage, batchQuality,
+                        onLanguage = { batchLanguage = it }, onQuality = { batchQuality = it })
                     Spacer(Modifier.height(10.dp))
                     if (ordered.isEmpty()) {
                         Text(
@@ -980,8 +995,8 @@ fun DetailsScreen(
                     batchSelectDialog = false
                     if (picked.isNotEmpty()) {
                         val sp = batchPriority
-                        if (sp != null) viewModel.enqueueAll(picked, serverPriority = sp)
-                        else viewModel.enqueueAll(picked)
+                        viewModel.enqueueAll(picked, serverPriority = sp ?: viewModel.serverPriority(),
+                            excludedServers = batchExcluded, language = batchLanguage, quality = batchQuality)
                     }
                     batchPriority = null
                 }) { Text("Télécharger (${selected.count { it.value }})") }
