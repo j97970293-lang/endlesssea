@@ -79,13 +79,15 @@ fun LocalDetailsScreen(
         candidates.firstOrNull()?.let { dev.endlesssea.app.local.localPlaybackQueue(candidates, it) }.orEmpty()
     }
     val seasons = remember(files) { files.mapNotNull { LocalVideos.episodeSeason(it.name) }.distinct().sorted() }
-    val visibleEpisodes = remember(files, episodeQuery, selectedSeason) {
+    val meta = viewModel.folderMetadata(folderUri)
+    val visibleEpisodes = remember(files, episodeQuery, selectedSeason, meta) {
         files.filter { video ->
             (selectedSeason == null || LocalVideos.episodeSeason(video.name) == selectedSeason) &&
-                (episodeQuery.isBlank() || video.name.contains(episodeQuery.trim(), true) || video.displayName.contains(episodeQuery.trim(), true))
+                dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery,
+                    dev.endlesssea.app.local.playbackEpisodeOrder(video.name), video.name, video.displayName,
+                    LocalVideos.episodeNumber(video.name)?.let { meta.episodeTitles[it] })
         }
     }
-    val meta = viewModel.folderMetadata(folderUri)
     val first = files.firstOrNull()
     val title = meta?.title ?: first?.let {
         dev.endlesssea.app.local.LocalNames.pretty(folderUri)

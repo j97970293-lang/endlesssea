@@ -161,7 +161,10 @@ fun EsBottomBar(
 @Composable
 fun EsNavGraph(nav: NavHostController) {
     // L'id composite « ext:url » peut contenir des caractères spéciaux → encodage
-    fun openDetails(nav: NavHostController, id: String) = nav.navigate("details/${Uri.encode(id)}")
+    fun openDetails(nav: NavHostController, id: String) = nav.navigate(
+        if (id.startsWith("local:")) "localDetails/${Uri.encode(id.removePrefix("local:"))}"
+        else "details/${Uri.encode(id)}",
+    )
 
     val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
     val tabs = allTabScreens.map { it.route }.toSet()

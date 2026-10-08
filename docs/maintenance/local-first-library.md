@@ -35,9 +35,10 @@ La disponibilité signifie « lisible actuellement » : une permission révoqué
 ## Tests et limites
 
 - `FolderIndexTest` : 9 tests, dont 1 000 épisodes → une entrée, scans recouvrants, documents SAF sous plusieurs permissions et exclusion des copies gérées.
+- `EpisodeSearchTest` : 7 tests de recherche exacte par numéro (y compris 1000 et les spéciaux), titre et remise à zéro. La recherche est commune aux fiches locales et aux fiches en ligne/téléchargées, avec un filtre hors ligne sur ces dernières.
 - `OfflineSelectionTest` : 6 tests sur l'identité d'épisode, suppression, autre qualité lisible, absence d'association par nom et absence de sondage des autres épisodes.
 - `ThemeProviderTest` : registre adapté pour Essentiel et les sept présentations historiques ; test d'accès au nouveau thème.
-- Les 15 nouveaux tests purs de regroupement/sélection ont réussi localement. La CI Android doit compiler les écrans et exécuter la suite complète avant livraison.
+- Les 22 nouveaux tests purs de regroupement/sélection/recherche ont réussi localement. La CI Android doit compiler les écrans et exécuter la suite complète avant livraison.
 
 Aucun essai sur téléphone n'est revendiqué. À vérifier : dossier de 1 000 fichiers, plusieurs saisons, métadonnées dans un dossier non modifiable, téléchargement puis lecture en mode avion, suppression puis lecture en ligne, longues listes de serveurs, petit écran/portrait, TalkBack et grand texte.
 

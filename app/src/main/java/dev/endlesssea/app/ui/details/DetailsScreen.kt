@@ -130,6 +130,8 @@ fun DetailsScreen(
     // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
+    var episodeQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var offlineOnly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var synopsisExpanded by remember { mutableStateOf(false) }
     var confirmAllWatched by remember { mutableStateOf(false) }
     if (confirmAllWatched) {
@@ -148,10 +150,12 @@ fun DetailsScreen(
     val seasons = remember(state.episodes) {
         state.episodes.mapNotNull { it.season }.distinct().sorted()
     }
-    val episodesShown = remember(state.episodes, selectedSeason) {
-        if (selectedSeason == null) state.episodes
-        else state.episodes.filter { it.season == selectedSeason }
-            .ifEmpty { state.episodes }
+    val episodesShown = remember(state.episodes, selectedSeason, episodeQuery, offlineOnly, state.deviceFiles) {
+        val offline = state.deviceFiles.mapNotNull { it.episodeId }.toSet()
+        state.episodes.filter { ep ->
+            (selectedSeason == null || ep.season == selectedSeason) && (!offlineOnly || ep.id in offline) &&
+                dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery, ep.number.toDouble(), ep.title)
+        }
     }
 
     // §film-et-serie : une même fiche peut porter un FILM et des saisons (cas
@@ -646,6 +650,14 @@ fun DetailsScreen(
                         TextButton(onClick = { confirmAllWatched = true }, modifier = Modifier.padding(horizontal = 16.dp)) {
                             Text("Tout marquer vu")
                         }
+                        androidx.compose.material3.OutlinedTextField(value = episodeQuery,
+                            onValueChange = { episodeQuery = it }, singleLine = true,
+                            label = { Text("Rechercher un titre ou un numéro d'épisode") },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+                        androidx.compose.material3.FilterChip(selected = offlineOnly,
+                            onClick = { offlineOnly = !offlineOnly }, label = { Text("Épisodes hors ligne uniquement") },
+                            modifier = Modifier.padding(horizontal = 16.dp))
+                        if (episodesShown.isEmpty()) Text("Aucun épisode pour ces filtres.", modifier = Modifier.padding(16.dp))
                         if (seasons.size > 1) {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1639,7 +1651,7 @@ private fun EpisodeRowAnymex(
                     modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
                 ) {
                     Text(
-                        "EP ${episode.number.toInt()}",
+                        "EP ${episode.number.toString().removeSuffix(".0")}",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),

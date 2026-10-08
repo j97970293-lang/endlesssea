@@ -691,6 +691,9 @@ class LibraryViewModel @Inject constructor(
         }
         result.onSuccess { cover ->
             prefs.setLocalFileMeta("folder:$folderUri", null, cover)
+            mediaDao.byId(dev.endlesssea.app.local.LocalMediaIds.series(folderUri))?.let { saved ->
+                mediaDao.upsertAll(listOf(saved.copy(posterUrl = cover, customCoverUri = cover)))
+            }
             _uiState.value = _uiState.value.copy(localMetaTick = _uiState.value.localMetaTick + 1,
                 localScanLabel = "Couverture enregistrée dans l'application")
         }.onFailure { error ->

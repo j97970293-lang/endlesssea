@@ -13,7 +13,7 @@ internal fun localPlaybackQueue(files: List<LocalVideoUi>, selected: LocalVideoU
         ))
 
 /** Fractional specials stay in viewing order without being sent as integer tracker episodes. */
-private fun playbackEpisodeOrder(name: String): Double? {
+internal fun playbackEpisodeOrder(name: String): Double? {
     LocalVideos.episodeNumber(name)?.let { return it.toDouble() }
     val base = name.substringBeforeLast('.')
     val explicit = Regex("(?i)(?:s\\d{1,2}[ ._-]*e|\\bep?(?:isode)?[ ._-]?)(\\d{1,5}[.,]\\d+)").find(base)
