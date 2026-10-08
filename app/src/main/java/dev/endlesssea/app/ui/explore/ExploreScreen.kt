@@ -2,15 +2,18 @@ package dev.endlesssea.app.ui.explore
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -61,10 +64,58 @@ fun ExploreScreen(
             onSearch = { onSearch("", selectedPkg ?: "ALL") },
             searchDescription = "Rechercher dans les extensions",
         )
-        var suggestions by remember { mutableStateOf(false) }
-        Row(Modifier.padding(horizontal = 16.dp)) {
+        
+        // §filtres-explorer : filtres par genre, année, type
+        var showFilters by remember { mutableStateOf(false) }
+        var selectedGenre by remember { mutableStateOf<String?>(null) }
+        var selectedYear by remember { mutableStateOf<Int?>(null) }
+        var selectedType by remember { mutableStateOf<String?>(null) }
+        
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             TextButton(onClick = { suggestions = false }) { Text("Catalogue") }
             TextButton(onClick = { suggestions = true }) { Text("Suggestions") }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { showFilters = !showFilters }) {
+                Icon(Icons.Filled.FilterList, "Filtres")
+            }
+        }
+        
+        // §filtres-explorer : dialogue de filtres
+        if (showFilters) {
+            FilterDialog(
+                onDismiss = { showFilters = false },
+                selectedGenre = selectedGenre,
+                selectedYear = selectedYear,
+                selectedType = selectedType,
+                onGenreSelected = { selectedGenre = it },
+                onYearSelected = { selectedYear = it },
+                onTypeSelected = { selectedType = it },
+                onReset = {
+                    selectedGenre = null
+                    selectedYear = null
+                    selectedType = null
+                },
+            )
+        }
+        
+        // Appliquer les filtres aux rangées
+        val filteredRows = remember(visibleRows, selectedGenre, selectedYear, selectedType) {
+            visibleRows.map { row ->
+                row.copy(
+                    items = row.items.filter { item ->
+                        val genreMatch = selectedGenre?.let { 
+                            item.genres?.contains(it, ignoreCase = true) ?: false
+                        } ?: true
+                        val yearMatch = selectedYear?.let { 
+                            item.year == it
+                        } ?: true
+                        val typeMatch = selectedType?.let { 
+                            item.type?.equals(it, ignoreCase = true) ?: false
+                        } ?: true
+                        genreMatch && yearMatch && typeMatch
+                    }
+                )
+            }.filter { it.items.isNotEmpty() }
         }
         if (suggestions) {
             val items by viewModel.suggestions.collectAsState()
@@ -128,7 +179,7 @@ fun ExploreScreen(
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                if (visibleRows.isEmpty() && visibleErrors.isEmpty()) {
+                if (filteredRows.isEmpty() && visibleErrors.isEmpty()) {
                     item {
                         Column(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
@@ -136,7 +187,11 @@ fun ExploreScreen(
                         ) {
                             Text(":(", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Catalogue vide pour l'instant — essayez une autre source ci-dessus.",
+                                if (selectedGenre != null || selectedYear != null || selectedType != null) {
+                                    "Aucun résultat pour les filtres sélectionnés"
+                                } else {
+                                    "Catalogue vide pour l'instant — essayez une autre source ci-dessus."
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 8.dp),
@@ -144,7 +199,7 @@ fun ExploreScreen(
                         }
                     }
                 }
-                items(visibleRows, key = { "${it.pkg}:${it.title}" }) { row ->
+                items(filteredRows, key = { "${it.pkg}:${it.title}" }) { row ->
                     MediaRow(
                         title = row.title, items = row.items, onMediaClick = onMediaClick,
                         onSeeAll = { onSeeAll(row.pkg, row.category) },
@@ -164,4 +219,87 @@ fun ExploreScreen(
         }
         }
     }
+}
+
+// §filtres-explorer : composant de dialogue de filtres
+@Composable
+private fun FilterDialog(
+    onDismiss: () -> Unit,
+    selectedGenre: String?,
+    selectedYear: Int?,
+    selectedType: String?,
+    onGenreSelected: (String?) -> Unit,
+    onYearSelected: (Int?) -> Unit,
+    onTypeSelected: (String?) -> Unit,
+    onReset: () -> Unit,
+) {
+    val genres = listOf("Action", "Aventure", "Comédie", "Drame", "Fantastique", "Horreur", "Romance", "SF", "Thriller")
+    val years = (2010..2026).reversed().toList()
+    val types = listOf("Anime", "Film", "Série", "OVA", "ONA")
+    
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filtres") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Filtre par genre
+                Column {
+                    Text("Genre", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        genres.forEach { genre ->
+                            FilterChip(
+                                selected = selectedGenre == genre,
+                                onClick = { 
+                                    onGenreSelected(if (selectedGenre == genre) null else genre)
+                                },
+                                label = { Text(genre) },
+                            )
+                        }
+                    }
+                }
+                
+                // Filtre par année
+                Column {
+                    Text("Année", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        years.forEach { year ->
+                            FilterChip(
+                                selected = selectedYear == year,
+                                onClick = { 
+                                    onYearSelected(if (selectedYear == year) null else year)
+                                },
+                                label = { Text(year.toString()) },
+                            )
+                        }
+                    }
+                }
+                
+                // Filtre par type
+                Column {
+                    Text("Type", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        types.forEach { type ->
+                            FilterChip(
+                                selected = selectedType == type,
+                                onClick = { 
+                                    onTypeSelected(if (selectedType == type) null else type)
+                                },
+                                label = { Text(type) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onReset) {
+                Text("Réinitialiser")
+            }
+        },
+    )
 }
