@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.endlesssea.app.tracking.TrackerRepository
+import dev.endlesssea.data.db.EpisodeDao
+import dev.endlesssea.data.db.MediaDao
 import dev.endlesssea.data.db.WatchHistoryDao
-import dev.endlesssea.data.db.WatchHistoryEntity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,85 +20,49 @@ import javax.inject.Inject
 class StatisticsViewModel @Inject constructor(
     private val trackerRepository: TrackerRepository,
     private val historyDao: WatchHistoryDao,
+    private val mediaDao: MediaDao,
+    private val episodeDao: EpisodeDao,
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(StatisticsState(loading = true))
     val uiState: StateFlow<StatisticsState> = _uiState.asStateFlow()
+    private var statisticsJob: Job? = null
 
-    init {
-        loadStatistics()
-    }
+    init { refresh() }
 
     fun refresh() {
-        loadStatistics()
-    }
-
-    private fun loadStatistics() = viewModelScope.launch {
-        _uiState.value = _uiState.value.copy(loading = true, error = null)
-
-        try {
-            // §stats-tracker : récupérer les statistiques depuis les trackers
-            val links = trackerRepository.links
-            val accounts = trackerRepository.accounts
-
-            // Calculer les stats par service
-            val statsByService = mutableMapOf<String, ServiceStats>()
-            links.collect { linkList ->
-                linkList.groupBy { it.service }.forEach { (service, serviceLinks) ->
-                    val totalEpisodes = serviceLinks.sumOf { it.progress }
-                    val totalSeries = serviceLinks.size
-                    statsByService[service] = ServiceStats(
-                        episodesWatched = totalEpisodes,
-                        seriesTracked = totalSeries,
+        statisticsJob?.cancel()
+        statisticsJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loading = true, error = null)
+            try {
+                // Both Room flows are long-lived: sequential collect calls never reach the UI update.
+                combine(trackerRepository.links, historyDao.observeAll()) { links, history ->
+                    val byService = links.groupBy { it.service }.mapValues { (_, entries) ->
+                        ServiceStats(entries.sumOf { it.progress }, entries.size)
+                    }
+                    val recent = history.sortedByDescending { it.updatedAt }.take(10).map { entry ->
+                        val media = mediaDao.byId(entry.mediaId)
+                        val episode = episodeDao.byId(entry.episodeId)
+                        RecentActivity(
+                            title = media?.customTitle ?: media?.title ?: episode?.title ?: entry.mediaId,
+                            episodeNumber = episode?.number?.toInt() ?: 0,
+                            timestamp = entry.updatedAt,
+                        )
+                    }
+                    StatisticsState(
+                        totalEpisodesWatched = history.count { it.watched },
+                        totalSeriesTracked = byService.values.sumOf { it.seriesTracked },
+                        totalWatchTimeMs = history.sumOf { it.positionMs.coerceAtLeast(0) },
+                        statsByService = byService,
+                        recentActivity = recent,
                     )
-                }
-            }.let { /* Attendre la première émission */ }
-
-            // §stats-history : récupérer l'historique de visionnage
-            val history = historyDao.observeAll()
-            var totalEpisodesWatched = 0
-            var totalWatchTimeMs: Long = 0
-            val recentActivity = mutableListOf<RecentActivity>()
-
-            history.collect { historyList ->
-                totalEpisodesWatched = historyList.size
-                totalWatchTimeMs = historyList.sumOf { it.positionMs.coerceAtLeast(0) }
-                recentActivity.clear()
-                recentActivity.addAll(
-                    historyList.sortedByDescending { it.updatedAt }
-                        .take(10)
-                        .map { entity ->
-                            RecentActivity(
-                                title = entity.title,
-                                episodeNumber = extractEpisodeNumber(entity.title),
-                                timestamp = entity.updatedAt,
-                            )
-                        }
+                }.collect { _uiState.value = it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    loading = false, error = "Erreur lors du chargement : ${e.message}",
                 )
-            }.let { /* Attendre la première émission */ }
-
-            // Combiner les résultats
-            val totalSeriesTracked = statsByService.values.sumOf { it.seriesTracked }
-
-            _uiState.value = _uiState.value.copy(
-                loading = false,
-                totalEpisodesWatched = totalEpisodesWatched,
-                totalSeriesTracked = totalSeriesTracked,
-                totalWatchTimeMs = totalWatchTimeMs,
-                statsByService = statsByService,
-                recentActivity = recentActivity,
-            )
-        } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(
-                loading = false,
-                error = "Erreur lors du chargement : ${e.message}",
-            )
+            }
         }
-    }
-
-    /** §stats-utils : extraire le numéro d'épisode du titre si possible */
-    private fun extractEpisodeNumber(title: String): Int {
-        val match = Regex("([Ee]pisode\\s*)?(\\d+)").find(title)
-        return match?.groupValues?.getOrNull(2)?.toIntOrNull() ?: 0
     }
 }

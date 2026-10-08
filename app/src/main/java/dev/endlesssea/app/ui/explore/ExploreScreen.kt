@@ -55,6 +55,8 @@ fun ExploreScreen(
     val state by viewModel.uiState.collectAsState()
     // Sélecteur d'extension : « Toutes » agrège les catalogues, sinon une seule source
     var selectedPkg by remember { mutableStateOf<String?>(null) }
+    var suggestions by remember { mutableStateOf(false) }
+    val visibleRows = if (selectedPkg == null) state.rows else state.rows.filter { it.pkg == selectedPkg }
 
     Column(Modifier.fillMaxSize()) {
         // §recherche-dans-explorer : la recherche vit ici (plus d'onglet dédié) et
@@ -100,22 +102,7 @@ fun ExploreScreen(
         
         // Appliquer les filtres aux rangées
         val filteredRows = remember(visibleRows, selectedGenre, selectedYear, selectedType) {
-            visibleRows.map { row ->
-                row.copy(
-                    items = row.items.filter { item ->
-                        val genreMatch = selectedGenre?.let { 
-                            item.genres?.contains(it, ignoreCase = true) ?: false
-                        } ?: true
-                        val yearMatch = selectedYear?.let { 
-                            item.year == it
-                        } ?: true
-                        val typeMatch = selectedType?.let { 
-                            item.type?.equals(it, ignoreCase = true) ?: false
-                        } ?: true
-                        genreMatch && yearMatch && typeMatch
-                    }
-                )
-            }.filter { it.items.isNotEmpty() }
+            filterExploreRows(visibleRows, selectedGenre, selectedYear, selectedType)
         }
         if (suggestions) {
             val items by viewModel.suggestions.collectAsState()
@@ -151,7 +138,6 @@ fun ExploreScreen(
             }
         }
 
-        val visibleRows = if (selectedPkg == null) state.rows else state.rows.filter { it.pkg == selectedPkg }
         val visibleErrors = if (selectedPkg == null) state.errors
         else state.errors.filterKeys { name -> state.extensions.any { it.first == selectedPkg && it.second == name } }
 

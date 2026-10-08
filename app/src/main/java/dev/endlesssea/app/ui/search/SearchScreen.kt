@@ -45,6 +45,9 @@ data class SearchItemUi(
     /** §recherche-groupée : extension d'origine (pkg + nom affiché). */
     val sourcePkg: String = "",
     val sourceName: String = "",
+    val genres: List<String> = emptyList(),
+    val year: Int? = null,
+    val type: dev.endlesssea.extensions.api.model.MediaType? = null,
 )
 
 /**

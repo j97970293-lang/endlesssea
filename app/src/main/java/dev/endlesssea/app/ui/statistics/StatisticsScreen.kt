@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(
     onBack: () -> Unit,
@@ -204,7 +205,7 @@ private fun formatDuration(ms: Long): String {
 
 private fun formatDate(timestamp: Long): String {
     val date = java.util.Date(timestamp)
-    return android.text.format.DateFormat.getDateInstance().format(date)
+    return java.text.DateFormat.getDateInstance().format(date)
 }
 
 // §stats-model : modèles de données

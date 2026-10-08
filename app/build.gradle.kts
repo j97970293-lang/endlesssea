@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.bundles.media3)
 
     testImplementation("org.json:json:20240303")
+    testImplementation("org.mockito:mockito-core:5.14.2")
     testImplementation(libs.test.junit)
     testImplementation(libs.test.truth)
     androidTestImplementation(libs.androidx.test.junit)

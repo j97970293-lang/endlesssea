@@ -101,11 +101,19 @@ class ExploreViewModel @Inject constructor(
                                     pkg = ext.info.id,
                                     category = cat.key,
                                     items = page.items.take(20).map {
+                                        val cached = mediaDao.byId("${ext.info.id}:${it.url}")
+                                        val genres = runCatching {
+                                            val array = org.json.JSONArray(cached?.genresJson ?: "[]")
+                                            (0 until array.length()).map { index -> array.getString(index) }
+                                        }.getOrDefault(emptyList())
                                         SearchItemUi(
                                             id = "${ext.info.id}:${it.url}", title = it.title,
                                             posterUrl = it.posterUrl,
                                             subtitle = it.year?.toString() ?: it.type.name,
                                             rating = it.rating,
+                                            year = it.year ?: cached?.year,
+                                            type = it.type,
+                                            genres = genres,
                                             audioLangs = it.audioLangs.map { l -> l.name },
                                         )
                                     },

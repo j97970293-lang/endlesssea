@@ -33,7 +33,7 @@ class TrackerRepositoryTest {
     }
     @Test fun offlineProgressIsNumberBasedAndRewatchSafe() = runBlocking {
         val dao = MemoryDao(); seed(dao)
-        val repo = TrackerRepository(dao, OkHttpClient())
+        val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
         assertFalse(repo.markEpisodeWatched("local:folder", "ep3", 3f, 1))
         assertEquals(3, dao.link("local:folder")!!.progress)
         assertTrue(dao.link("local:folder")!!.pendingSync)
@@ -47,7 +47,7 @@ class TrackerRepositoryTest {
     }
     @Test fun disablingMatchingStillAllowsManualProgress() = runBlocking {
         val dao = MemoryDao(); seed(dao)
-        val repo = TrackerRepository(dao, OkHttpClient())
+        val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
         repo.setEpisodeMatching("local:folder", false, 1)
         repo.markEpisodeWatched("local:folder", "ep3", 3f, 1)
         assertEquals(0, dao.link("local:folder")!!.progress)
@@ -58,7 +58,7 @@ class TrackerRepositoryTest {
         assertEquals(1, dao.link("local:folder")!!.progress)
     }
     @Test fun newlyConfirmedLinkIsManualByDefault() = runBlocking {
-        val dao = MemoryDao(); val repo = TrackerRepository(dao, OkHttpClient())
+        val dao = MemoryDao(); val repo = TrackerRepository(dao, OkHttpClient(), org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
         repo.link("local:folder", "MAL", TrackerSearchHit("42", "Title", 12))
         assertFalse(dao.link("local:folder")!!.autoMatchEpisodes)
     }
