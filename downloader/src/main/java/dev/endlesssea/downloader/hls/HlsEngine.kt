@@ -93,6 +93,7 @@ class HlsEngine(private val client: OkHttpClient) {
         }
         add(plan.mediaPlaylistUrl); add(plan.mediaSequence.toString()); add(plan.initUrl.orEmpty())
         add(plan.keyUri.orEmpty()); add(plan.keyIv?.joinToString(",") ?: "")
+        if (plan.keyUri != null) add("aes128-pkcs7-v2") // Old decrypted prefixes may already be corrupt.
         plan.segments.forEach { add(it.idx.toString()); add(it.url) }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
@@ -113,7 +114,8 @@ class HlsEngine(private val client: OkHttpClient) {
                 t.startsWith("#EXTINF:") -> duration = t.substringAfter(':').substringBefore(',').trim()
                     .toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
                 t.startsWith("#EXT-X-MEDIA-SEQUENCE") ->
-                    mediaSequence = t.substringAfter(':').trim().toLongOrNull() ?: 0
+                    mediaSequence = t.substringAfter(':').trim().toLongOrNull()?.takeIf { it >= 0 }
+                        ?: throw HlsError("Séquence HLS invalide ou hors plage prise en charge")
                 t.startsWith("#EXT-X-KEY") -> {
                     if (t.contains("METHOD=AES-128")) {
                         keyUri = attr(t, "URI")?.let { resolveUrl(baseUrl, it) }
@@ -146,13 +148,22 @@ class HlsEngine(private val client: OkHttpClient) {
     private fun resolveUrl(base: String, child: String): String =
         runCatching { URL(URL(base), child).toString() }.getOrDefault(child)
 
-    private fun String.hexToBytes(): ByteArray =
-        chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    private fun String.hexToBytes(): ByteArray {
+        if (length !in 1..32 || any { it !in "0123456789abcdefABCDEF" }) {
+            throw HlsError("IV AES-128 invalide : entier hexadécimal de 128 bits maximum attendu")
+        }
+        return padStart(32, '0').chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    }
 
     private fun ivForSegment(ivHex: ByteArray?, mediaSequence: Long, idx: Int): ByteArray =
         ivHex ?: ByteArray(16).apply {
+            if (mediaSequence < 0 || idx < 0 || mediaSequence > Long.MAX_VALUE - idx) {
+                throw HlsError("Séquence HLS hors plage prise en charge")
+            }
             val seq = mediaSequence + idx
-            for (i in 0..15) this[15 - i] = ((seq shr (i * 8)) and 0xFF).toByte()
+            // JVM Long shifts wrap modulo 64: writing 16 bytes would repeat the sequence twice.
+            // HLS requires the sequence in big-endian order, with the upper eight bytes zero.
+            for (i in 0..7) this[15 - i] = ((seq ushr (i * 8)) and 0xFF).toByte()
         }
 
     /**
@@ -207,14 +218,14 @@ class HlsEngine(private val client: OkHttpClient) {
                 return@withContext get(seg.url, headers).use { r ->
                     var bytes = r.body?.bytes() ?: ByteArray(0)
                     if (keyBytes != null) {
-                        val cipher = Cipher.getInstance("AES/CBC/NoPadding")
+                        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
                         cipher.init(
                             Cipher.DECRYPT_MODE,
                             SecretKeySpec(keyBytes, "AES"),
                             IvParameterSpec(ivForSegment(plan.keyIv, plan.mediaSequence, seg.idx)),
                         )
                         bytes = cipher.doFinal(bytes)
-                        // padding d'origine non retiré par NoPadding : toléré par les lecteurs
+                        // JCA PKCS5Padding for AES implements the PKCS7 padding required by HLS.
                     }
                     bytes
                 }
