@@ -84,8 +84,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
         // Toutes les destinations possibles de la barre
         // §recherche-dans-explorer : l'onglet « Recherche » a quitté la barre.
-        val ALL_TAB_ROUTES = listOf("home", "explore", "library", "downloads")
-        val DEFAULT_TABS = setOf("home", "explore", "library", "downloads")
+        val ALL_TAB_ROUTES = listOf("home", "explore", "library", "downloads", "statistics")
+        val DEFAULT_TABS = setOf("home", "explore", "library", "downloads", "statistics")
 
         // Palettes d'accent (primary) proposées dans les réglages
         val ACCENTS = linkedMapOf(

@@ -51,13 +51,14 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     data object Search : Screen("search", "Recherche", Icons.Filled.Search)
     data object Library : Screen("library", "Bibliothèque", Icons.AutoMirrored.Filled.PlaylistPlay)
     data object Downloads : Screen("downloads", "Téléchargements", Icons.Filled.Download)
+    data object Statistics : Screen("statistics", "Statistiques", Icons.Filled.QueryStats)
     data object Extensions : Screen("extensions", "Extensions", Icons.Filled.Explore)
     data object Settings : Screen("settings", "Paramètres", Icons.Filled.Home)
 }
 
 /** Toutes les entrées possibles de la barre, dans un ordre stable. */
 val allTabScreens: List<Screen> =
-    listOf(Screen.Home, Screen.Explore, Screen.Library, Screen.Downloads)
+    listOf(Screen.Home, Screen.Explore, Screen.Library, Screen.Downloads, Screen.Statistics)
 
 /** Barre de navigation flottante « verre » — onglets filtrés par les préférences utilisateur. */
 @Composable
@@ -287,6 +288,9 @@ fun EsNavGraph(nav: NavHostController) {
             )
         }
         composable(Screen.Downloads.route) { DownloadsScreen() }
+        composable(Screen.Statistics.route) {
+            dev.endlesssea.app.ui.statistics.StatisticsScreen(onBack = { nav.popBackStack() })
+        }
         composable(Screen.Extensions.route) {
             ExtensionsScreen(onExplore = { nav.navigate(Screen.Explore.route) })
         }
