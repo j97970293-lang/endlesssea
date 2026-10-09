@@ -59,6 +59,12 @@ class EsPlayer(
         .setSeekBackIncrementMs(10_000)
         .build()
 
+    private val _playbackRequested = MutableStateFlow(false)
+    /** Transport icon follows intent, including buffering, rather than rendered frames. */
+    val playbackRequested: StateFlow<Boolean> = _playbackRequested
+    private fun publishPlaybackIntent() {
+        _playbackRequested.value = playbackButtonShowsPause(player.playWhenReady, player.playbackState, player.playerError != null)
+    }
     private val _isPlaying = MutableStateFlow(false)
     private val _positionMs = MutableStateFlow(0L)
     private val _durationMs = MutableStateFlow(0L)
@@ -102,8 +108,20 @@ class EsPlayer(
 
     private var currentIndex = 0
 
+    private val relativeSeekTarget = RelativeSeekTarget()
+    private var relativeSeekJob: kotlinx.coroutines.Job? = null
+
     init {
+        // Media3 1.5 creates its video graph only on the first renderer enable (or reset).
+        // Install an empty chain BEFORE any prepare, so live edits can use that graph.
+        player.setVideoEffects(emptyList())
         player.addListener(object : Player.Listener {
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                cancelRelativeSeek()
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { publishPlaybackIntent() }
+            override fun onPlaybackStateChanged(playbackState: Int) { publishPlaybackIntent() }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { publishPlaybackIntent() }
             override fun onIsPlayingChanged(playing: Boolean) { _isPlaying.value = playing }
             override fun onTracksChanged(tracks: Tracks) {
                 publishTracks(tracks)
@@ -313,8 +331,24 @@ class EsPlayer(
         player.play()
     }
     override fun pause() = player.pause()
-    override fun seekTo(ms: Long) = player.seekTo(ms)
-    override fun seekBy(deltaMs: Long) = player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0))
+    private fun cancelRelativeSeek() {
+        relativeSeekJob?.cancel(); relativeSeekJob = null; relativeSeekTarget.clear()
+    }
+    override fun seekTo(ms: Long) {
+        cancelRelativeSeek()
+        player.seekTo(ms.coerceAtLeast(0L))
+    }
+    override fun seekBy(deltaMs: Long) {
+        if (!player.isCurrentMediaItemSeekable) return
+        _positionMs.value = relativeSeekTarget.add(player.currentPosition, deltaMs, player.duration)
+        // A bounded 60 ms batch reduces decoder churn without dropping taps or waiting for buffering.
+        if (relativeSeekJob == null) relativeSeekJob = scope.launch {
+            delay(60)
+            val target = relativeSeekTarget.take()
+            relativeSeekJob = null
+            if (target != null) player.seekTo(target)
+        }
+    }
 
     /**
      * §vitesse : 0,25× → 4× avec **correction du pitch** (la voix reste naturelle
@@ -330,19 +364,13 @@ class EsPlayer(
         player.playbackParameters = PlaybackParameters(factor.coerceIn(0.25f, 4f), 1f)
     }
 
-    /**
-     * Filtres vidéo temps réel (luminosité/teinte/saturation via HslAdjustment composé
-     * par l'app) — la surface du player DOIT être une TextureView pour être visible.
-     */
+    /** Apply to the existing graph without replacing the output surface or changing play intent. */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    fun applyVideoEffects(effects: List<androidx.media3.common.Effect>) {
-        runCatching { player.setVideoEffects(effects) }
-        // §filtres-video : ExoPlayer ne réinjecte la chaîne d'effets qu'à la frame
-        // suivante — en pause (ou sur certains décodeurs) l'image restait inchangée
-        // jusqu'à ce qu'on quitte la vidéo. Un micro-seek force le re-rendu.
-        runCatching {
-            val pos = player.currentPosition
-            if (player.duration > 0 || pos > 0) player.seekTo(pos)
+    fun applyVideoEffects(effects: List<androidx.media3.common.Effect>): Result<Unit> = runCatching {
+        player.setVideoEffects(effects)
+        // A paused frame needs a refresh; never force repeated seeks while playing/buffering.
+        if (!player.playWhenReady && player.playbackState == Player.STATE_READY && player.isCurrentMediaItemSeekable) {
+            player.seekTo(player.currentPosition.coerceAtLeast(0L))
         }
     }
 
@@ -383,6 +411,7 @@ class EsPlayer(
     )
 
     override fun release() {
+        cancelRelativeSeek()
         runCatching { loudness?.release() }
         loudness = null
         player.release()

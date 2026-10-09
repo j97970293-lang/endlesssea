@@ -1172,9 +1172,8 @@ fun SettingsScreen(
                     // §rendu-vidéo : choix de la surface de rendu
                     Text("Rendu vidéo", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Texture : compatible avec les filtres vidéo. " +
-                            "Surface : rendu matériel direct — plus fluide, moins gourmand " +
-                            "(recommandé sur TV / appareils lents), mais sans filtres.",
+                        "Texture ou Surface : deux sorties vidéo disponibles. " +
+                            "Les filtres utilisent le GPU dans les deux modes ; fluidité et consommation dépendent de l’appareil.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

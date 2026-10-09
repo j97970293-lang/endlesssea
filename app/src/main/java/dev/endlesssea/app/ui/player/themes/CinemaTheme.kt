@@ -48,7 +48,14 @@ object CinemaTheme : PlayerTheme {
             }
             Control(Icons.Default.Lock, "Verrouiller les commandes", actions.onToggleLock)
             Spacer(Modifier.width(6.dp))
-            Control(Icons.Default.AspectRatio, "Ajuster le cadrage vidéo", actions.onCycleZoom)
+            Surface(onClick = actions.onCycleZoom, color = panel, shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, outline)) {
+                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AspectRatio, "Changer le cadrage vidéo", tint = Color.White, modifier = Modifier.size(22.dp))
+                    Text(zoomLabel(state.zoomMode), color = Color.White, style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(start = 5.dp))
+                }
+            }
             Spacer(Modifier.width(6.dp))
             Control(Icons.Default.Settings, "Paramètres du lecteur", actions.onOpenMore)
         }

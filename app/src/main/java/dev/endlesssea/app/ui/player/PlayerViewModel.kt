@@ -142,6 +142,9 @@ class PlayerViewModel @Inject constructor(
             before.providerAniSkip != now.providerAniSkip
     }
 
+    private var effectsJob: kotlinx.coroutines.Job? = null
+    private var appliedEffectSettings: List<Any>? = null
+
     init {
         // §sous-titres / §audio (conversation 1) : on réapplique les réglages
         // retenus (décalage ± des pistes externes, boost jusqu'à 200 %).
@@ -358,7 +361,25 @@ class PlayerViewModel @Inject constructor(
      * moteur. Un seul point d'entrée : c'est ce qui corrige les filtres « qui ne
      * s'appliquaient qu'après avoir quitté la vidéo » (chaînes concurrentes).
      */
+    private fun effectSettings(): List<Any> = _uiState.value.let {
+        listOf(it.videoScale, it.videoSharpen, it.enhance, it.filterContrast, it.filterGamma,
+            it.filterSharp, it.filterTemp, it.filterBrightness, it.filterSaturation, it.filterHue)
+    }
+
     private fun rebuildEffects() {
+        effectsJob?.cancel()
+        val settings = effectSettings()
+        if (settings == appliedEffectSettings) return
+        effectsJob = viewModelScope.launch {
+            // Slider and preference emissions are one edit, not many graph rebuilds/seeks.
+            delay(120)
+            runCatching { applyCurrentEffects(settings) }.onFailure {
+                _uiState.value = _uiState.value.copy(toast = "Réglage vidéo refusé : ${it.message ?: "valeur invalide"}")
+            }
+        }
+    }
+
+    private fun applyCurrentEffects(settings: List<Any>) {
         val st = _uiState.value
         val effects = mutableListOf<androidx.media3.common.Effect>()
 
@@ -427,14 +448,7 @@ class PlayerViewModel @Inject constructor(
                 runCatching { effects += androidx.media3.effect.Contrast(-0.05f) }
             }
         }
-        // §rendu : les effets GPU n'existent QUE sur une TextureView. En mode
-        // « Surface », l'utilisateur ne voyait aucune différence quoi qu'il règle.
-        if (effects.isNotEmpty() && prefs.videoRender.value != "texture") {
-            prefs.setVideoRender("texture")
-            _uiState.value = _uiState.value.copy(
-                toast = "Rendu passé en « Texture » pour appliquer l'amélioration",
-            )
-        }
+        // Keep the active output surface: Media3's video graph also supports SurfaceView.
 
         // 2) réglages fins de l'utilisateur
         if (st.filterContrast != 1f) {
@@ -457,11 +471,13 @@ class PlayerViewModel @Inject constructor(
         // 3) le triplet classique (luminosité / saturation / teinte), toujours en dernier
         val lightness = st.filterBrightness + (st.filterGamma - 1f) * 20f
         effects += androidx.media3.effect.HslAdjustment.Builder()
-            .adjustLightness(lightness)
+            .adjustLightness(lightness.coerceIn(-100f, 100f))
             .adjustSaturation(st.filterSaturation)
             .adjustHue(st.filterHue)
             .build()
-        engine.applyVideoEffects(effects)
+        engine.applyVideoEffects(effects).onSuccess { appliedEffectSettings = settings }.onFailure {
+            _uiState.value = _uiState.value.copy(toast = "Impossible d'appliquer ce réglage vidéo : ${it.message ?: "erreur du moteur"}")
+        }
     }
 
     fun applyPreset(preset: VideoFilterPreset) =
@@ -519,15 +535,19 @@ class PlayerViewModel @Inject constructor(
 
     /** Double appui à gauche/droite : avance/recul de [seconds], flash visuel côté écran. */
     private var skipFlashJob: kotlinx.coroutines.Job? = null
+    private var skipFlashSeconds = 0L
 
     fun jumpBy(seconds: Int) {
         engine.seekBy(seconds * 1000L)
+        skipFlashSeconds += seconds
         _uiState.value = _uiState.value.copy(
-            skipFlash = if (seconds > 0) "+${seconds} s" else "-${seconds.absoluteValue} s",
+            skipFlash = if (skipFlashSeconds >= 0) "+${skipFlashSeconds} s" else "${skipFlashSeconds} s",
+            positionMs = engine.positionMs.value,
         )
         skipFlashJob?.cancel()
         skipFlashJob = viewModelScope.launch {
             delay(700)
+            skipFlashSeconds = 0L
             _uiState.value = _uiState.value.copy(skipFlash = null)
         }
     }
@@ -629,7 +649,8 @@ class PlayerViewModel @Inject constructor(
     fun setSeekHideThumb(v: Boolean) = prefs.setSeekHideThumb(v)
 
     fun togglePlayback() {
-        if (engine.player.playWhenReady && engine.player.playbackState != androidx.media3.common.Player.STATE_ENDED) {
+        if (dev.endlesssea.player.playbackButtonShowsPause(engine.player.playWhenReady,
+                engine.player.playbackState, engine.player.playerError != null)) {
             engine.pause()
         } else {
             _uiState.value = _uiState.value.copy(error = null)
@@ -657,9 +678,7 @@ class PlayerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(currentLinkIndex = index)
     }
 
-    fun megaJump(deltaSec: Int) = viewModelScope.launch {
-        engine.player.seekTo((engine.player.currentPosition + deltaSec * 1000L).coerceAtLeast(0))
-    }
+    fun megaJump(deltaSec: Int) { engine.seekBy(deltaSec * 1000L) }
 
     // ------------------------------------------------------------------ megaskip
 
@@ -785,7 +804,7 @@ class PlayerViewModel @Inject constructor(
 
     /** Bouton personnalisé : saut relatif à la position courante. */
     fun customSkip(button: dev.endlesssea.app.skip.CustomSkipButton) {
-        engine.seekTo((engine.player.currentPosition + button.seconds * 1000L).coerceAtLeast(0))
+        engine.seekBy(button.seconds * 1000L)
         _uiState.value = _uiState.value.copy(toast = "${button.label} · ${button.human}")
         viewModelScope.launch { delay(1_500); _uiState.value = _uiState.value.copy(toast = null) }
     }

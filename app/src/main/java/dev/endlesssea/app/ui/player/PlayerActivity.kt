@@ -84,7 +84,6 @@ import dev.endlesssea.app.ui.player.themes.PlayerControlsActions
 import dev.endlesssea.app.ui.player.themes.PlayerControlsState
 import dev.endlesssea.app.ui.player.themes.ThemeProvider
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.VideoSize
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import dev.endlesssea.app.ui.theme.EndlessSeaTheme
@@ -173,6 +172,7 @@ private val BUILTIN_PRESETS = listOf(
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
     val isPlaying by viewModel.engine.isPlaying.collectAsState()
+    val playbackRequested by viewModel.engine.playbackRequested.collectAsState()
     val subtitleTracks by viewModel.engine.availableSubtitles.collectAsState()
     val audioTracks by viewModel.engine.availableAudio.collectAsState()
 
@@ -191,8 +191,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             viewModel.engine.addExternalSubtitle(uri.toString(), "Fichier local")
         }
     }
-    var textureView by remember { mutableStateOf<android.view.TextureView?>(null) }
-    var videoSize by remember { mutableStateOf(VideoSize(0, 0)) }
     var showCcDialog by remember { mutableStateOf(false) }
     var showAudioDialog by remember { mutableStateOf(false) }
     var showFilterDialog by remember { mutableStateOf(false) }
@@ -210,8 +208,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     // §fit : 0 = contenir · 1 = remplir (zoom) · 2 = étirer (déforme)
     var zoomMode by remember { mutableIntStateOf(0) }
-    /** §double-appui-continu : date du dernier saut par appui. */
-    var lastSkipAt by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
     /** §megaskip : éditeur des boutons de saut personnalisés (CRUD hors-ligne). */
@@ -220,14 +216,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var pinchScale by remember { mutableStateOf(1f) }
     var panX by remember { mutableStateOf(0f) }
     var panY by remember { mutableStateOf(0f) }
-
-    DisposableEffect(viewModel.engine.player) {
-        val listener = object : androidx.media3.common.Player.Listener {
-            override fun onVideoSizeChanged(size: VideoSize) { videoSize = size }
-        }
-        viewModel.engine.player.addListener(listener)
-        onDispose { viewModel.engine.player.removeListener(listener) }
-    }
 
     // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
     val progressPos by viewModel.progressPosition.collectAsState()
@@ -276,7 +264,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             }
         }
     }) {
-        // TextureView directe sur le lecteur : requis pour voir les filtres vidéo (HslAdjustment)
+        // Media3 owns surface sizing and lifecycle; Compose supplies only the custom controls.
         val renderMode by viewModel.videoRender.collectAsState()
         // §gestes-lecteur : zoom par pincement + déplacement à deux doigts —
         // appliqué à la surface vidéo (indépendant du mode « contenir/remplir »).
@@ -284,33 +272,28 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             scaleX = pinchScale, scaleY = pinchScale,
             translationX = panX, translationY = panY,
         )
-        if (renderMode == "surface") {
-            // §rendu-vidéo : SurfaceView — rendu matériel direct (plus fluide,
-            // compatible HDR / Android TV) ; les filtres vidéo sont inactifs.
+        androidx.compose.runtime.key(renderMode) {
             AndroidView(
                 factory = { ctx ->
-                    android.view.SurfaceView(ctx).also {
-                        viewModel.engine.player.setVideoSurfaceView(it)
-                        textureView = null
+                    (android.view.LayoutInflater.from(ctx).inflate(
+                        if (renderMode == "surface") dev.endlesssea.app.R.layout.player_video_surface
+                        else dev.endlesssea.app.R.layout.player_video_texture,
+                        null, false,
+                    ) as androidx.media3.ui.PlayerView).apply {
+                        player = viewModel.engine.player
+                        // The existing subtitle overlay handles the user's styling/delay settings.
+                        subtitleView?.visibility = android.view.View.GONE
                     }
                 },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxSize()
-                    .then(zoomLayer),
-            )
-        } else {
-            AndroidView(
-                factory = { ctx ->
-                    android.view.TextureView(ctx).also {
-                        viewModel.engine.player.setVideoTextureView(it)
-                        textureView = it
+                update = { videoView ->
+                    videoView.resizeMode = when (zoomMode) {
+                        1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                 },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxSize()
-                    .then(zoomLayer),
+                onRelease = { it.player = null },
+                modifier = Modifier.align(Alignment.Center).fillMaxSize().then(zoomLayer),
             )
         }
 
@@ -333,31 +316,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             )
         }
 
-        // Zoom (contenir ↔ remplir) appliqué par matrice sur la TextureView
-        LaunchedEffect(zoomMode, videoSize) {
-            val tv = textureView ?: return@LaunchedEffect
-            val w = tv.width.takeIf { it > 0 } ?: return@LaunchedEffect
-            val h = tv.height.takeIf { it > 0 } ?: return@LaunchedEffect
-            val vw = videoSize.width.takeIf { it > 0 } ?: return@LaunchedEffect
-            val vh = videoSize.height.takeIf { it > 0 } ?: return@LaunchedEffect
-            val m = android.graphics.Matrix()
-            val scaleCover = maxOf(w / vw.toFloat(), h / vh.toFloat())
-            val scaleFit = minOf(w / vw.toFloat(), h / vh.toFloat())
-            when (zoomMode) {
-                1 -> {
-                    val factor = if (scaleFit > 0f) scaleCover / scaleFit else 1f
-                    m.setScale(factor, factor, w / 2f, h / 2f)
-                }
-                2 -> {
-                    // étirer : on force le remplissage, quitte à déformer
-                    val fx = if (scaleFit > 0f) (w / vw.toFloat()) / scaleFit else 1f
-                    val fy = if (scaleFit > 0f) (h / vh.toFloat()) / scaleFit else 1f
-                    m.setScale(fx, fy, w / 2f, h / 2f)
-                }
-            }
-            tv.setTransform(m)
-        }
-
         // ---- §gestes-lecteur (façon mpv-android) :
         // tap = contrôles · double-tap gauche/droite = ±skip · long-press = vitesse ×2
         // (restaurée au relâchement) · glisser horizontal = seek avec aperçu ·
@@ -367,7 +325,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         val exo = viewModel.engine.player
         var gestureOverlay by remember { mutableStateOf<String?>(null) }
         var gestureSeq by remember { mutableStateOf(0) }
-        var speedBoost = remember { false }
+        var speedBoost by remember { mutableStateOf(false) }
+        var speedBeforeBoost by remember { mutableStateOf(1f) }
         fun flash(text: String) { gestureOverlay = text; gestureSeq += 1 }
         LaunchedEffect(gestureSeq) {
             val seq = gestureSeq
@@ -380,51 +339,49 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             Modifier
                 .fillMaxSize()
                 .pointerInput(state.skipSeconds, state.locked) {
-                    detectTapGestures(
-                        onTap = { offset ->
-                            if (state.locked) return@detectTapGestures
-                            // §double-appui-continu : tant qu'on reste dans la
-                            // fenêtre de [GestureConfig.doubleTapWindowMs] après un
-                            // saut, chaque appui enchaîne un nouveau saut
-                            // (comportement YouTube) au lieu d'afficher/masquer
-                            // les commandes.
-                            val now = android.os.SystemClock.uptimeMillis()
-                            if (now - lastSkipAt < gestures.doubleTapWindowMs) {
-                                lastSkipAt = now
-                                val half = size.width / 2
-                                viewModel.jumpBy(
-                                    if (offset.x < half) -state.skipSeconds else state.skipSeconds,
-                                )
-                            } else {
-                                viewModel.toggleControls()
-                            }
-                        },
-                        onDoubleTap = { offset ->
-                            if (!state.locked) {
-                                val half = size.width / 2
-                                val delta = if (offset.x < half) -state.skipSeconds else state.skipSeconds
-                                // §double-message : jumpBy publie déjà state.skipFlash,
-                                // inutile d'afficher un second bandeau par-dessus.
-                                lastSkipAt = android.os.SystemClock.uptimeMillis()
-                                viewModel.jumpBy(delta)
-                            }
-                        },
-                        onLongPress = {
-                            if (!state.locked) {
-                                exo.setPlaybackSpeed(gestures.longPressSpeed)
-                                speedBoost = true
-                                gestureOverlay = "Vitesse ×%.0f".format(gestures.longPressSpeed)
-                            }
-                        },
-                        onPress = {
-                            tryAwaitRelease()
-                            if (speedBoost) {
-                                exo.setPlaybackSpeed(1f)
-                                speedBoost = false
-                                gestureOverlay = null
-                            }
-                        },
-                    )
+                    kotlinx.coroutines.coroutineScope {
+                        val taps = dev.endlesssea.player.SeekTapSequence(viewConfiguration.doubleTapTimeoutMillis, gestures.doubleTapWindowMs)
+                        var singleTap: kotlinx.coroutines.Job? = null
+                        try {
+                            // No onDoubleTap callback: it would consume rapid taps in pairs.
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    if (!state.locked) {
+                                        val side = if (offset.x < size.width / 2f) -1 else 1
+                                        val seek = taps.tap(android.os.SystemClock.uptimeMillis(), side)
+                                        singleTap?.cancel()
+                                        if (seek) viewModel.jumpBy(side * state.skipSeconds)
+                                        else singleTap = launch {
+                                            kotlinx.coroutines.delay(viewConfiguration.doubleTapTimeoutMillis)
+                                            taps.reset()
+                                            viewModel.toggleControls()
+                                        }
+                                    }
+                                },
+                                onLongPress = {
+                                    singleTap?.cancel(); taps.reset()
+                                    if (!state.locked) {
+                                        speedBeforeBoost = exo.playbackParameters.speed
+                                        exo.setPlaybackSpeed(gestures.longPressSpeed)
+                                        speedBoost = true
+                                        gestureOverlay = "Vitesse ×%.0f".format(gestures.longPressSpeed)
+                                    }
+                                },
+                                onPress = {
+                                    try { tryAwaitRelease() } finally {
+                                        if (speedBoost) {
+                                            exo.setPlaybackSpeed(speedBeforeBoost)
+                                            speedBoost = false
+                                            gestureOverlay = null
+                                        }
+                                    }
+                                },
+                            )
+                        } finally {
+                            singleTap?.cancel()
+                            if (speedBoost) { exo.setPlaybackSpeed(speedBeforeBoost); speedBoost = false }
+                        }
+                    }
                 }
                 .pointerInput(state.locked, state.durationMs) {
                     val audio = playerCtx.getSystemService(android.content.Context.AUDIO_SERVICE)
@@ -699,7 +656,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 title = state.title,
                 subtitle = state.links.getOrNull(state.currentLinkIndex)
                     ?.let { "${it.server} — ${it.quality.label}" } ?: "",
-                playing = isPlaying,
+                playing = playbackRequested,
                 locked = state.locked,
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
