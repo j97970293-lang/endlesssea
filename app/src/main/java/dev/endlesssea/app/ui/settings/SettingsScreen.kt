@@ -460,29 +460,6 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text("Teinte du logo au démarrage", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FilterChip(
-                            selected = state.logoTint == "original",
-                            onClick = { viewModel.setLogoTint("original") },
-                            label = { Text("Couleurs originales", maxLines = 1, softWrap = false) },
-                        )
-                        AppPrefs.ACCENTS.keys.forEach { name ->
-                            FilterChip(
-                                selected = state.logoTint == name,
-                                onClick = { viewModel.setLogoTint(name) },
-                                label = { Text(name.replaceFirstChar { it.uppercase() }, maxLines = 1, softWrap = false) },
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("Police de l'application", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Polices téléchargées à la volée (Google Fonts) — nécessite Internet au 1er affichage.",

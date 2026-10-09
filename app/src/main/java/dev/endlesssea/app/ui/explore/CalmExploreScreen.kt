@@ -42,6 +42,12 @@ fun ExploreScreen(onMediaClick: (String) -> Unit, onSearch: (String,String) -> U
     val cards = filterExploreRows(rows,genre,year,type).flatMap { it.items }.distinctBy { it.id }
     Column(Modifier.fillMaxSize()) {
         EndlessSeaTopBar("Explorer",icon=Icons.Default.Explore)
+        // Filters and search scroll away with the catalogue; only the section bar stays fixed.
+        LazyVerticalGrid(GridCells.Adaptive(140.dp), modifier=Modifier.weight(1f),
+            contentPadding=PaddingValues(bottom=16.dp), horizontalArrangement=Arrangement.spacedBy(8.dp),
+            verticalArrangement=Arrangement.spacedBy(16.dp)) {
+          item(span={GridItemSpan(maxLineSpan)}) {
+           Column {
         OutlinedTextField(query,{query=it},Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),singleLine=true,
             placeholder={Text("Chercher un film, une série…")},leadingIcon={Icon(Icons.Default.Search,null)},
             trailingIcon={IconButton(onClick={onSearch(query,source)}) {Icon(Icons.Default.ArrowForward,"Lancer la recherche")}},
@@ -73,8 +79,9 @@ fun ExploreScreen(onMediaClick: (String) -> Unit, onSearch: (String,String) -> U
             val menu=LocalSectionMenu.current
             if(state.extensionCount==0) TextButton(onClick=menu.extensions) {Text("Ouvrir les extensions")}
         }
-        LazyVerticalGrid(GridCells.Adaptive(140.dp),contentPadding=PaddingValues(16.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-            items(cards,key={it.id}) { item -> CatalogPoster(item,{onMediaClick(item.id)},caption=item.year?.toString()) }
+           }
+          }
+            items(cards,key={it.id}) { item -> Box(Modifier.padding(horizontal=8.dp)) { CatalogPoster(item,{onMediaClick(item.id)},caption=item.year?.toString()) } }
         }
     }
     if(sources) ModalBottomSheet(onDismissRequest={sources=false}) {

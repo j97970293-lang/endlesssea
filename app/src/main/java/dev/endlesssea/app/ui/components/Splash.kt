@@ -31,10 +31,10 @@ import kotlinx.coroutines.delay
 
 /**
  * Écran de démarrage « pas trop lourd » : logo qui grandit en fondu (~400 ms)
- * + titre qui apparaît, puis main (≈800 ms au total). Teinte du logo réglable.
+ * + titre qui apparaît, puis main (≈800 ms au total). Couleurs originales du logo, sans recoloration.
  */
 @Composable
-fun SplashScreen(tintArgb: Long?, logoId: String = dev.endlesssea.app.branding.AppLogos.DEFAULT_ID, onFinished: () -> Unit) {
+fun SplashScreen(logoId: String = dev.endlesssea.app.branding.AppLogos.DEFAULT_ID, onFinished: () -> Unit) {
     var visible by remember { mutableStateOf(false) }
     var titleVisible by remember { mutableStateOf(false) }
     var gone by remember { mutableStateOf(false) }
@@ -81,8 +81,7 @@ fun SplashScreen(tintArgb: Long?, logoId: String = dev.endlesssea.app.branding.A
                     .size(168.dp)
                     .scale(logoScale)
                     .alpha(logoAlpha),
-                // Original means original: preserve the blue AND white, unless tint is explicitly chosen.
-                colorFilter = tintArgb?.let { ColorFilter.tint(Color(it), BlendMode.Modulate) },
+                // Preserve the original artwork, independently of the interface accent.
             )
             Text(
                 "EndlessSea",
@@ -93,7 +92,3 @@ fun SplashScreen(tintArgb: Long?, logoId: String = dev.endlesssea.app.branding.A
         }
     }
 }
-
-/** Nom de teinte (« lavande », …, « original ») → ARGB à appliquer sur le logo. */
-fun logoTintArgb(name: String): Long? =
-    if (name == "original") null else AppPrefs.ACCENTS[name]

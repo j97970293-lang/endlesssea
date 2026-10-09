@@ -119,7 +119,7 @@ class HomeViewModel @Inject constructor(
         }
         safeLaunch {
             historyDao.observeContinueWatching(12).collect { history ->
-                val items = history.mapNotNull { h ->
+                val items = latestContinueEntries(history).mapNotNull { h ->
                     val progress = if (h.durationMs > 0) {
                         (h.positionMs.toFloat() / h.durationMs.toFloat()).coerceIn(0f, 1f)
                     } else 0f
