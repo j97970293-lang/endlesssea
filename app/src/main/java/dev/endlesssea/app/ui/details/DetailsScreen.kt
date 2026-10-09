@@ -1440,7 +1440,8 @@ private fun TrackerCard(
                             onClick = { viewModel.markNextWatched() },
                             label = { Text("+1 épisode vu", maxLines = 1, softWrap = false) },
                         )
-                        listOf("PLANNING" to "À voir", "WATCHING" to "En cours", "PAUSED" to "En pause", "COMPLETED" to "Terminé", "REPEATING" to "Revoir", "DROPPED" to "Abandonné")
+                        listOf("PLANNING" to "À voir", "WATCHING" to "En cours", "PAUSED" to "En pause", "COMPLETED" to "Terminé", "DROPPED" to "Abandonné")
+                            .let { if(l.service=="ANILIST") it + ("REPEATING" to "Revoir") else it }
                             .forEach { (key, label) ->
                                 androidx.compose.material3.FilterChip(
                                     selected = l.status == key,

@@ -37,6 +37,7 @@ internal fun MetadataCard(viewModel: DetailsViewModel, onOpenAccounts: () -> Uni
                     onClick={viewModel.searchMetadata(service,query)},label={Text(if(service=="TMDB") "TMDB" else "AniList")}) }
             }
             if(search.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            else if(search.error!=null) Text(search.error.orEmpty(),color=MaterialTheme.colorScheme.error)
             else if(search.service!=null && search.hits.isEmpty()) Text("Aucun résultat. Modifiez le titre, puis touchez la source pour relancer.")
             LazyColumn(Modifier.heightIn(max=280.dp)) {
                 items(search.hits, key={it.remoteId}) { hit ->

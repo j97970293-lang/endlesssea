@@ -156,8 +156,12 @@ class AniListService(private val http: OkHttpClient) : TrackerService {
             .put("variables", JSONObject().put("q", query))
             .toString()
         val body = http.postJson(ENDPOINT, payload, token)
-        val media = JSONObject(body).optJSONObject("data")
-            ?.optJSONObject("Page")?.optJSONArray("media") ?: return@withContext emptyList()
+        val result = JSONObject(body)
+        if (result.optJSONArray("errors")?.length()?.let { it > 0 } == true) {
+            throw TrackerError("Recherche AniList refusée ou indisponible. Vérifiez la connexion de votre compte.")
+        }
+        val media = result.optJSONObject("data")
+            ?.optJSONObject("Page")?.optJSONArray("media") ?: throw TrackerError("Réponse AniList incomplète")
         (0 until media.length()).mapNotNull { i ->
             val m = media.optJSONObject(i) ?: return@mapNotNull null
             val title = m.optJSONObject("title")

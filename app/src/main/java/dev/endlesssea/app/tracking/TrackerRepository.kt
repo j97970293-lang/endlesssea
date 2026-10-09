@@ -111,14 +111,19 @@ class TrackerRepository @Inject constructor(
 
     // ---------------------------------------------------------------- recherche
 
-    /** Recherche sur un service (rattachement manuel) — renvoie [] sans compte. */
-    suspend fun search(id: String, query: String): List<TrackerSearchHit> = withContext(Dispatchers.IO) {
-        val svc = service(id) ?: return@withContext emptyList()
-        val account = activeAccount(id) ?: return@withContext emptyList()
-        runCatching { withFreshAccount(account) { svc.search(it, query) } }.getOrElse { e ->
-            TrackerRegistry.log("search", "$id : ${e.message}")
-            emptyList()
-        }
+    /** Errors remain distinguishable from a successful empty result for metadata selection. */
+    suspend fun searchChecked(id: String, query: String): List<TrackerSearchHit> = withContext(Dispatchers.IO) {
+        val svc = service(id) ?: throw TrackerError("Service inconnu")
+        val account = activeAccount(id) ?: throw TrackerError("Connectez ou réactivez ce compte")
+        withFreshAccount(account) { svc.search(it, query) }
+    }
+
+    suspend fun search(id: String, query: String): List<TrackerSearchHit> = try {
+        searchChecked(id, query)
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (e: Exception) {
+        TrackerRegistry.log("search", "$id : ${e.message}")
+        emptyList()
     }
 
     // ---------------------------------------------------------------- rattachement

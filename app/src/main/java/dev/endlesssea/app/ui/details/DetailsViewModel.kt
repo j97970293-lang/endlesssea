@@ -441,6 +441,7 @@ class DetailsViewModel @Inject constructor(
         val service: String? = null,
         val loading: Boolean = false,
         val hits: List<dev.endlesssea.app.tracking.TrackerSearchHit> = emptyList(),
+        val error: String? = null,
     )
 
     private val _trackerSearch = MutableStateFlow(TrackerSearchState())
@@ -457,9 +458,14 @@ class DetailsViewModel @Inject constructor(
         metadataSearchJob = viewModelScope.launch {
             _metadataSearch.value = TrackerSearchState(service = service, loading = true)
             val title = query.trim().ifBlank { _uiState.value.details?.title.orEmpty() }
-            val hits = trackers.search(service, title)
-            kotlin.coroutines.coroutineContext.ensureActive()
-            _metadataSearch.value = TrackerSearchState(service = service, hits = hits)
+            try {
+                val hits = trackers.searchChecked(service, title)
+                kotlin.coroutines.coroutineContext.ensureActive()
+                _metadataSearch.value = TrackerSearchState(service = service, hits = hits)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                _metadataSearch.value = TrackerSearchState(service = service, error = e.message ?: "Recherche indisponible")
+            }
         }
     }
 
@@ -919,7 +925,7 @@ class DetailsViewModel @Inject constructor(
         val fileName = FileNames.videoName(details?.title ?: mediaKey,
             movie = details?.type == dev.endlesssea.extensions.api.model.MediaType.MOVIE,
             year = details?.year, season = episode.season, episode = episode.number,
-            episodeTitle = episode.title, quality = quality, language = link.audioLang.name,
+            episodeTitle = episode.title, quality = link.quality.takeUnless { it == dev.endlesssea.extensions.api.model.Quality.UNKNOWN }?.label.orEmpty(), language = link.audioLang.name,
             extension = extensionFor(link))
         val sourceName = runCatching { registry.instance(extensionId).info.name }
             .getOrDefault(extensionId)
