@@ -12,7 +12,7 @@ internal object LocalMetadataCodec {
             val fields = root.optJSONArray(uri) ?: return@mapNotNull null
             fun text(i: Int): String? = if (fields.isNull(i)) null else fields.optString(i).takeIf { it.isNotBlank() }
             fun seconds(i: Int): Int? = text(i)?.toIntOrNull()?.takeIf { it >= 0 }
-            uri to LocalFileMeta(text(0), text(1), seconds(2), seconds(3), seconds(4))
+            uri to LocalFileMeta(text(0), text(1), seconds(2), seconds(3), seconds(4), text(5))
         }.toMap()
     }.getOrDefault(emptyMap())
 
@@ -20,7 +20,7 @@ internal object LocalMetadataCodec {
         values.forEach { (uri, meta) -> put(uri, JSONArray().apply {
             put(meta.title ?: ""); put(meta.coverUri ?: "")
             put(meta.introStartSec?.toString() ?: ""); put(meta.introEndSec?.toString() ?: "")
-            put(meta.outroStartSec?.toString() ?: "")
+            put(meta.outroStartSec?.toString() ?: ""); put(meta.mediaType ?: "")
         }) }
     }.toString()
 }

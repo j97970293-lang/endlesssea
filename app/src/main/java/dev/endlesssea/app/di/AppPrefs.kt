@@ -464,8 +464,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     /**
      * §bibliothèque-locale : métadonnées éditées par fileUri (JSON objet).
-     * Tableau de 5 champs : [titre, affiche, débutIntro(s), finIntro(s), débutOutro(s)].
-     * Les anciens objets à 2 champs restent lisibles (champs manquants = null).
+     * Tableau de 6 champs : [titre, affiche, débutIntro(s), finIntro(s), débutOutro(s), type].
+     * Les anciens objets à 2 ou 5 champs restent lisibles (champs manquants = null).
      */
     data class LocalFileMeta(
         val title: String? = null,
@@ -473,6 +473,7 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val introStartSec: Int? = null,
         val introEndSec: Int? = null,
         val outroStartSec: Int? = null,
+        val mediaType: String? = null,
     )
 
     fun localFileMetadataSnapshot(): Map<String, LocalFileMeta> =

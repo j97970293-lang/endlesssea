@@ -16,8 +16,13 @@ class LocalMetadataCodecTest {
     @Test fun oldTwoFieldEntriesRemainReadable() {
         assertEquals(LocalFileMeta("Titre", "cover"), LocalMetadataCodec.decodeAll("""{"uri":["Titre","cover"]}""")["uri"])
     }
+    @Test fun mediaTypeIsStoredAsSixthFieldAndLegacyFiveFieldEntriesRemainReadable() {
+        val encoded = LocalMetadataCodec.encode(mapOf("folder:film" to LocalFileMeta(mediaType = "MOVIE")))
+        assertEquals("MOVIE", LocalMetadataCodec.decodeAll(encoded)["folder:film"]?.mediaType)
+        assertNull(LocalMetadataCodec.decodeAll("""{"uri":["Titre","cover","0","90","200"]}""")["uri"]?.mediaType)
+    }
     @Test fun specialCharactersRoundTripWithoutDestructiveReplacement() {
-        val values = mapOf("content://été/[1]" to LocalFileMeta("Un \\\"titre\\\", [spécial]", "content://image?a=1,b=2", 0, 90, 200))
+        val values = mapOf("content://été/[1]" to LocalFileMeta("Un \\\"titre\\\", [spécial]", "content://image?a=1,b=2", 0, 90, 200, "SERIES"))
         assertEquals(values, LocalMetadataCodec.decodeAll(LocalMetadataCodec.encode(values)))
     }
     @Test fun missingMetadataDoesNotCreateFakeValues() {

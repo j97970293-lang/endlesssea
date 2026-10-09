@@ -3,6 +3,8 @@ package dev.endlesssea.app.ui.downloads
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.endlesssea.app.local.LocalMediaType
 import dev.endlesssea.app.ui.components.GlassCard
 import dev.endlesssea.app.ui.library.DownloadedEpisodeUi
 import dev.endlesssea.app.ui.library.LibrarySource
@@ -122,6 +126,21 @@ fun DownloadedFolderScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (group != null) {
+                        Text("Type de média", style = MaterialTheme.typography.labelLarge)
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            LocalMediaType.options.forEach { option ->
+                                FilterChip(
+                                    selected = group.mediaType == option.first,
+                                    onClick = { viewModel.saveDownloadedMediaType(folderKey, group.mediaId, option.first) },
+                                    label = { Text(option.second) },
+                                )
+                            }
+                        }
+                    }
                     // §netto-automatique (conversation 10) : purge différée des
                     // vieux épisodes pour ne pas remplir la carte SD.
                     AutoCleanControls(viewModel)

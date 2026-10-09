@@ -1,12 +1,14 @@
 package dev.endlesssea.app.ui.local
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.endlesssea.app.local.LocalMediaType
 import dev.endlesssea.app.local.SeriesSkipMarkers
 import dev.endlesssea.app.ui.details.DetailsViewModel
 import dev.endlesssea.app.ui.library.LibraryViewModel
@@ -39,6 +41,9 @@ internal fun LocalDetailsTools(
     var synopsis by remember(mode) { mutableStateOf(media?.synopsis.orEmpty()) }
     var author by remember(mode) { mutableStateOf(media?.studios?.firstOrNull().orEmpty()) }
     var genres by remember(mode) { mutableStateOf(media?.genres?.joinToString(", ").orEmpty()) }
+    var mediaType by remember(mode, seriesMeta.mediaType, media?.type) {
+        mutableStateOf(LocalMediaType.normalize(seriesMeta.mediaType ?: media?.type?.name))
+    }
     var introStart by remember(mode, seriesMeta.introStartSec) {
         mutableStateOf((if (file == null) seriesMeta.introStartSec else file.episodeIntroStartSec)?.toString().orEmpty())
     }
@@ -72,6 +77,14 @@ internal fun LocalDetailsTools(
                     OutlinedTextField(synopsis, { synopsis = it }, label = { Text("Synopsis") })
                     OutlinedTextField(author, { author = it }, label = { Text("Auteur / studio") })
                     OutlinedTextField(genres, { genres = it }, label = { Text("Genres séparés par une virgule") })
+                    Text("Type de média", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LocalMediaType.options.forEach { option ->
+                            FilterChip(selected = mediaType == option.first,
+                                onClick = { mediaType = option.first }, label = { Text(option.second) })
+                        }
+                    }
                     TextButton(onClick = { coverPicker.launch(arrayOf("image/*")) }) { Text("Choisir l'affiche") }
                     Text("Repères par défaut de la série (secondes). Un repère vide est désactivé.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -98,7 +111,8 @@ internal fun LocalDetailsTools(
                     library.saveSeriesMeta(
                         folder, title, synopsis, author,
                         genres.split(',').map { it.trim() }.filter { it.isNotEmpty() },
-                        SeriesSkipMarkers(introStart.toIntOrNull(), introEnd.toIntOrNull(), outro.toIntOrNull()),
+                        markerDefaults = SeriesSkipMarkers(introStart.toIntOrNull(), introEnd.toIntOrNull(), outro.toIntOrNull()),
+                        mediaType = mediaType,
                     ).invokeOnCompletion { details.load() }
                 } else {
                     library.saveLocalMeta(file.uri, title.trim().ifBlank { null }, file.customCoverUri,

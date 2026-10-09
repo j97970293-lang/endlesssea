@@ -31,6 +31,13 @@ class LocalDetailsRepository @Inject constructor(
         val imported = episodeDao.ofMedia(id).first().associateBy { it.id }
         val meta = LocalVideos.seriesMeta[folder] ?: SeriesMeta()
         val seriesPrefs = prefs.localFileMeta("folder:$folder")
+        val roomTypeIsManual = previous?.externalIdsJson?.let { json ->
+            runCatching { org.json.JSONObject(json).optBoolean("local_media_type", false) }.getOrDefault(false)
+        } ?: false
+        val inferredType = LocalMediaType.infer(scanned.map { it.displayName }.ifEmpty { cached.map { it.name } })
+        val mediaType = LocalMediaType.normalize(
+            seriesPrefs.mediaType ?: previous?.takeIf { roomTypeIsManual }?.type ?: meta.mediaType ?: inferredType,
+        )
         val seriesDefaults = SeriesSkipMarkers(
             introStartSec = seriesMarkerValue(seriesPrefs.introStartSec, meta.introStartSec),
             introEndSec = seriesMarkerValue(seriesPrefs.introEndSec, meta.introEndSec),
@@ -54,13 +61,16 @@ class LocalDetailsRepository @Inject constructor(
         }.distinctBy { it.uri }
         val sorted = files.firstOrNull()?.let { localPlaybackQueue(files, it) }.orEmpty()
         val title = previous?.customTitle ?: previous?.title ?: meta.title ?: sorted.firstOrNull()?.folderName ?: LocalNames.pretty(folder)
-        val base = previous ?: MediaEntity(id = id, extensionId = "local", type = "ANIME", title = title,
+        val base = previous ?: MediaEntity(id = id, extensionId = "local", type = mediaType, title = title,
             titleKey = FileNames.normalizedKey(title), synopsis = meta.description,
             externalIdsJson = org.json.JSONObject().put("local_generated", true)
                 .put("local_manual_meta", meta.title != null || meta.description != null || meta.author != null || meta.genres.isNotEmpty()).toString(),
             genresJson = org.json.JSONArray(meta.genres).toString(), studiosJson = org.json.JSONArray(listOfNotNull(meta.author)).toString())
-        val media = base.copy(posterUrl = prefs.localFileMeta("folder:$folder").coverUri ?: base.customCoverUri ?: base.posterUrl ?: meta.coverUri)
-        if (previous == null) mediaDao.upsertAll(listOf(media))
+        val media = base.copy(
+            type = mediaType,
+            posterUrl = seriesPrefs.coverUri ?: base.customCoverUri ?: base.posterUrl ?: meta.coverUri,
+        )
+        if (previous == null || previous.type != media.type) mediaDao.upsertAll(listOf(media))
         LocalLibraryCache.publish(LocalLibraryCache.files.value.filterNot { it.parentUri == folder } + sorted)
         LocalDetailsCatalog(media, sorted)
     }

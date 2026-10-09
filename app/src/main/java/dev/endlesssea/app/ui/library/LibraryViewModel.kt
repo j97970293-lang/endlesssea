@@ -96,6 +96,7 @@ data class DownloadedGroupUi(
     /** §multi-sources : l'emplacement réel du fichier (carte SD ou interne). */
     val storageKind: String = LibrarySource.DOWNLOADS,
     val mediaId: String? = null,
+    val mediaType: String = dev.endlesssea.app.local.LocalMediaType.OTHER,
 ) {
     val humanSize: String get() = dev.endlesssea.app.local.LocalVideos.humanSize(totalBytes)
     /** Carte de bibliothèque correspondante (clic → fiche du groupe). */
@@ -384,6 +385,10 @@ class LibraryViewModel @Inject constructor(
                             !it.targetUri.contains("primary", true)
                     }
                 ) LibrarySource.SD else LibrarySource.DOWNLOADS,
+                mediaType = dev.endlesssea.app.local.LocalMediaType.normalize(
+                    prefs.localFileMeta("downloaded:$key").mediaType ?: media?.type
+                        ?: dev.endlesssea.app.local.LocalMediaType.infer(list.map { it.fileName }),
+                ),
             )
         }.sortedByDescending { it.lastAt }
         _uiState.value = _uiState.value.copy(
@@ -471,6 +476,27 @@ class LibraryViewModel @Inject constructor(
             .sortedWith(
                 compareBy({ it.season ?: 0 }, { it.exactEpisodeNumber ?: Float.MAX_VALUE }, { it.displayName.lowercase() }),
             )
+
+    /** Save an editable type for a downloaded group, including standalone groups with no source ID. */
+    fun saveDownloadedMediaType(key: String, mediaId: String?, mediaType: String) {
+        val normalized = dev.endlesssea.app.local.LocalMediaType.normalize(mediaType)
+        val preferenceKey = "downloaded:$key"
+        val old = prefs.localFileMeta(preferenceKey)
+        prefs.setLocalFileMeta(preferenceKey, old.copy(mediaType = normalized))
+        _uiState.value = _uiState.value.copy(
+            downloadedGroups = _uiState.value.downloadedGroups.map { group ->
+                if (group.key == key) group.copy(mediaType = normalized) else group
+            },
+        )
+        if (mediaId != null) viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            mediaDao.byId(mediaId)?.let { saved ->
+                val ids = runCatching { org.json.JSONObject(saved.externalIdsJson) }
+                    .getOrDefault(org.json.JSONObject())
+                    .put("local_media_type", true)
+                mediaDao.upsertAll(listOf(saved.copy(type = normalized, externalIdsJson = ids.toString())))
+            }
+        }
+    }
 
     /** Re-applique le filtre courant sur les éléments bruts. */
     private suspend fun applyFilter() {
@@ -625,10 +651,19 @@ class LibraryViewModel @Inject constructor(
                     ?: dev.endlesssea.app.local.SeriesMeta()
                 val folderPrefs = metadataByUri["folder:$folder"]
                     ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
+                val manualType = runCatching {
+                    org.json.JSONObject(saved.externalIdsJson).optBoolean("local_media_type", false)
+                }.getOrDefault(false)
+                val inferredType = dev.endlesssea.app.local.LocalMediaType.infer(
+                    files.filter { it.parentUri == folder }.map { it.name },
+                )
                 folder to series.copy(
                     title = saved.customTitle ?: saved.title, description = saved.synopsis,
                     author = strings(saved.studiosJson).firstOrNull(), genres = strings(saved.genresJson),
                     coverUri = folderPrefs.coverUri ?: saved.customCoverUri ?: saved.posterUrl ?: series.coverUri,
+                    mediaType = dev.endlesssea.app.local.LocalMediaType.normalize(
+                        folderPrefs.mediaType ?: saved.type.takeIf { manualType } ?: series.mediaType ?: inferredType,
+                    ),
                     introStartSec = dev.endlesssea.app.local.seriesMarkerValue(folderPrefs.introStartSec, series.introStartSec),
                     introEndSec = dev.endlesssea.app.local.seriesMarkerValue(folderPrefs.introEndSec, series.introEndSec),
                     outroStartSec = dev.endlesssea.app.local.seriesMarkerValue(folderPrefs.outroStartSec, series.outroStartSec),
@@ -788,7 +823,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val exported = dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(
                 context, parentUri, next.title, next.description, next.author, next.genres,
-                next.introStartSec, next.introEndSec, next.outroStartSec,
+                next.introStartSec, next.introEndSec, next.outroStartSec, next.mediaType,
             )
             _uiState.value = _uiState.value.copy(
                 localScanLabel = if (exported) "Repères de série enregistrés dans details.json"
@@ -810,6 +845,7 @@ class LibraryViewModel @Inject constructor(
         val stored = prefs.localFileMeta("folder:$uri")
         return base.copy(
             coverUri = stored.coverUri ?: base.coverUri,
+            mediaType = stored.mediaType?.let { dev.endlesssea.app.local.LocalMediaType.normalize(it) } ?: base.mediaType,
             introStartSec = dev.endlesssea.app.local.seriesMarkerValue(stored.introStartSec, base.introStartSec),
             introEndSec = dev.endlesssea.app.local.seriesMarkerValue(stored.introEndSec, base.introEndSec),
             outroStartSec = dev.endlesssea.app.local.seriesMarkerValue(stored.outroStartSec, base.outroStartSec),
@@ -833,43 +869,58 @@ class LibraryViewModel @Inject constructor(
         folderUri: String, title: String?, description: String? = null,
         author: String? = null, genres: List<String> = emptyList(),
         markerDefaults: dev.endlesssea.app.local.SeriesSkipMarkers? = null,
+        mediaType: String? = null,
     ) = viewModelScope.launch {
         val old = folderMetadata(folderUri)
         val metadata = old.copy(title = title?.trim()?.takeIf { it.isNotBlank() },
             description = description?.trim()?.takeIf { it.isNotBlank() },
-            author = author?.trim()?.takeIf { it.isNotBlank() }, genres = genres)
+            author = author?.trim()?.takeIf { it.isNotBlank() }, genres = genres,
+            mediaType = mediaType?.let { dev.endlesssea.app.local.LocalMediaType.normalize(it) } ?: old.mediaType)
         val next = markerDefaults?.let { metadata.copy(
             introStartSec = it.introStartSec?.coerceAtLeast(0),
             introEndSec = it.introEndSec?.coerceAtLeast(0),
             outroStartSec = it.outroStartSec?.coerceAtLeast(0),
         ) } ?: metadata
-        if (markerDefaults != null) {
+        if (markerDefaults != null || mediaType != null) {
             val key = "folder:$folderUri"
-            val savedMarkers = prefs.localFileMeta(key)
-            prefs.setLocalFileMeta(key, savedMarkers.copy(
-                introStartSec = next.introStartSec ?: -1,
-                introEndSec = next.introEndSec ?: -1,
-                outroStartSec = next.outroStartSec ?: -1,
+            val savedMeta = prefs.localFileMeta(key)
+            prefs.setLocalFileMeta(key, savedMeta.copy(
+                introStartSec = if (markerDefaults != null) next.introStartSec ?: -1 else savedMeta.introStartSec,
+                introEndSec = if (markerDefaults != null) next.introEndSec ?: -1 else savedMeta.introEndSec,
+                outroStartSec = if (markerDefaults != null) next.outroStartSec ?: -1 else savedMeta.outroStartSec,
+                mediaType = mediaType?.let { dev.endlesssea.app.local.LocalMediaType.normalize(it) } ?: savedMeta.mediaType,
             ))
         }
         val id = dev.endlesssea.app.local.LocalMediaIds.series(folderUri)
         val displayTitle = next.title ?: dev.endlesssea.app.local.LocalNames.pretty(folderUri)
         // Room is authoritative for edits even on read-only SAF folders. No episode title is rewritten.
         val previous = mediaDao.byId(id)
+        val inferredType = dev.endlesssea.app.local.LocalMediaType.infer(
+            (_uiState.value.localFiles + dev.endlesssea.app.local.LocalLibraryCache.folder(folderUri))
+                .filter { it.parentUri == folderUri }.map { it.name },
+        )
+        val normalizedType = dev.endlesssea.app.local.LocalMediaType.normalize(
+            mediaType ?: next.mediaType ?: previous?.type ?: inferredType,
+        )
         val base = previous ?: dev.endlesssea.data.db.MediaEntity(
-            id = id, extensionId = "local", type = "ANIME", title = displayTitle,
+            id = id, extensionId = "local", type = normalizedType, title = displayTitle,
             titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle))
+        val externalIds = runCatching { org.json.JSONObject(base.externalIdsJson) }
+            .getOrDefault(org.json.JSONObject())
+            .put("local_manual_meta", true)
+            .apply { if (mediaType != null) put("local_media_type", true) }
         mediaDao.upsertAll(listOf(base.copy(
+            type = normalizedType,
             customTitle = next.title, titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle),
             synopsis = next.description, posterUrl = folderCover(folderUri) ?: next.coverUri ?: base.posterUrl,
             genresJson = org.json.JSONArray(next.genres).toString(),
             studiosJson = org.json.JSONArray(listOfNotNull(next.author)).toString(),
-            externalIdsJson = org.json.JSONObject(base.externalIdsJson).put("local_manual_meta", true).toString(),
+            externalIdsJson = externalIds.toString(),
         )))
         val exported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(context, folderUri, next.title,
                 next.description, next.author, next.genres,
-                next.introStartSec, next.introEndSec, next.outroStartSec)
+                next.introStartSec, next.introEndSec, next.outroStartSec, next.mediaType)
         }
         dev.endlesssea.app.local.LocalVideos.seriesMeta[folderUri] = next
         val perEpisode = prefs.localFileMetadataSnapshot()

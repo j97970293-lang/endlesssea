@@ -55,6 +55,7 @@ data class SeriesMeta(
     val author: String? = null,
     val genres: List<String> = emptyList(),
     val coverUri: String? = null,
+    val mediaType: String? = null,
     val introStartSec: Int? = null,
     val introEndSec: Int? = null,
     val outroStartSec: Int? = null,
@@ -170,6 +171,8 @@ object LocalVideos {
                                             author = o.optString("author").ifBlank { null },
                                             genres = (0 until (o.optJSONArray("genre")?.length() ?: 0))
                                                 .mapNotNull { k -> o.optJSONArray("genre")?.optString(k) },
+                                            mediaType = o.optString("mediaType").takeIf { it.isNotBlank() }
+                                                ?.let { LocalMediaType.normalize(it) },
                                             introStartSec = o.optInt("introStartSec", -1).takeIf { o.has("introStartSec") && it >= 0 },
                                             introEndSec = o.optInt("introEndSec", -1).takeIf { o.has("introEndSec") && it >= 0 },
                                             outroStartSec = o.optInt("outroStartSec", -1).takeIf { o.has("outroStartSec") && it >= 0 },
@@ -307,6 +310,7 @@ object LocalVideos {
         introStartSec: Int? = null,
         introEndSec: Int? = null,
         outroStartSec: Int? = null,
+        mediaType: String? = null,
     ): Boolean = runCatching {
         val folder = Uri.parse(folderUriString)
         val json = org.json.JSONObject().apply {
@@ -314,6 +318,7 @@ object LocalVideos {
             description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
             author?.takeIf { it.isNotBlank() }?.let { put("author", it) }
             if (genres.isNotEmpty()) put("genre", org.json.JSONArray(genres))
+            mediaType?.let { put("mediaType", LocalMediaType.normalize(it)) }
             introStartSec?.coerceAtLeast(0)?.let { put("introStartSec", it) }
             introEndSec?.coerceAtLeast(0)?.let { put("introEndSec", it) }
             outroStartSec?.coerceAtLeast(0)?.let { put("outroStartSec", it) }
