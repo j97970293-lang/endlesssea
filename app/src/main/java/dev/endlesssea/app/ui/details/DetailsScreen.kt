@@ -1056,21 +1056,21 @@ fun DetailsScreen(
                     TextButton(onClick = { batchSelectDialog = false }) { Text("Annuler") }
                 }
             },
-            title = { Text("Tout télécharger — épisodes") },
+            title = { Text(if(mediaIsMovie) "Télécharger le film" else "Tout télécharger — épisodes") },
             text = {
                 Column(
                     Modifier.verticalScroll(rememberScrollState()),
                 ) {
                     // §saisons : les épisodes sont groupés par saison, avec une
                     // case « toute la saison » et les serveurs déjà trouvés.
-                    val bySeason = state.episodes.groupBy { it.season ?: 1 }.toSortedMap()
+                    val bySeason = state.episodes.groupBy { it.season }.entries.sortedBy { it.key ?: Int.MAX_VALUE }
                     bySeason.forEach { (season, eps) ->
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Saison $season (${eps.size})",
+                                (if(mediaIsMovie) "Film" else if(season==null) "Saison non renseignée" else if(season==0) "Spéciaux" else "Saison $season") + " (${eps.size})",
                                 style = MaterialTheme.typography.titleSmall,
                                 modifier = Modifier.weight(1f),
                             )
@@ -1093,7 +1093,7 @@ fun DetailsScreen(
                             )
                             Column(Modifier.weight(1f)) {
                                 dev.endlesssea.app.ui.components.ExpandableText(
-                                    text = ep.title ?: "Épisode ${ep.number.toInt()}",
+                                    text = if(mediaIsMovie) state.details?.title.orEmpty() else ep.title ?: "Épisode ${ep.number.toString().removeSuffix(".0")}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 1,
                                     dialogTitle = "Épisode",

@@ -105,10 +105,12 @@ object DownloadStorage {
                 val dir = publicDir(relativeDirs)
                 val out = File(dir, sanitize(fileName))
                 source.copyTo(out, overwrite = true)
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(out.absolutePath), arrayOf(mimeFor(fileName)), null)
                 source.delete()
                 Uri.fromFile(out).toString()
             } else {
                 val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
                     put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, sanitize(fileName))
                     put(android.provider.MediaStore.Video.Media.MIME_TYPE, mimeFor(fileName))
                     put(
@@ -120,11 +122,20 @@ object DownloadStorage {
                 val uri = context.contentResolver.insert(
                     android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values,
                 ) ?: return null
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    source.inputStream().use { it.copyTo(out) }
+                try {
+                    val output = context.contentResolver.openOutputStream(uri)
+                        ?: throw java.io.IOException("Impossible d’ouvrir le fichier public")
+                    output.use { out -> source.inputStream().use { it.copyTo(out) } }
+                    val ready = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.Video.Media.IS_PENDING, 0)
+                    }
+                    check(context.contentResolver.update(uri, ready, null, null) > 0)
+                    source.delete()
+                    uri.toString()
+                } catch (e: Exception) {
+                    context.contentResolver.delete(uri, null, null)
+                    throw e
                 }
-                source.delete()
-                uri.toString()
             }
         }.getOrNull()
     }

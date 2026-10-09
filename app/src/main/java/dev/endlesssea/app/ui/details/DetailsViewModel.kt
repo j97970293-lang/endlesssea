@@ -914,11 +914,13 @@ class DetailsViewModel @Inject constructor(
     }
 
     private suspend fun enqueueAndWait(episode: Episode, link: VideoLink): String {
-        val title = buildEpisodeTitle(episode)
         val quality = link.quality.name
-        val fileName = FileNames.sanitize(
-            "$title [$quality]${if (link.subtitles.isNotEmpty()) " [subs]" else ""}",
-        ) + extensionFor(link)
+        val details = _uiState.value.details
+        val fileName = FileNames.videoName(details?.title ?: mediaKey,
+            movie = details?.type == dev.endlesssea.extensions.api.model.MediaType.MOVIE,
+            year = details?.year, season = episode.season, episode = episode.number,
+            episodeTitle = episode.title, quality = quality, language = link.audioLang.name,
+            extension = extensionFor(link))
         val sourceName = runCatching { registry.instance(extensionId).info.name }
             .getOrDefault(extensionId)
         val seriesName = _uiState.value.details?.title ?: mediaId
@@ -969,6 +971,7 @@ class DetailsViewModel @Inject constructor(
 
     private fun buildEpisodeTitle(episode: Episode): String {
         val base = _uiState.value.details?.title ?: mediaKey
+        if (_uiState.value.details?.type == dev.endlesssea.extensions.api.model.MediaType.MOVIE) return base
         val e = if (episode.number.isFinite()) "E${episode.number.toString().removeSuffix(".0")}" else episode.title.orEmpty()
         val s = episode.season?.let { "S$it:" } ?: ""
         return "$base $s$e"
@@ -977,7 +980,8 @@ class DetailsViewModel @Inject constructor(
     private fun extensionFor(link: VideoLink): String = when (link.streamType) {
         dev.endlesssea.extensions.api.model.StreamType.HLS -> ".ts"   // segments MPEG-TS assemblés
         dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE ->
-            link.url.substringAfterLast('.', "").let { if (it.length in 2..4) ".$it" else ".mp4" }
+            runCatching { java.net.URI(link.url).path.substringAfterLast('.', "").lowercase() }.getOrDefault("")
+                .let { if (it in setOf("mp4","mkv","webm","ts","m4v","avi","mov")) ".$it" else ".mp4" }
         else -> ".mp4"
     }
 

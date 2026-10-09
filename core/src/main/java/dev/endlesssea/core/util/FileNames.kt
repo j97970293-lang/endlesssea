@@ -49,6 +49,27 @@ object FileNames {
         return out
     }
 
+    /** Stable, readable names for other players; never invent a season for a film. */
+    fun videoName(title: String, movie: Boolean, year: Int?, season: Int?, episode: Float,
+        episodeTitle: String?, quality: String, language: String, extension: String): String {
+        val base = sanitize(title, 65)
+        val date = year?.takeIf { it > 0 && !base.contains("($it)") }?.let { " ($it)" }.orEmpty()
+        val number = if (episode.isFinite() && episode >= 0f) {
+            val parts = episode.toString().removeSuffix(".0").split('.', limit=2)
+            parts[0].padStart(2,'0') + (parts.getOrNull(1)?.let { ".$it" } ?: "")
+        } else null
+        val episodeLabel = if (movie) "" else {
+            val code = (season?.takeIf { it >= 0 }?.let { "S"+it.toString().padStart(2,'0') }.orEmpty()) +
+                (number?.let { "E$it" } ?: episodeTitle?.takeIf { it.isNotBlank() }?.let { sanitize(it,30) }.orEmpty())
+            code.takeIf { it.isNotBlank() }?.let { " - $it" }.orEmpty()
+        }
+        val tags = listOf(quality.takeUnless { it in setOf("UNKNOWN","AUTO","") },
+            language.takeUnless { it in setOf("OTHER","UNKNOWN","") }).filterNotNull()
+            .joinToString("") { " [${sanitize(it,16)}]" }
+        val ext = extension.removePrefix(".").lowercase().takeIf { it in setOf("mp4","mkv","webm","ts","m4v","avi","mov") } ?: "mp4"
+        return sanitize(base + date + episodeLabel + tags, 110) + ".$ext"
+    }
+
     const val DEFAULT_TEMPLATE = "{title} - S{season:00}E{episode:00} [{quality}][{lang}].{ext}"
     const val MOVIE_TEMPLATE = "{title} ({year}).{ext}"
 }
