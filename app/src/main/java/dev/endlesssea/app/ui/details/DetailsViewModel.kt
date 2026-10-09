@@ -119,7 +119,11 @@ class DetailsViewModel @Inject constructor(
     private val extensionId = mediaId.substringBefore(":")
     private val mediaKey = mediaId.substringAfter(":", missingDelimiterValue = mediaId)
 
-    init { load() }
+    private val _trackerLink = MutableStateFlow<dev.endlesssea.data.db.TrackerLinkEntity?>(null)
+    init {
+        load()
+        viewModelScope.launch { trackers.links.collect { list -> _trackerLink.value = list.firstOrNull { it.mediaId == mediaId } } }
+    }
 
     fun load(): kotlinx.coroutines.Job {
         loadJob?.cancel()
@@ -176,9 +180,13 @@ class DetailsViewModel @Inject constructor(
                 episodeDao.ofMedia(mediaId).first().filter { it.id in downloadedIds }.map { it.toEpisode() })
                 .distinctBy { it.id }.sortedWith(compareBy({ it.season ?: 0 }, { it.number }))
             val stored = mediaDao.byId(mediaId)
+            val metadataPinned = stored?.externalIdsJson?.let { org.json.JSONObject(it).has("metadata_provider") } == true
             _uiState.value = _uiState.value.copy(
                 loading = false, details = details.copy(title = stored?.customTitle ?: details.title,
-                    posterUrl = stored?.customCoverUri ?: details.posterUrl), episodes = episodes,
+                    posterUrl = stored?.customCoverUri ?: details.posterUrl,
+                    synopsis = if (metadataPinned) stored?.synopsis else details.synopsis,
+                    genres = if (metadataPinned) stored?.toDetails()?.genres.orEmpty() else details.genres,
+                    year = if (metadataPinned) stored?.year else details.year), episodes = episodes,
             )
             refreshLibraryFlags()
             refreshResume()
@@ -211,8 +219,13 @@ class DetailsViewModel @Inject constructor(
 
     private suspend fun cacheLocally(details: MediaDetails) = withContext(Dispatchers.IO) {
         val previous = mediaDao.byId(mediaId)
-        mediaDao.upsertAll(listOf(details.toEntity().copy(customTitle = previous?.customTitle,
-            customCoverUri = previous?.customCoverUri, externalIdsJson = previous?.externalIdsJson ?: "{}")))
+        val pinned = previous?.externalIdsJson?.let { org.json.JSONObject(it).has("metadata_provider") } == true
+        val incoming = details.toEntity()
+        mediaDao.upsertAll(listOf(incoming.copy(customTitle = previous?.customTitle,
+            customCoverUri = previous?.customCoverUri, externalIdsJson = previous?.externalIdsJson ?: "{}",
+            synopsis = if (pinned) previous?.synopsis else incoming.synopsis,
+            genresJson = if (pinned) previous!!.genresJson else incoming.genresJson,
+            year = if (pinned) previous?.year else incoming.year)))
         val episodes = details.seasons.flatMap { season ->
             season.episodes.map { it.toEntity(mediaId) }
         }
@@ -429,7 +442,6 @@ class DetailsViewModel @Inject constructor(
     val trackerSearch: StateFlow<TrackerSearchState> = _trackerSearch
 
     /** Rattachement courant de cette fiche (null = non suivie). */
-    private val _trackerLink = MutableStateFlow<dev.endlesssea.data.db.TrackerLinkEntity?>(null)
     val trackerLink: StateFlow<dev.endlesssea.data.db.TrackerLinkEntity?> = _trackerLink
 
     /** Services connectés et actifs : seuls ceux-là sont proposés au rattachement. */
@@ -477,6 +489,28 @@ class DetailsViewModel @Inject constructor(
             trackerTick.value += 1
             _uiState.value = _uiState.value.copy(message = "Rattaché : ${hit.title}")
         }
+    }
+
+    /** Explicit metadata import is independent from choosing a progress tracker. */
+    fun importTrackerMetadata(service: String, remoteId: String) = viewModelScope.launch {
+        try {
+            val metadata = trackers.metadata(service, remoteId) ?: error("Métadonnées non fournies par ce service")
+            val old = mediaDao.byId(mediaId) ?: error("Fiche absente du cache")
+            val ids = org.json.JSONObject(old.externalIdsJson)
+            val title = old.customTitle?.takeUnless { it == ids.optString("metadata_import_title") } ?: metadata.title ?: old.customTitle
+            val cover = old.customCoverUri?.takeUnless { it == ids.optString("metadata_import_cover") } ?: metadata.posterUrl ?: old.customCoverUri
+            val manual = ids.optBoolean("local_manual_meta")
+            ids.put("metadata_provider",service).put("metadata_remote_id",remoteId)
+                .put("metadata_import_title",metadata.title).put("metadata_import_cover",metadata.posterUrl)
+            mediaDao.upsertAll(listOf(old.copy(customTitle = title, customCoverUri = cover,
+                synopsis = if (manual) old.synopsis else metadata.synopsis ?: old.synopsis,
+                bannerUrl = metadata.bannerUrl ?: old.bannerUrl, year = metadata.year ?: old.year,
+                genresJson = if (manual || metadata.genres.isEmpty()) old.genresJson else org.json.JSONArray(metadata.genres).toString(),
+                externalIdsJson = ids.toString())))
+            load()
+            _uiState.value = _uiState.value.copy(message = "Métadonnées importées ; vos modifications personnelles restent prioritaires. Aucun suivi distant modifié.")
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { _uiState.value = _uiState.value.copy(message = "Import impossible : ${e.message}") }
     }
 
     fun setEpisodeMatching(enabled: Boolean, season: Int?) = viewModelScope.launch {

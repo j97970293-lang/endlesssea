@@ -2,6 +2,7 @@ package dev.endlesssea.app.tracking
 
 import dev.endlesssea.core.diag.EsLog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -39,6 +40,9 @@ interface TrackerService {
     suspend fun readProgress(account: dev.endlesssea.data.db.TrackerAccountEntity, remoteId: String): RemoteTrackerProgress? =
         throw TrackerError("Ce service ne fournit pas de progression")
 
+    suspend fun library(account: dev.endlesssea.data.db.TrackerAccountEntity): List<RemoteLibraryEntry> =
+        throw TrackerError("Import de liste indisponible pour ce service")
+
     /** Écrit progression et statut sur le service. False = à rejouer plus tard. */
     suspend fun pushProgress(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
@@ -73,6 +77,8 @@ data class TrackerDetails(
     val trailerUrl: String? = null,
     val synopsis: String? = null,
     val year: Int? = null,
+    val title: String? = null,
+    val genres: List<String> = emptyList(),
 )
 
 private val JSON = "application/json; charset=utf-8".toMediaType()
@@ -176,6 +182,47 @@ class AniListService(private val http: OkHttpClient) : TrackerService {
         val media = response.getJSONObject("data").getJSONObject("Media")
         val entry = media.optJSONObject("mediaListEntry") ?: return@withContext null
         RemoteTrackerProgress(entry.getInt("progress"), entry.getString("status").let { if (it == "CURRENT") "WATCHING" else it })
+    }
+
+    override suspend fun library(account: dev.endlesssea.data.db.TrackerAccountEntity): List<RemoteLibraryEntry> = withContext(Dispatchers.IO) {
+        val token = account.accessToken ?: throw TrackerError("Connectez AniList pour importer votre liste")
+        val viewer = JSONObject(http.postJson(ENDPOINT, JSONObject().put("query", "query { Viewer { id } }").toString(), token))
+        if (viewer.has("errors")) throw TrackerError("Compte AniList refusé ; reconnectez-vous")
+        val userId = viewer.getJSONObject("data").getJSONObject("Viewer").getInt("id")
+        val query = """query (${'$'}user: Int!, ${'$'}page: Int!) {
+            Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                mediaList(userId: ${'$'}user, type: ANIME) {
+                    progress status media { id title { userPreferred romaji english } episodes seasonYear coverImage { large } }
+                }
+            }
+        }""".trimIndent()
+        val entries = mutableListOf<RemoteLibraryEntry>()
+        for (page in 1..100) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val payload = JSONObject().put("query", query).put("variables", JSONObject().put("user", userId).put("page", page))
+            val result = parseAniListPage(JSONObject(http.postJson(ENDPOINT, payload.toString(), token)))
+            if (result.hasNext && result.entries.isEmpty()) throw TrackerError("Réponse de pagination AniList incohérente")
+            entries += result.entries
+            if (!result.hasNext) return@withContext entries.distinctBy { it.id }
+        }
+        throw TrackerError("Liste trop longue : import incomplet, ancien cache conservé")
+    }
+
+    override suspend fun details(account: dev.endlesssea.data.db.TrackerAccountEntity, remoteId: String): TrackerDetails? = withContext(Dispatchers.IO) {
+        val query = """query (${'$'}id: Int!) { Media(id: ${'$'}id, type: ANIME) {
+            title { userPreferred romaji } description(asHtml: false) bannerImage coverImage { extraLarge } seasonYear genres
+        } }"""
+        val payload = JSONObject().put("query",query).put("variables",JSONObject().put("id",remoteId.toInt()))
+        val result = JSONObject(http.postJson(ENDPOINT,payload.toString(),account.accessToken))
+        if (result.has("errors")) throw TrackerError("Métadonnées AniList indisponibles")
+        val media = result.getJSONObject("data").getJSONObject("Media")
+        fun text(key: String) = media.optString(key).takeUnless { it.isBlank() || it == "null" }
+        val genres = media.optJSONArray("genres")
+        TrackerDetails(posterUrl = media.optJSONObject("coverImage")?.optString("extraLarge"), bannerUrl = text("bannerImage"),
+            synopsis = text("description"), year = media.optInt("seasonYear").takeIf { it > 0 },
+            title = media.getJSONObject("title").optString("userPreferred").ifBlank { media.getJSONObject("title").getString("romaji") },
+            genres = if (genres == null) emptyList() else (0 until genres.length()).map { genres.getString(it) })
     }
 
     override suspend fun pushProgress(

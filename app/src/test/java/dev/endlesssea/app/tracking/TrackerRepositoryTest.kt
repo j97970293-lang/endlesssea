@@ -4,6 +4,8 @@ import dev.endlesssea.data.db.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -11,7 +13,8 @@ class TrackerRepositoryTest {
     private class MemoryDao : TrackerDao {
         val stored = mutableMapOf<String, TrackerLinkEntity>()
         override fun observeAccounts(): Flow<List<TrackerAccountEntity>> = flowOf(emptyList())
-        override suspend fun account(service: String): TrackerAccountEntity? = null
+        var connected: TrackerAccountEntity? = null
+        override suspend fun account(service: String): TrackerAccountEntity? = connected?.takeIf { it.service == service }
         override suspend fun upsertAccount(account: TrackerAccountEntity) = Unit
         override suspend fun setEnabled(service: String, enabled: Boolean) = Unit
         override suspend fun setLastError(service: String, error: String?) = Unit
@@ -84,4 +87,26 @@ class TrackerRepositoryTest {
         repo.link("local:folder", "MAL", TrackerSearchHit("42", "Title", 12))
         assertFalse(dao.link("local:folder")!!.autoMatchEpisodes)
     }
+    @Test fun remotePullUpdatesCleanLinksButProtectsPendingLocalChanges() = runBlocking {
+        val dao = MemoryDao()
+        dao.connected = TrackerAccountEntity(service = "ANILIST", accessToken = "unit-test", userName = "test")
+        dao.stored["clean"] = TrackerLinkEntity("clean","ANILIST","42",progress=10,status="WATCHING")
+        dao.stored["pending"] = TrackerLinkEntity("pending","ANILIST","42",progress=11,pendingSync=true)
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            val b=okio.Buffer();chain.request().body!!.writeTo(b)
+            val query=org.json.JSONObject(b.readUtf8()).getString("query")
+            val payload=if(query.contains("Viewer")) """{"data":{"Viewer":{"id":9}}}""" else
+                """{"data":{"Page":{"pageInfo":{"hasNextPage":false},"mediaList":[{"progress":4,"status":"PAUSED","media":{"id":42,"episodes":12,"title":{"userPreferred":"Test"}}}]}}}"""
+            okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK")
+                .body(payload.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val repo=TrackerRepository(dao,http,org.mockito.Mockito.mock(dev.endlesssea.app.di.AppPrefs::class.java))
+        val pulled=repo.pullLibrary("ANILIST")
+        assertEquals(1,pulled.size)
+        assertEquals(4,dao.stored.getValue("clean").progress)
+        assertEquals("PAUSED",dao.stored.getValue("clean").status)
+        assertEquals(11,dao.stored.getValue("pending").progress)
+        assertTrue(dao.stored.getValue("pending").pendingSync)
+    }
+
 }

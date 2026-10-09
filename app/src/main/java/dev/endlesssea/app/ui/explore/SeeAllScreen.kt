@@ -87,14 +87,14 @@ fun SeeAllScreen(
             }
             else -> LazyVerticalGrid(
                 state = gridState,
-                columns = GridCells.Adaptive(120.dp),
+                columns = GridCells.Adaptive(140.dp),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(state.items, key = { it.id }) { item ->
-                    MediaCard(item = item, onClick = { onMediaClick(item.id) })
+                    dev.endlesssea.app.ui.components.CatalogPoster(item = item, onClick = { onMediaClick(item.id) })
                 }
                 if (state.loadingMore) {
                     item {

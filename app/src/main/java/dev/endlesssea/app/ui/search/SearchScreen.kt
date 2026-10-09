@@ -59,9 +59,11 @@ fun SearchScreen(
     onMediaClick: (String) -> Unit,
     /** §recherche-source : source imposée par l'appelant (bouton de la barre du haut). */
     initialSource: String = "ALL",
+    initialQuery: String = "",
     viewModel: SearchViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(initialQuery) { if (initialQuery.isNotBlank()) viewModel.onQueryChange(initialQuery) }
     val focusRequester = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     androidx.compose.runtime.LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
@@ -188,7 +190,7 @@ fun SearchScreen(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(110.dp),
+            columns = GridCells.Adaptive(140.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -217,7 +219,7 @@ fun SearchScreen(
                     }
                 }
                 items(rows, key = { it.id }) { item ->
-                    dev.endlesssea.app.ui.components.MediaCard(item = item, onClick = { onMediaClick(item.id) })
+                    dev.endlesssea.app.ui.components.CatalogPoster(item = item, onClick = { onMediaClick(item.id) })
                 }
             }
         }

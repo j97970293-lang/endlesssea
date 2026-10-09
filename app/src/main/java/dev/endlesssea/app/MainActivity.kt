@@ -288,75 +288,19 @@ class MainActivity : ComponentActivity() {
                 ) { padding ->
                     val immersive = route?.startsWith("details/") == true ||
                             route?.startsWith("localDetails/") == true
-                    val showFloating = route != Screen.Settings.route && !immersive
 
                     Box(Modifier.fillMaxSize()) {
-                        EsNavGraphContainer(
-                            modifier = Modifier.fillMaxSize().padding(padding),
-                            nav = nav,
-                        )
-                        if (showFloating) {
-                            // ---- Boutons flottants (aucune barre derrière)
-                            var logoMenu by androidx.compose.runtime.remember {
-                                androidx.compose.runtime.mutableStateOf(false)
-                            }
-                            var logoIn by androidx.compose.runtime.remember {
-                                androidx.compose.runtime.mutableStateOf(false)
-                            }
-                            androidx.compose.runtime.LaunchedEffect(Unit) { logoIn = true }
-                            val logoScale by androidx.compose.animation.core.animateFloatAsState(
-                                targetValue = if (logoIn) 1f else 0.6f,
-                                animationSpec = androidx.compose.animation.core.spring(
-                                    dampingRatio = 0.55f,
-                                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
-                                ),
-                                label = "logoIn",
-                            )
-                            Row(
-                                Modifier.align(Alignment.TopStart)
-                                    .statusBarsPadding()
-                                    .padding(start = 8.dp, top = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box {
-                                    IconButton(onClick = { logoMenu = true }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.PlaylistPlay,
-                                            contentDescription = "Menu EndlessSea",
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .androidxScale(logoScale),
-                                        )
-                                    }
-                                    androidx.compose.material3.DropdownMenu(
-                                        expanded = logoMenu,
-                                        onDismissRequest = { logoMenu = false },
-                                    ) {
-                                        androidx.compose.material3.DropdownMenuItem(
-                                            text = { Text("Paramètres") },
-                                            leadingIcon = { Icon(Icons.Filled.Settings, null) },
-                                            onClick = {
-                                                logoMenu = false
-                                                nav.navigate(Screen.Settings.route)
-                                            },
-                                        )
-                                        androidx.compose.material3.DropdownMenuItem(
-                                            text = { Text("Extensions") },
-                                            leadingIcon = { Icon(Icons.Filled.Extension, null) },
-                                            onClick = {
-                                                logoMenu = false
-                                                nav.navigate(Screen.Extensions.route)
-                                            },
-                                        )
-                                    }
-                                }
-                                // §barre-haut (conversation 4) : le
-                                // sélecteur de source vit désormais dans la
-                                // barre en verre de l'écran Accueil.
-                            }
-                            // §barre-haut (conversation 4) : la recherche
-                            // de l'accueil est dans la barre en verre.
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            dev.endlesssea.app.ui.components.LocalSectionMenu provides dev.endlesssea.app.ui.components.SectionMenuActions(
+                                settings = { nav.navigate(Screen.Settings.route) },
+                                extensions = { nav.navigate(Screen.Extensions.route) },
+                                trackers = { nav.navigate("trackers") },
+                                logo = dev.endlesssea.app.branding.AppLogos.resolve(appLogo).drawable,
+                            ),
+                        ) {
+                            EsNavGraphContainer(modifier = Modifier.fillMaxSize().padding(padding), nav = nav)
                         }
+
                     }
                 }
                 }

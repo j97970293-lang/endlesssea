@@ -118,6 +118,7 @@ fun HomeScreen(
             )
         }
         item {
+            androidx.compose.runtime.key(state.sourceFilter) {
             if (state.featured.isNotEmpty()) {
                 // §anymex-ui : « Carousel Style » — bannière pleine largeur (classic)
                 // ou rangée d'affiches verticales (portrait).
@@ -138,6 +139,7 @@ fun HomeScreen(
                 }
             } else {
                 EmptyHome(onBrowseExtensions = { /* navigate handled by parent later */ })
+            }
             }
         }
 

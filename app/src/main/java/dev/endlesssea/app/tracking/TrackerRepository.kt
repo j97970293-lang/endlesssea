@@ -269,6 +269,30 @@ class TrackerRepository @Inject constructor(
         runCatching { svc.details(account, remoteIdWithKind) }.getOrNull()
     }
 
+    /** Read-only pull. No remote list entry is created and no pending local write is overwritten. */
+    suspend fun pullLibrary(id: String): List<RemoteLibraryEntry> = withContext(Dispatchers.IO) {
+        val account = activeAccount(id) ?: throw TrackerError("Connectez et activez AniList dans Comptes & suivi")
+        val svc = service(id) ?: throw TrackerError("Service indisponible")
+        val entries = kotlinx.coroutines.withTimeout(120_000) { withFreshAccount(account) { svc.library(it) } }
+        if (activeAccount(id)?.accessToken != account.accessToken) throw TrackerError("Compte changé pendant l'import ; réessayez")
+        progressMutex.withLock {
+            val byId = entries.associateBy { it.id }
+            dao.observeLinks().first().filter { it.service == id && !it.pendingSync }.forEach { local ->
+                byId[local.remoteId]?.let { remote ->
+                    dao.upsertLink(local.copy(progress = remote.progress, status = remote.status,
+                        totalEpisodes = remote.total ?: local.totalEpisodes, updatedAt = System.currentTimeMillis()))
+                }
+            }
+        }
+        dao.setLastError(id, null)
+        entries
+    }
+
+    suspend fun metadata(serviceId: String, remoteId: String): TrackerDetails? = withContext(Dispatchers.IO) {
+        val account = activeAccount(serviceId) ?: throw TrackerError("Service non connecté")
+        withFreshAccount(account) { service(serviceId)?.details(it, remoteId) }
+    }
+
     /** Recherche TMDB (sert à trouver l'identifiant à partir du titre). */
     suspend fun searchTmdb(query: String): List<TrackerSearchHit> = search("TMDB", query)
 

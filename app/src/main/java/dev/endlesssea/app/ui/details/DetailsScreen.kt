@@ -1370,6 +1370,13 @@ private fun TrackerCard(
     viewModel: dev.endlesssea.app.ui.details.DetailsViewModel,
     onOpenTrackers: () -> Unit,
 ) {
+    var metadataConfirm by remember { mutableStateOf<Pair<String,String>?>(null) }
+    metadataConfirm?.let { (service,id) ->
+        AlertDialog(onDismissRequest={metadataConfirm=null}, title={Text("Importer les métadonnées ?")},
+            text={Text("Importer titre, affiche, synopsis et genres de la fiche choisie sur $service. Vos titres et affiches personnels restent prioritaires. Cette action ne change ni le tracker choisi ni sa progression.")},
+            confirmButton={TextButton(onClick={viewModel.importTrackerMetadata(service,id);metadataConfirm=null}) {Text("Importer")}},
+            dismissButton={TextButton(onClick={metadataConfirm=null}) {Text("Annuler")}})
+    }
     var changeTracker by remember { mutableStateOf(false) }
     var matchQuery by remember { mutableStateOf("") }
     val detailsState by viewModel.uiState.collectAsState()
@@ -1390,6 +1397,7 @@ private fun TrackerCard(
             title = { Text("Confirmer le rattachement") },
             text = { Column(Modifier.heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.65f).verticalScroll(rememberScrollState())) {
                 Text("Lier cette fiche à ${hit.title}" + (hit.year?.let { " ($it)" } ?: "") + " ?")
+                if(search.service=="ANILIST") TextButton(onClick={metadataConfirm="ANILIST" to hit.remoteId;selectedMatch=null}) {Text("Métadonnées seulement, sans suivi")}
                 dev.endlesssea.app.ui.tracking.EpisodeMatchingControls(autoMatch, matchSeason, matchSeasons) { enabled, season ->
                     autoMatch = enabled; matchSeason = season
                 }
@@ -1444,6 +1452,7 @@ private fun TrackerCard(
                         viewModel.setEpisodeMatching(enabled, season)
                     }
                     dev.endlesssea.app.ui.tracking.TrackerProgressEditor(l.progress, l.totalEpisodes) { viewModel.setTrackerProgress(it) }
+                    if(l.service=="ANILIST") TextButton(onClick={metadataConfirm=l.service to l.remoteId}) {Text("Importer les métadonnées AniList")}
                     TextButton(onClick = { changeTracker = true }) { Text("Changer de tracker / de titre") }
                     TextButton(onClick = { viewModel.unlinkTracker() }) { Text("Ne plus suivre") }
                 }

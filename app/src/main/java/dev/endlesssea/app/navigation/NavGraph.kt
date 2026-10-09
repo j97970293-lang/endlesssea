@@ -242,7 +242,7 @@ fun EsNavGraph(nav: NavHostController) {
                 onSeeAll = { pkg, category ->
                     nav.navigate("seeAll/${Uri.encode(pkg)}/${Uri.encode(category)}")
                 },
-                onSearch = { _, source -> nav.navigate("search/${Uri.encode(source)}") },
+                onSearch = { query, source -> nav.navigate(if (query.isBlank()) "search/${Uri.encode(source)}" else "searchQuery/${Uri.encode(source)}/${Uri.encode(query)}") },
             )
         }
         composable("seeAll/{pkg}/{category}") { entry ->
@@ -262,8 +262,14 @@ fun EsNavGraph(nav: NavHostController) {
                 initialSource = entry.arguments?.getString("source") ?: "ALL",
             )
         }
+        composable("searchQuery/{source}/{query}") { entry ->
+            SearchScreen(onMediaClick = { openDetails(nav,it) },
+                initialSource = entry.arguments?.getString("source") ?: "ALL",
+                initialQuery = entry.arguments?.getString("query").orEmpty())
+        }
         composable(Screen.Library.route) {
             LibraryScreen(
+                onFindSource = { query -> nav.navigate("searchQuery/ALL/${Uri.encode(query)}") },
                 onMediaClick = { openDetails(nav, it) },
                 // §fiche-locale : un dossier local s'ouvre comme une fiche de source
                 onLocalFolderClick = { folderUri ->

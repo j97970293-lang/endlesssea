@@ -47,7 +47,6 @@ data class HomeRowUi(
 
 data class HomeUiState(
     val loading: Boolean = true,
-    val featured: List<SearchItemUi> = emptyList(),
     val continueWatching: List<ContinueItemUi> = emptyList(),
     val recent: List<SearchItemUi> = emptyList(),
     val favorites: List<SearchItemUi> = emptyList(),
@@ -57,7 +56,9 @@ data class HomeUiState(
     /** §accueil-multi : sources chargées (pkg, nom, icône) + filtre actif (« ALL »). */
     val sources: List<Triple<String, String, String?>> = emptyList(),
     val sourceFilter: String = "ALL",
-)
+) {
+    val featured: List<SearchItemUi> get() = sourceFeatured(remoteRows, sourceFilter, recent)
+}
 
 /**
  * Accueil (spec §10) : bannière « à la une » + rangées.
@@ -113,7 +114,6 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     loading = false,
                     recent = recent.map { it.toUi() },
-                    featured = _uiState.value.featured.ifEmpty { recent.take(6).map { it.toUi() } },
                 )
             }
         }
@@ -260,7 +260,6 @@ class HomeViewModel @Inject constructor(
             loading = false,
             remoteRows = remote,
             // Bannière : les 6 premiers titres avec affiche, priorité au catalogue en ligne
-            featured = remote.flatMap { it.items }.take(6).ifEmpty { _uiState.value.featured },
         )
     }
 

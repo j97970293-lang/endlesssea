@@ -44,7 +44,7 @@ import dev.endlesssea.app.ui.home.MediaRow
  * Ouvrir une extension depuis l'écran Extensions mène ici.
  */
 @Composable
-fun ExploreScreen(
+fun LegacyExploreScreen(
     onMediaClick: (String) -> Unit,
     /** §recherche-dans-explorer : (requête, source) → écran de résultats. */
     onSearch: (String, String) -> Unit = { _, _ -> },
@@ -213,7 +213,7 @@ fun ExploreScreen(
 
 // §filtres-explorer : composant de dialogue de filtres
 @Composable
-private fun FilterDialog(
+internal fun FilterDialog(
     onDismiss: () -> Unit,
     selectedGenre: String?,
     selectedYear: Int?,

@@ -31,6 +31,8 @@ interface EpisodeDao {
 
 @Dao
 interface LibraryDao {
+    @Query("SELECT * FROM library ORDER BY addedAt DESC")
+    fun observeAll(): Flow<List<LibraryEntity>>
     @Upsert suspend fun upsert(entry: LibraryEntity)
     @Query("DELETE FROM library WHERE mediaId = :mediaId") suspend fun remove(mediaId: String)
     @Query("SELECT * FROM library WHERE category = :category ORDER BY addedAt DESC")

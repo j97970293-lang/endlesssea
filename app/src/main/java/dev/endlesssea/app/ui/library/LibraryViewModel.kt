@@ -236,7 +236,7 @@ class LibraryViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             category.flatMapLatest { cat ->
-                if (cat == "FAV") libraryDao.observeFavorites() else libraryDao.observeByCategory(cat)
+                when (cat) { "ALL" -> libraryDao.observeAll(); "FAV" -> libraryDao.observeFavorites(); else -> libraryDao.observeByCategory(cat) }
             }.collect { entries ->
                 rawStatuses = entries.associate { it.mediaId to it.status }
                 // §bibliotheque-sections : « Récemment ajoutés » = ordre d'ajout réel
@@ -795,6 +795,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     /** §catégories-perso : catégories créées par l'utilisateur. */
+    val localDirectories get() = prefs.localVideoDirs
     val customCategories: StateFlow<List<String>> = prefs.customCategories
     val categoryItemsTick: StateFlow<Int> = prefs.categoryItemsTick
     fun addCategory(name: String) = prefs.addCustomCategory(name)

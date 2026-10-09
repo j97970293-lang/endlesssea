@@ -30,7 +30,7 @@ data class LibraryNavigation private constructor(
     fun filterDeviceOnly(enabled: Boolean): LibraryNavigation = copy(deviceOnly = enabled)
 
     companion object {
-        val collections = setOf("FAV", "ANIME", "MOVIE", "SERIES", "OVA", "ONA")
+        val collections = setOf("ALL", "FAV", "ANIME", "MOVIE", "SERIES", "OVA", "ONA")
         private fun validDestination(value: String?): String = value?.takeIf {
             it in collections || it == "DOWNLOADS" || it == "LOCAL" ||
                 (it.startsWith("CUSTOM:") && it.removePrefix("CUSTOM:").isNotBlank())

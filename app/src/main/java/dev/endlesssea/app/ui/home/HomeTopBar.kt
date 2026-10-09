@@ -15,9 +15,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun HomeTopBar(activeExtensionName: String?, onOpenSettings: () -> Unit, onOpenSearch: () -> Unit, onOpenMenu: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Paramètres") }
+        dev.endlesssea.app.ui.components.SectionMenuButton(home = true)
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("Endless Sea", style = MaterialTheme.typography.titleLarge, maxLines = 1)
+            Text("Accueil", style = MaterialTheme.typography.titleLarge, maxLines = 1)
             Text(activeExtensionName?.let { "Extension : $it" } ?: "Toutes les extensions",
                 style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

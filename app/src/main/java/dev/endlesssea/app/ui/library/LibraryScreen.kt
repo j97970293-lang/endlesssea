@@ -55,7 +55,7 @@ val LIBRARY_TABS = listOf(
  * progression par titre, tailles/qualités/langues affichées sur les fiches.
  */
 @Composable
-fun LibraryScreen(
+fun LegacyLibraryScreen(
     onMediaClick: (String) -> Unit,
     /** §fiche-locale : ouverture de la fiche d'un dossier de vidéos locales. */
     onLocalFolderClick: (String) -> Unit = {},
