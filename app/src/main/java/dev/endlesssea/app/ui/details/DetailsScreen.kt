@@ -635,6 +635,7 @@ fun DetailsScreen(
                 }
 
                 // ---- §suivi (conversation 11) : rattachement + progression
+                item { MetadataCard(viewModel = viewModel, onOpenAccounts = onOpenTrackers) }
                 item { TrackerCard(viewModel = viewModel, onOpenTrackers = onOpenTrackers) }
 
                 // ---- Saisons en pilules + épisodes
@@ -1439,7 +1440,7 @@ private fun TrackerCard(
                             onClick = { viewModel.markNextWatched() },
                             label = { Text("+1 épisode vu", maxLines = 1, softWrap = false) },
                         )
-                        listOf("WATCHING" to "En cours", "COMPLETED" to "Terminé", "DROPPED" to "Abandonné")
+                        listOf("PLANNING" to "À voir", "WATCHING" to "En cours", "PAUSED" to "En pause", "COMPLETED" to "Terminé", "REPEATING" to "Revoir", "DROPPED" to "Abandonné")
                             .forEach { (key, label) ->
                                 androidx.compose.material3.FilterChip(
                                     selected = l.status == key,

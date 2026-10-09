@@ -20,6 +20,19 @@ class TrackerServicesTest {
         }.build()
     private fun Request.text(): String = Buffer().also { body?.writeTo(it) }.readUtf8()
 
+    @Test fun tmdbMovieMetadataIncludesTitleGenresAndNoLiteralNullImages() = runBlocking {
+        val service = TmdbService(client { request ->
+            assertTrue(request.url.encodedPath.endsWith("/movie/42"))
+            200 to """{"title":"Le Film","name":null,"poster_path":null,"backdrop_path":null,"overview":"Résumé","release_date":"2024-05-01","first_air_date":null,"genres":[{"name":"Aventure"}]}"""
+        })
+        val details = service.details(TrackerAccountEntity("TMDB", apiKey="test"),"movie:42")!!
+        assertEquals("Le Film",details.title)
+        assertEquals(2024,details.year)
+        assertEquals(listOf("Aventure"),details.genres)
+        assertNull(details.posterUrl)
+        assertNull(details.bannerUrl)
+    }
+
     @Test fun readsAniListProgressBeforeWriting() = runBlocking {
         val service = AniListService(client { request ->
             assertTrue(request.text().contains("mediaListEntry"))

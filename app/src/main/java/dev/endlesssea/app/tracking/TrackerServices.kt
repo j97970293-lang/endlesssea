@@ -486,6 +486,8 @@ class ShikimoriService(private val http: OkHttpClient) : TrackerService {
  */
 class TmdbService(private val http: OkHttpClient) : TrackerService {
     override val id = "TMDB"
+    private fun JSONObject.text(key: String) = optString(key).takeUnless { it.isBlank() || it == "null" }
+
 
     override suspend fun whoAmI(account: dev.endlesssea.data.db.TrackerAccountEntity): String? =
         withContext(Dispatchers.IO) {
@@ -510,12 +512,11 @@ class TmdbService(private val http: OkHttpClient) : TrackerService {
             TrackerSearchHit(
                 // « tv:1399 » conserve le type : indispensable pour l'URL des détails.
                 remoteId = "$kind:${r.optInt("id")}",
-                title = r.optString("name").ifBlank { r.optString("title") },
+                title = r.text("name") ?: r.text("title") ?: return@mapNotNull null,
                 totalEpisodes = r.optInt("number_of_episodes").takeIf { it > 0 },
-                posterUrl = r.optString("poster_path").takeIf { it.isNotBlank() }
+                posterUrl = r.text("poster_path")
                     ?.let { IMAGE_BASE + it },
-                year = r.optString("first_air_date").ifBlank { r.optString("release_date") }
-                    .take(4).toIntOrNull(),
+                year = (r.text("first_air_date") ?: r.text("release_date"))?.take(4)?.toIntOrNull(),
             )
         }
     }
@@ -553,14 +554,17 @@ class TmdbService(private val http: OkHttpClient) : TrackerService {
             }
         }
         TrackerDetails(
-            posterUrl = root.optString("poster_path").takeIf { it.isNotBlank() }
+            posterUrl = root.text("poster_path")
                 ?.let { IMAGE_BASE + it },
-            bannerUrl = root.optString("backdrop_path").takeIf { it.isNotBlank() }
+            bannerUrl = root.text("backdrop_path")
                 ?.let { IMAGE_BASE + it },
             trailerUrl = trailer,
-            synopsis = root.optString("overview").takeIf { it.isNotBlank() },
-            year = (root.optString("first_air_date").ifBlank { root.optString("release_date") })
-                .take(4).toIntOrNull(),
+            synopsis = root.text("overview"),
+            title = root.text("name") ?: root.text("title"),
+            genres = root.optJSONArray("genres")?.let { genres ->
+                (0 until genres.length()).mapNotNull { genres.optJSONObject(it)?.text("name") }
+            }.orEmpty(),
+            year = (root.text("first_air_date") ?: root.text("release_date"))?.take(4)?.toIntOrNull(),
         )
     }
 

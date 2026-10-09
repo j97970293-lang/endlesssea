@@ -23,6 +23,9 @@ import dev.endlesssea.extensions.loader.ExtensionRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
@@ -442,6 +445,23 @@ class DetailsViewModel @Inject constructor(
 
     private val _trackerSearch = MutableStateFlow(TrackerSearchState())
     val trackerSearch: StateFlow<TrackerSearchState> = _trackerSearch
+
+    val metadataServices = trackers.accounts.map { accounts ->
+        accounts.filter { it.enabled && it.userName.isNotBlank() && it.service in setOf("ANILIST", "TMDB") }.map { it.service }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _metadataSearch = MutableStateFlow(TrackerSearchState())
+    val metadataSearch: StateFlow<TrackerSearchState> = _metadataSearch
+    private var metadataSearchJob: kotlinx.coroutines.Job? = null
+    fun searchMetadata(service: String, query: String) {
+        metadataSearchJob?.cancel()
+        metadataSearchJob = viewModelScope.launch {
+            _metadataSearch.value = TrackerSearchState(service = service, loading = true)
+            val title = query.trim().ifBlank { _uiState.value.details?.title.orEmpty() }
+            val hits = trackers.search(service, title)
+            kotlin.coroutines.coroutineContext.ensureActive()
+            _metadataSearch.value = TrackerSearchState(service = service, hits = hits)
+        }
+    }
 
     /** Rattachement courant de cette fiche (null = non suivie). */
     val trackerLink: StateFlow<dev.endlesssea.data.db.TrackerLinkEntity?> = _trackerLink
