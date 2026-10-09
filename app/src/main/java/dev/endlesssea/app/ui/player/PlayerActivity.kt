@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -210,6 +211,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     // §fit : 0 = contenir · 1 = remplir (zoom) · 2 = étirer (déforme)
     var zoomMode by remember { mutableIntStateOf(0) }
+    var showFramingDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
     /** §megaskip : éditeur des boutons de saut personnalisés (CRUD hors-ligne). */
@@ -218,6 +220,16 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var pinchScale by remember { mutableStateOf(1f) }
     var panX by remember { mutableStateOf(0f) }
     var panY by remember { mutableStateOf(0f) }
+    var viewport by remember { mutableStateOf(androidx.compose.ui.unit.IntSize(1,1)) }
+    val sourceAspect by viewModel.engine.sourceAspect.collectAsState()
+    val panLimits = dev.endlesssea.player.videoPanLimits(viewport.width.toFloat(), viewport.height.toFloat(),
+        sourceAspect, zoomMode, pinchScale * state.videoScale)
+    val currentPanLimits by androidx.compose.runtime.rememberUpdatedState(panLimits)
+    val openFraming: () -> Unit = {
+        pinchScale = (pinchScale * state.videoScale).coerceIn(1f,3f)
+        viewModel.setVideoScale(1f)
+        showFramingDialog = true
+    }
 
     // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
     val progressPos by viewModel.progressPosition.collectAsState()
@@ -270,8 +282,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         val renderMode by viewModel.videoRender.collectAsState()
         // §gestes-lecteur : zoom par pincement + déplacement à deux doigts —
         // appliqué à la surface vidéo (indépendant du mode « contenir/remplir »).
-        val sourceAspect by viewModel.engine.sourceAspect.collectAsState()
-        BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.fillMaxSize().onSizeChanged { viewport=it }.clipToBounds(), contentAlignment = Alignment.Center) {
         val frame = dev.endlesssea.player.videoFrameBounds(maxWidth.value, maxHeight.value, sourceAspect, zoomMode)
         androidx.compose.runtime.key(renderMode) {
             AndroidView(
@@ -293,7 +304,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize().graphicsLayer(
                     scaleX = frame.width / maxWidth.value * pinchScale * state.videoScale,
                     scaleY = frame.height / maxHeight.value * pinchScale * state.videoScale,
-                    translationX = panX, translationY = panY,
+                    translationX = panX.coerceIn(-panLimits.width,panLimits.width),
+                    translationY = panY.coerceIn(-panLimits.height,panLimits.height),
                 ),
             )
         }
@@ -311,7 +323,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                                 // Retour au cadre normal : on recentre.
                                 panX = 0f; panY = 0f
                             } else {
-                                panX += pan.x; panY += pan.y
+                                panX = (panX + pan.x).coerceIn(-currentPanLimits.width,currentPanLimits.width)
+                                panY = (panY + pan.y).coerceIn(-currentPanLimits.height,currentPanLimits.height)
                             }
                         }
                     },
@@ -664,7 +677,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 durationMs = state.durationMs,
                 dragFraction = slidingPos,
                 speed = state.speed,
-                zoomMode = zoomMode,
+                zoomMode = if(pinchScale != 1f || panX != 0f || panY != 0f) 3 else zoomMode,
                 hasPrev = state.hasPrev,
                 hasNext = state.hasNext,
                 hasLinks = state.links.isNotEmpty(),
@@ -713,11 +726,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     }
                 },
-                onCycleZoom = {
-                    zoomMode = (zoomMode + 1) % 3
-                    pinchScale = 1f; panX = 0f; panY = 0f
-                    viewModel.setVideoScale(1f)
-                },
+                onCycleZoom = openFraming,
                 onCycleSpeed = {
                     val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
                     viewModel.setSpeed(next)
@@ -847,7 +856,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     TextButton(onClick = { showMoreSheet = false; showAudioDialog = true }) { Text("Audio") }
                     TextButton(onClick = { viewModel.toggleLock(); showMoreSheet = false }) { Text("Verrouiller") }
                 }
-                TextButton(onClick = { zoomMode = (zoomMode + 1) % 3; pinchScale = 1f; panX = 0f; panY = 0f; viewModel.setVideoScale(1f) }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
+                TextButton(onClick = { showMoreSheet=false; openFraming() }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
                 TextButton(onClick = { showMoreSheet = false; showSkipDialog = true }) { Text("Configurer les sauts") }
                 if (playerThemeName == "cinema") {
                     Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)
@@ -886,24 +895,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         )
                     }
                 }
-                // §upscale : on parle d'ÉCHELLE (x1.5, x2), jamais de « 720p/1080p »
-                Text(
-                    "Zoom de l'image (bords rognés) : x%.2f".format(state.videoScale),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    listOf(1f to "Natif", 1.25f to "x1.25", 1.5f to "x1.5", 2f to "x2")
-                        .forEach { (value, label) ->
-                            FilterChip(
-                                selected = kotlin.math.abs(state.videoScale - value) < 0.01f,
-                                onClick = { viewModel.setVideoScale(value) },
-                                label = { Text(label, maxLines = 1, softWrap = false) },
-                            )
-                        }
-                }
                 Text(
                     "Renforcement des contours : %d %%".format((state.videoSharpen * 100).toInt()),
                     style = MaterialTheme.typography.labelMedium,
@@ -929,27 +920,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             label = { Text(label, maxLines = 1, softWrap = false) },
                         )
                     }
-                }
-                Spacer(Modifier.height(14.dp))
-
-                // §sous-titres-en-ligne / fichier local
-                Text(
-                    "Sous-titres",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextButton(onClick = {
-                        showMoreSheet = false
-                        showSubSearch = true
-                    }) { Text("Chercher en ligne") }
-                    TextButton(onClick = {
-                        showMoreSheet = false
-                        subFilePicker.launch(arrayOf("*/*"))
-                    }) { Text("Ouvrir un fichier .srt") }
                 }
                 Spacer(Modifier.height(14.dp))
 
@@ -1304,14 +1274,39 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         )
     }
 
+    if (showFramingDialog) {
+        AlertDialog(onDismissRequest={showFramingDialog=false}, title={Text("Cadrage de l’image")},
+            confirmButton={TextButton(onClick={showFramingDialog=false}) {Text("Terminé")}},
+            text={Column(Modifier.heightIn(max=360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                listOf(0 to "Contenir — toute l’image, sans déformation", 1 to "Remplir — sans bandes, bords rognés", 2 to "Étirer — remplit en déformant").forEach { (mode,label) ->
+                    TextButton(onClick={zoomMode=mode;pinchScale=1f;panX=0f;panY=0f;viewModel.setVideoScale(1f)}) {
+                        Text((if(zoomMode==mode && pinchScale==1f) "✓ " else "")+label)
+                    }
+                }
+                Text("Ajuster manuellement",style=MaterialTheme.typography.titleSmall)
+                Text("Zoom : ×%.2f".format(pinchScale))
+                Slider(value=pinchScale,onValueChange={pinchScale=it},valueRange=1f..3f)
+                Text("Position horizontale")
+                Slider(value=if(panLimits.width>0f) (panX/panLimits.width).coerceIn(-1f,1f) else 0f,
+                    onValueChange={panX=it*panLimits.width},valueRange=-1f..1f,enabled=panLimits.width>0f)
+                Text("Position verticale")
+                Slider(value=if(panLimits.height>0f) (panY/panLimits.height).coerceIn(-1f,1f) else 0f,
+                    onValueChange={panY=it*panLimits.height},valueRange=-1f..1f,enabled=panLimits.height>0f)
+                Text("Les déplacements restent limités aux bords. Contenir et Remplir conservent les proportions ; Étirer les déforme.",style=MaterialTheme.typography.bodySmall)
+                TextButton(onClick={zoomMode=0;pinchScale=1f;panX=0f;panY=0f;viewModel.setVideoScale(1f)}) {Text("Réinitialiser : image entière centrée")}
+            }})
+    }
+
     // ---- Boîte « Sous-titres »
     if (showCcDialog) {
         AlertDialog(
             onDismissRequest = { showCcDialog = false },
             confirmButton = { TextButton(onClick = { showCcDialog = false }) { Text("Fermer") } },
-            title = { Text("Sous-titres") },
+            title = { Text("Paroles / sous-titres") },
             text = {
-                Column {
+                Column(Modifier.heightIn(max=360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    TextButton(onClick={showCcDialog=false;showSubSearch=true}) {Text("Rechercher en ligne")}
+                    TextButton(onClick={showCcDialog=false;subFilePicker.launch(arrayOf("*/*"))}) {Text("Ouvrir un fichier de sous-titres")}
                     // §sous-titres : décalage ± des pistes externes (pas de 0,5 s).
                     val delayState by viewModel.subtitleDelayMs.collectAsState()
                     Text(

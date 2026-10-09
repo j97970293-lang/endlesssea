@@ -22,3 +22,11 @@ fun videoFrameBounds(width: Float, height: Float, sourceAspect: Float, mode: Int
     val scale = if (mode == 1) maxOf(width / fitWidth, height / fitHeight) else 1f
     return VideoFrameBounds(fitWidth * scale, fitHeight * scale)
 }
+
+/** Pan only as far as an edge: preserve the image in fit mode, avoid new blank borders in fill mode. */
+fun videoPanLimits(width: Float, height: Float, sourceAspect: Float, mode: Int, zoom: Float): VideoFrameBounds {
+    val frame = videoFrameBounds(width, height, sourceAspect, mode)
+    val scale = zoom.takeIf { it.isFinite() }?.coerceIn(1f,12f) ?: 1f
+    return VideoFrameBounds(kotlin.math.abs(frame.width * scale - width) / 2f,
+        kotlin.math.abs(frame.height * scale - height) / 2f)
+}

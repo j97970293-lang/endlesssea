@@ -257,5 +257,6 @@ fun SkinChip(
 fun zoomLabel(mode: Int): String = when (mode) {
     0 -> "Contenir"
     1 -> "Remplir"
-    else -> "Étirer"
+    2 -> "Étirer"
+    else -> "Ajusté"
 }
