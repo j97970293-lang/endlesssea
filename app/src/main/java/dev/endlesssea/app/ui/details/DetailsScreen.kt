@@ -700,6 +700,7 @@ fun DetailsScreen(
                                 onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
                                 downloaded = viewModel.downloadedFor(episode.id) != null,
                                 localVideo = viewModel.isLocal,
+                                localVideoBytes = viewModel.downloadedFor(episode.id)?.sizeBytes ?: 0L,
                                 onEdit = if (viewModel.isLocal) ({ localTool = "episode:${episode.id}" }) else null,
                                 onDownload = {
                                     val local = viewModel.downloadedFor(episode.id)
@@ -727,6 +728,7 @@ fun DetailsScreen(
                             onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
                                 downloaded = viewModel.downloadedFor(episode.id) != null,
                                 localVideo = viewModel.isLocal,
+                                localVideoBytes = viewModel.downloadedFor(episode.id)?.sizeBytes ?: 0L,
                                 onEdit = if (viewModel.isLocal) ({ localTool = "episode:${episode.id}" }) else null,
                             onDownload = {
                                     val local = viewModel.downloadedFor(episode.id)
@@ -1637,6 +1639,7 @@ private fun EpisodeRowAnymex(
     mediaTitle: String? = null,
     downloaded: Boolean = false,
     localVideo: Boolean = false,
+    localVideoBytes: Long = 0L,
     onEdit: (() -> Unit)? = null,
 ) {
     GlassCard(
@@ -1652,7 +1655,7 @@ private fun EpisodeRowAnymex(
                     .clickable(onClick = onPlay),
             ) {
                 if (localVideo) {
-                    dev.endlesssea.app.ui.local.LocalVideoThumbnail(episode.id, 0L, Modifier.fillMaxSize())
+                    dev.endlesssea.app.ui.local.LocalVideoThumbnail(episode.id, localVideoBytes, Modifier.fillMaxSize())
                 } else if (episode.thumbnailUrl != null) {
                     AsyncImage(
                         model = episode.thumbnailUrl,

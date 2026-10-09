@@ -377,7 +377,7 @@ class EsPlayer(
 
     /** Updates uniforms only: no renderer rebuild, surface replacement, or buffer reallocation. */
     fun applyVideoSettings(settings: LiveVideoSettings) {
-        liveVideoEffect.update(settings)
+        if (!liveVideoEffect.update(settings)) return
         if (!player.playWhenReady && player.playbackState == Player.STATE_READY && player.isCurrentMediaItemSeekable) {
             player.seekTo(player.currentPosition.coerceAtLeast(0L))
         }

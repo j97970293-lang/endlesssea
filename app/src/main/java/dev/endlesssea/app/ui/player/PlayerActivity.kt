@@ -888,7 +888,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
                 // §upscale : on parle d'ÉCHELLE (x1.5, x2), jamais de « 720p/1080p »
                 Text(
-                    "Agrandissement de l'image : x%.2f".format(state.videoScale),
+                    "Zoom de l'image (bords rognés) : x%.2f".format(state.videoScale),
                     style = MaterialTheme.typography.labelMedium,
                 )
                 Row(

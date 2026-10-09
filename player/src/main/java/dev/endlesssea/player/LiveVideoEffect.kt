@@ -14,7 +14,10 @@ import java.util.concurrent.atomic.AtomicReference
 @UnstableApi
 class LiveVideoEffect : GlEffect {
     private val settings = AtomicReference(LiveVideoSettings())
-    fun update(next: LiveVideoSettings) { settings.set(next.bounded()) }
+    fun update(next: LiveVideoSettings): Boolean {
+        val bounded = next.bounded()
+        return settings.getAndSet(bounded) != bounded
+    }
     override fun toGlShaderProgram(context: Context, useHdr: Boolean) = object : BaseGlShaderProgram(useHdr, 1) {
         private val program = GlProgram(context, "shaders/vertex_es2.glsl", "shaders/live_video_es2.glsl")
         private var width = 1

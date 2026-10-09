@@ -1203,11 +1203,10 @@ fun SettingsScreen(
                     // §upscale-niveaux (conversation 1) : un seul choix pour
                     // l'agrandissement, du plus léger au plus lourd.
                     val level = viewModel.upscaleLevel.collectAsState().value
-                    Text("Upscaling", style = MaterialTheme.typography.bodyLarge)
+                    Text("Zoom et netteté", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Agrandit réellement l'image puis renforce les contours (utile sur une " +
-                            "source 480p). « Auto » convient à la plupart des appareils ; " +
-                            "« Qualité » demande plus de batterie.",
+                        "Le zoom rapproche l'image et peut rogner les bords. La netteté renforce les contours, " +
+                            "sans créer de détails absents de la source. Aucun upscale IA n'est appliqué.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1229,7 +1228,7 @@ fun SettingsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("Réduire si l'appareil chauffe", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                "Pression thermique sévère détectée → upscaling réduit d'un cran " +
+                                "Pression thermique sévère détectée → zoom/netteté réduits d'un cran " +
                                     "(puis coupé si l'appareil reste chaud).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
