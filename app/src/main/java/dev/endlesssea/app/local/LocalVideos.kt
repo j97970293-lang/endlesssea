@@ -27,6 +27,27 @@ data class LocalVideoFile(
     val durationMs: Long? = null,
 )
 
+/** Marqueurs de lecture : une valeur nulle signifie « non définie ». */
+data class SeriesSkipMarkers(
+    val introStartSec: Int? = null,
+    val introEndSec: Int? = null,
+    val outroStartSec: Int? = null,
+)
+
+/** Episode values win independently; each missing value inherits the series default. */
+fun resolveEpisodeSkipMarkers(episode: SeriesSkipMarkers, series: SeriesSkipMarkers) = SeriesSkipMarkers(
+    introStartSec = episode.introStartSec ?: series.introStartSec,
+    introEndSec = episode.introEndSec ?: series.introEndSec,
+    outroStartSec = episode.outroStartSec ?: series.outroStartSec,
+)
+
+/** Null in preferences inherits the file value; -1 is a persisted explicit clear. */
+fun seriesMarkerValue(saved: Int?, fromDetailsFile: Int?): Int? = when {
+    saved == null -> fromDetailsFile
+    saved < 0 -> null
+    else -> saved
+}
+
 /** §structure-aniyomi : métadonnées lues dans un dossier de série. */
 data class SeriesMeta(
     val title: String? = null,
@@ -34,6 +55,9 @@ data class SeriesMeta(
     val author: String? = null,
     val genres: List<String> = emptyList(),
     val coverUri: String? = null,
+    val introStartSec: Int? = null,
+    val introEndSec: Int? = null,
+    val outroStartSec: Int? = null,
     /**
      * §episodes-json : titres d'épisodes publiés dans `episodes.json`
      * (format Aniyomi : `{"episode_number": 1, "name": "…"}`) —
@@ -146,6 +170,9 @@ object LocalVideos {
                                             author = o.optString("author").ifBlank { null },
                                             genres = (0 until (o.optJSONArray("genre")?.length() ?: 0))
                                                 .mapNotNull { k -> o.optJSONArray("genre")?.optString(k) },
+                                            introStartSec = o.optInt("introStartSec", -1).takeIf { o.has("introStartSec") && it >= 0 },
+                                            introEndSec = o.optInt("introEndSec", -1).takeIf { o.has("introEndSec") && it >= 0 },
+                                            outroStartSec = o.optInt("outroStartSec", -1).takeIf { o.has("outroStartSec") && it >= 0 },
                                         )
                                     }
                                 }
@@ -277,6 +304,9 @@ object LocalVideos {
         description: String? = null,
         author: String? = null,
         genres: List<String> = emptyList(),
+        introStartSec: Int? = null,
+        introEndSec: Int? = null,
+        outroStartSec: Int? = null,
     ): Boolean = runCatching {
         val folder = Uri.parse(folderUriString)
         val json = org.json.JSONObject().apply {
@@ -284,6 +314,9 @@ object LocalVideos {
             description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
             author?.takeIf { it.isNotBlank() }?.let { put("author", it) }
             if (genres.isNotEmpty()) put("genre", org.json.JSONArray(genres))
+            introStartSec?.coerceAtLeast(0)?.let { put("introStartSec", it) }
+            introEndSec?.coerceAtLeast(0)?.let { put("introEndSec", it) }
+            outroStartSec?.coerceAtLeast(0)?.let { put("outroStartSec", it) }
         }.toString(2)
 
         val docId = android.provider.DocumentsContract.getDocumentId(folder)

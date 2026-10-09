@@ -30,6 +30,12 @@ class LocalDetailsRepository @Inject constructor(
             .filter { it.parentUri == folder }
         val imported = episodeDao.ofMedia(id).first().associateBy { it.id }
         val meta = LocalVideos.seriesMeta[folder] ?: SeriesMeta()
+        val seriesPrefs = prefs.localFileMeta("folder:$folder")
+        val seriesDefaults = SeriesSkipMarkers(
+            introStartSec = seriesMarkerValue(seriesPrefs.introStartSec, meta.introStartSec),
+            introEndSec = seriesMarkerValue(seriesPrefs.introEndSec, meta.introEndSec),
+            outroStartSec = seriesMarkerValue(seriesPrefs.outroStartSec, meta.outroStartSec),
+        )
         val files = (if (scanned.isNotEmpty()) scanned.map { f ->
             LocalVideoUi(uri = f.uri, name = LocalNames.fileName(f.displayName), parentUri = folder,
                 sizeBytes = f.sizeBytes, durationMs = cached.firstOrNull { it.uri == f.uri }?.durationMs)
@@ -37,8 +43,13 @@ class LocalDetailsRepository @Inject constructor(
             val manual = prefs.localFileMeta(f.uri)
             val ep = imported[f.uri]
             f.copy(customTitle = manual.title ?: LocalVideos.episodeNumber(f.name)?.let { meta.episodeTitles[it] },
-                customCoverUri = manual.coverUri, introStartSec = manual.introStartSec,
-                introEndSec = manual.introEndSec, outroStartSec = manual.outroStartSec,
+                customCoverUri = manual.coverUri,
+                introStartSec = manual.introStartSec ?: seriesDefaults.introStartSec,
+                introEndSec = manual.introEndSec ?: seriesDefaults.introEndSec,
+                outroStartSec = manual.outroStartSec ?: seriesDefaults.outroStartSec,
+                episodeIntroStartSec = manual.introStartSec,
+                episodeIntroEndSec = manual.introEndSec,
+                episodeOutroStartSec = manual.outroStartSec,
                 matchedTitle = ep?.title, matchedSeason = ep?.season, matchedNumber = ep?.number)
         }.distinctBy { it.uri }
         val sorted = files.firstOrNull()?.let { localPlaybackQueue(files, it) }.orEmpty()

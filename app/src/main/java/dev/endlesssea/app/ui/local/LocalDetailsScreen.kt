@@ -106,15 +106,15 @@ fun LocalDetailsScreen(
             dismissButton = { TextButton(onClick = { confirmAllWatched = false }) { Text("Annuler") } })
     }
 
-    // Repères communs au dossier : pré-remplis avec ce qui existe déjà.
-    var introStart by remember(folderUri, files.size) {
-        mutableStateOf(files.firstNotNullOfOrNull { it.introStartSec }?.toString() ?: "")
+    // Series defaults stay distinct from episode-owned overrides.
+    var introStart by remember(folderUri, meta.introStartSec) {
+        mutableStateOf(meta.introStartSec?.toString() ?: "")
     }
-    var introEnd by remember(folderUri, files.size) {
-        mutableStateOf(files.firstNotNullOfOrNull { it.introEndSec }?.toString() ?: "")
+    var introEnd by remember(folderUri, meta.introEndSec) {
+        mutableStateOf(meta.introEndSec?.toString() ?: "")
     }
-    var outroStart by remember(folderUri, files.size) {
-        mutableStateOf(files.firstNotNullOfOrNull { it.outroStartSec }?.toString() ?: "")
+    var outroStart by remember(folderUri, meta.outroStartSec) {
+        mutableStateOf(meta.outroStartSec?.toString() ?: "")
     }
     val coverPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
@@ -222,7 +222,7 @@ fun LocalDetailsScreen(
             }
         }
 
-        // ---- Intro / outro valables pour TOUT le dossier
+        // ---- Valeurs par défaut de la série ; un repère propre à l'épisode reste prioritaire
         item {
             GlassCard(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -230,9 +230,9 @@ fun LocalDetailsScreen(
                 contentPadding = PaddingValues(14.dp),
             ) {
                 Column {
-                    Text("Intro / Outro du dossier", style = MaterialTheme.typography.titleSmall)
+                    Text("Repères par défaut de la série", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Appliqué à toutes les vidéos de ce dossier (en secondes).",
+                        "Hérités par les épisodes sans repère propre (en secondes). Les valeurs d'épisode restent prioritaires.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -273,7 +273,7 @@ fun LocalDetailsScreen(
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Appliquer à tout le dossier") }
+                    ) { Text("Enregistrer les repères de la série") }
                 }
             }
         }
@@ -356,15 +356,23 @@ fun LocalDetailsScreen(
     editEpisode?.let { video ->
         var episodeTitle by remember(video.uri) { mutableStateOf(video.customTitle ?: video.name) }
         var episodeCover by remember(video.uri) { mutableStateOf(video.customCoverUri.orEmpty()) }
+        var episodeIntroStart by remember(video.uri) { mutableStateOf(video.episodeIntroStartSec?.toString().orEmpty()) }
+        var episodeIntroEnd by remember(video.uri) { mutableStateOf(video.episodeIntroEndSec?.toString().orEmpty()) }
+        var episodeOutro by remember(video.uri) { mutableStateOf(video.episodeOutroStartSec?.toString().orEmpty()) }
         AlertDialog(onDismissRequest = { editEpisode = null }, title = { Text("Métadonnées de l'épisode") },
-            text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+            text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = episodeTitle, onValueChange = { episodeTitle = it }, label = { Text("Titre de l'épisode") })
                 OutlinedTextField(value = episodeCover, onValueChange = { episodeCover = it }, label = { Text("Vignette (URL ou URI)") })
+                Text("Repères propres à cet épisode. Laissez vide pour hériter de la série.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = episodeIntroStart, onValueChange = { episodeIntroStart = it.filter(Char::isDigit).take(5) }, label = { Text("Début intro") }, singleLine = true)
+                OutlinedTextField(value = episodeIntroEnd, onValueChange = { episodeIntroEnd = it.filter(Char::isDigit).take(5) }, label = { Text("Fin intro") }, singleLine = true)
+                OutlinedTextField(value = episodeOutro, onValueChange = { episodeOutro = it.filter(Char::isDigit).take(5) }, label = { Text("Début générique de fin") }, singleLine = true)
                 Text("Le fichier et le numéro d'épisode ne sont pas renommés.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { TextButton(onClick = {
                 viewModel.saveLocalMeta(video.uri, episodeTitle.trim().takeIf { it.isNotEmpty() },
-                    episodeCover.trim().takeIf { it.isNotEmpty() }, video.introStartSec, video.introEndSec, video.outroStartSec)
+                    episodeCover.trim().takeIf { it.isNotEmpty() }, episodeIntroStart.toIntOrNull(),
+                    episodeIntroEnd.toIntOrNull(), episodeOutro.toIntOrNull())
                 editEpisode = null
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editEpisode = null }) { Text("Annuler") } })

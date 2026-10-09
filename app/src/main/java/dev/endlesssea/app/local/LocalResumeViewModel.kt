@@ -43,22 +43,53 @@ class LocalResumeViewModel @Inject constructor(
                     val metadataByUri = prefs.localFileMetadataSnapshot()
                     val siblings = when {
                         folder == null -> emptyList()
-                        DocumentsContract.isTreeUri(Uri.parse(folder)) ->
-                            LocalVideos.scanAsync(context, folder, includeHidden = prefs.showHiddenFiles.value, folderOnly = true)
-                                .map { file ->
+                        DocumentsContract.isTreeUri(Uri.parse(folder)) -> {
+                            val scanned = LocalVideos.scanAsync(
+                                context, folder, includeHidden = prefs.showHiddenFiles.value, folderOnly = true,
+                            )
+                            val series = LocalVideos.seriesMeta[folder] ?: SeriesMeta()
+                            val seriesPrefs = metadataByUri["folder:$folder"] ?: AppPrefs.LocalFileMeta()
+                            val defaults = SeriesSkipMarkers(
+                                seriesMarkerValue(seriesPrefs.introStartSec, series.introStartSec),
+                                seriesMarkerValue(seriesPrefs.introEndSec, series.introEndSec),
+                                seriesMarkerValue(seriesPrefs.outroStartSec, series.outroStartSec),
+                            )
+                            scanned.map { file ->
                                     val metadata = metadataByUri[file.uri] ?: AppPrefs.LocalFileMeta()
+                                    val effective = resolveEpisodeSkipMarkers(
+                                        SeriesSkipMarkers(metadata.introStartSec, metadata.introEndSec, metadata.outroStartSec), defaults,
+                                    )
                                     LocalVideoUi(file.uri, file.displayName, file.parentUri, file.sizeBytes,
                                         durationMs = cachedByUri[file.uri]?.durationMs ?: saved?.takeIf { it.episodeId == file.uri }?.durationMs,
                                         customTitle = metadata.title, customCoverUri = metadata.coverUri,
-                                        introStartSec = metadata.introStartSec, introEndSec = metadata.introEndSec, outroStartSec = metadata.outroStartSec)
+                                        introStartSec = effective.introStartSec, introEndSec = effective.introEndSec,
+                                        outroStartSec = effective.outroStartSec,
+                                        episodeIntroStartSec = metadata.introStartSec,
+                                        episodeIntroEndSec = metadata.introEndSec,
+                                        episodeOutroStartSec = metadata.outroStartSec)
                                 }
+                        }
                         else -> cached.filter { it.parentUri == folder }
                     }
                     val metadata = metadataByUri[uri] ?: AppPrefs.LocalFileMeta()
+                    val series = folder?.let { LocalVideos.seriesMeta[it] } ?: SeriesMeta()
+                    val seriesPrefs = folder?.let { metadataByUri["folder:$it"] } ?: AppPrefs.LocalFileMeta()
+                    val effective = resolveEpisodeSkipMarkers(
+                        SeriesSkipMarkers(metadata.introStartSec, metadata.introEndSec, metadata.outroStartSec),
+                        SeriesSkipMarkers(
+                            seriesMarkerValue(seriesPrefs.introStartSec, series.introStartSec),
+                            seriesMarkerValue(seriesPrefs.introEndSec, series.introEndSec),
+                            seriesMarkerValue(seriesPrefs.outroStartSec, series.outroStartSec),
+                        ),
+                    )
                     val selected = siblings.firstOrNull { it.uri == uri } ?: cached.firstOrNull { it.uri == uri }
                         ?: LocalVideoUi(uri, LocalNames.fileName(uri), folder.orEmpty(), 0,
                             durationMs = saved?.durationMs, customTitle = metadata.title, customCoverUri = metadata.coverUri,
-                            introStartSec = metadata.introStartSec, introEndSec = metadata.introEndSec, outroStartSec = metadata.outroStartSec)
+                            introStartSec = effective.introStartSec, introEndSec = effective.introEndSec,
+                            outroStartSec = effective.outroStartSec,
+                            episodeIntroStartSec = metadata.introStartSec,
+                            episodeIntroEndSec = metadata.introEndSec,
+                            episodeOutroStartSec = metadata.outroStartSec)
                     localPlaybackQueue(siblings, selected) to selected
                 }
                 LocalLibraryCache.publish((LocalLibraryCache.files.value.filter { if (selected.parentUri.isBlank()) it.uri != selected.uri else it.parentUri != selected.parentUri } + queue).distinctBy { it.uri })

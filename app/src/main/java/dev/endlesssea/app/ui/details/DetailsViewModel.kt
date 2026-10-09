@@ -262,6 +262,17 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
+    private fun markersForEpisode(episodeId: String): dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers {
+        val local = localFiles.firstOrNull { it.uri == episodeId }
+        if (local != null) return dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
+            local.introStartSec, local.introEndSec, local.outroStartSec,
+        )
+        val stored = prefs.localFileMeta(episodeId)
+        return dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
+            stored.introStartSec, stored.introEndSec, stored.outroStartSec,
+        )
+    }
+
     /** §deplacer-téléchargement : lecture d'un fichier local (SAF supporté). */
     fun playDeviceFile(f: DeviceFileUi, onReady: () -> Unit) {
         // §emplacement : si le dossier de téléchargement a changé, on retrouve
@@ -279,6 +290,7 @@ class DetailsViewModel @Inject constructor(
                 store.let { dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
                     title = file.label, episodeId = file.episodeId ?: file.id, mediaId = mediaId,
                     episodeNumber = ep?.number, season = ep?.season, downloaded = true,
+                    markers = markersForEpisode(file.episodeId ?: file.id),
                     links = listOf(VideoLink(url = file.targetUri,
                         streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
                         quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargé")),
@@ -299,15 +311,8 @@ class DetailsViewModel @Inject constructor(
                 ),
             ),
             startIndex = 0,
-            // §auto-intro-telechargements : si des marqueurs ont été réglés pour
-            // ce fichier, le saut automatique fonctionne aussi hors ligne.
-            markers = prefs.localFileMeta(playable).let { m ->
-                dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(
-                    introStartSec = m.introStartSec,
-                    introEndSec = m.introEndSec,
-                    outroStartSec = m.outroStartSec,
-                )
-            },
+            // Resolved episode markers include the folder defaults for local files.
+            markers = markersForEpisode(f.episodeId ?: playable),
         )
         onReady()
     }
@@ -780,7 +785,7 @@ class DetailsViewModel @Inject constructor(
                     downloaded = downloadedFor(ep.id) != null,
                     thumbnailUrl = ep.thumbnailUrl, season = ep.season, episodeNumber = ep.number,
                     durationMs = ep.durationMs ?: 0L, mediaId = mediaId,
-                    markers = prefs.localFileMeta(ep.id).let { dev.endlesssea.app.ui.player.PlayerLaunchStore.SkipMarkers(it.introStartSec, it.introEndSec, it.outroStartSec) },
+                    markers = markersForEpisode(ep.id),
                 )
             },
             all.indexOfFirst { it.id == episode.id },

@@ -150,6 +150,10 @@ data class LocalVideoUi(
     val introStartSec: Int? = null,
     val introEndSec: Int? = null,
     val outroStartSec: Int? = null,
+    /** Explicit per-episode values; null means the series-level value is inherited. */
+    val episodeIntroStartSec: Int? = null,
+    val episodeIntroEndSec: Int? = null,
+    val episodeOutroStartSec: Int? = null,
     val matchedTitle: String? = null,
     val matchedSeason: Int? = null,
     val matchedNumber: Float? = null,
@@ -584,6 +588,18 @@ class LibraryViewModel @Inject constructor(
             .sortedBy { it.displayName.lowercase() }
             .map { f ->
                 val m = metadataByUri[f.uri] ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
+                val seriesPrefs = metadataByUri["folder:${f.parentUri}"]
+                    ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
+                val series = dev.endlesssea.app.local.LocalVideos.seriesMeta[f.parentUri]
+                    ?: dev.endlesssea.app.local.SeriesMeta()
+                val effective = dev.endlesssea.app.local.resolveEpisodeSkipMarkers(
+                    dev.endlesssea.app.local.SeriesSkipMarkers(m.introStartSec, m.introEndSec, m.outroStartSec),
+                    dev.endlesssea.app.local.SeriesSkipMarkers(
+                        dev.endlesssea.app.local.seriesMarkerValue(seriesPrefs.introStartSec, series.introStartSec),
+                        dev.endlesssea.app.local.seriesMarkerValue(seriesPrefs.introEndSec, series.introEndSec),
+                        dev.endlesssea.app.local.seriesMarkerValue(seriesPrefs.outroStartSec, series.outroStartSec),
+                    ),
+                )
                 LocalVideoUi(
                     uri = f.uri,
                     name = dev.endlesssea.app.local.LocalNames.fileName(f.displayName)
@@ -592,8 +608,11 @@ class LibraryViewModel @Inject constructor(
                     sizeBytes = f.sizeBytes,
                     durationMs = known[f.uri],
                     customTitle = m.title, customCoverUri = m.coverUri,
-                    introStartSec = m.introStartSec, introEndSec = m.introEndSec,
-                    outroStartSec = m.outroStartSec,
+                    introStartSec = effective.introStartSec, introEndSec = effective.introEndSec,
+                    outroStartSec = effective.outroStartSec,
+                    episodeIntroStartSec = m.introStartSec,
+                    episodeIntroEndSec = m.introEndSec,
+                    episodeOutroStartSec = m.outroStartSec,
                 )
             }
         val folderMetadata = files.map { it.parentUri }.distinct().mapNotNull { folder ->
@@ -602,10 +621,18 @@ class LibraryViewModel @Inject constructor(
                     val array = org.json.JSONArray(json)
                     (0 until array.length()).map { array.getString(it) }
                 }.getOrDefault(emptyList())
-                folder to (dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]
-                    ?: dev.endlesssea.app.local.SeriesMeta()).copy(title = saved.customTitle ?: saved.title, description = saved.synopsis,
-                        author = strings(saved.studiosJson).firstOrNull(), genres = strings(saved.genresJson),
-                        coverUri = saved.customCoverUri ?: saved.posterUrl ?: dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]?.coverUri)
+                val series = dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]
+                    ?: dev.endlesssea.app.local.SeriesMeta()
+                val folderPrefs = metadataByUri["folder:$folder"]
+                    ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
+                folder to series.copy(
+                    title = saved.customTitle ?: saved.title, description = saved.synopsis,
+                    author = strings(saved.studiosJson).firstOrNull(), genres = strings(saved.genresJson),
+                    coverUri = folderPrefs.coverUri ?: saved.customCoverUri ?: saved.posterUrl ?: series.coverUri,
+                    introStartSec = dev.endlesssea.app.local.seriesMarkerValue(folderPrefs.introStartSec, series.introStartSec),
+                    introEndSec = dev.endlesssea.app.local.seriesMarkerValue(folderPrefs.introEndSec, series.introEndSec),
+                    outroStartSec = dev.endlesssea.app.local.seriesMarkerValue(folderPrefs.outroStartSec, series.outroStartSec),
+                )
             }
         }.toMap()
         val matched = files.map { it.parentUri }.distinct().flatMap { folder ->
@@ -641,39 +668,37 @@ class LibraryViewModel @Inject constructor(
         } finally { durationPending.remove(uri) }
     }
 
-    /** Persistance de métadonnées locales éditées (§métadonnées-locales + §marqueurs). */
+    /** Persists only episode-owned markers; empty marker fields inherit the series defaults. */
     fun saveLocalMeta(
         uri: String, title: String?, coverUri: String?,
         introStartSec: Int? = null, introEndSec: Int? = null, outroStartSec: Int? = null,
     ) {
-        prefs.setLocalFileMeta(
-            uri,
-            dev.endlesssea.app.di.AppPrefs.LocalFileMeta(
-                title = title, coverUri = coverUri,
-                introStartSec = introStartSec, introEndSec = introEndSec,
-                outroStartSec = outroStartSec,
-            ),
+        val existing = (_uiState.value.localFiles + dev.endlesssea.app.local.LocalLibraryCache.files.value)
+            .firstOrNull { it.uri == uri }
+        val old = prefs.localFileMeta(uri)
+        prefs.setLocalFileMeta(uri, old.copy(
+            title = title, coverUri = coverUri,
+            introStartSec = introStartSec, introEndSec = introEndSec, outroStartSec = outroStartSec,
+        ))
+        val series = existing?.parentUri?.takeIf { it.isNotBlank() }?.let(::folderMetadata)
+            ?: dev.endlesssea.app.local.SeriesMeta()
+        val effective = dev.endlesssea.app.local.resolveEpisodeSkipMarkers(
+            dev.endlesssea.app.local.SeriesSkipMarkers(introStartSec, introEndSec, outroStartSec),
+            dev.endlesssea.app.local.SeriesSkipMarkers(series.introStartSec, series.introEndSec, series.outroStartSec),
         )
-        // met à jour localement sans nouveau scan
+        fun update(file: LocalVideoUi) = file.copy(
+            customTitle = title, customCoverUri = coverUri,
+            introStartSec = effective.introStartSec, introEndSec = effective.introEndSec,
+            outroStartSec = effective.outroStartSec,
+            episodeIntroStartSec = introStartSec, episodeIntroEndSec = introEndSec,
+            episodeOutroStartSec = outroStartSec,
+        )
         _uiState.value = _uiState.value.copy(
-            localFiles = _uiState.value.localFiles.map {
-                if (it.uri == uri) {
-                    it.copy(
-                        customTitle = title, customCoverUri = coverUri,
-                        introStartSec = introStartSec, introEndSec = introEndSec,
-                        outroStartSec = outroStartSec,
-                    )
-                } else {
-                    it
-                }
-            },
+            localFiles = _uiState.value.localFiles.map { if (it.uri == uri) update(it) else it },
+            localMetaTick = _uiState.value.localMetaTick + 1,
         )
         dev.endlesssea.app.local.LocalLibraryCache.publish(
-            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { file ->
-                if (file.uri == uri) file.copy(customTitle = title, customCoverUri = coverUri,
-                    introStartSec = introStartSec, introEndSec = introEndSec, outroStartSec = outroStartSec)
-                else file
-            },
+            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { if (it.uri == uri) update(it) else it },
         )
     }
 
@@ -702,7 +727,8 @@ class LibraryViewModel @Inject constructor(
             } catch (error: Exception) { target.delete(); Result.failure<String>(error) }
         }
         result.onSuccess { cover ->
-            prefs.setLocalFileMeta("folder:$folderUri", null, cover)
+            val oldFolderMeta = prefs.localFileMeta("folder:$folderUri")
+            prefs.setLocalFileMeta("folder:$folderUri", oldFolderMeta.copy(coverUri = cover))
             mediaDao.byId(dev.endlesssea.app.local.LocalMediaIds.series(folderUri))?.let { saved ->
                 mediaDao.upsertAll(listOf(saved.copy(posterUrl = cover, customCoverUri = cover)))
             }
@@ -713,31 +739,62 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /**
-     * §métadonnées-dossier : applique affiche + marqueurs intro/outro à TOUS les
-     * fichiers du dossier (le titre reste propre à chaque fichier).
-     */
+    /** Saves series defaults separately; explicit episode overrides are never rewritten. */
     fun saveFolderMeta(
         parentUri: String, coverUri: String?,
         introStartSec: Int? = null, introEndSec: Int? = null, outroStartSec: Int? = null,
     ) {
-        // §fiche-locale : la fiche d'un dossier possède son propre ViewModel, dont
-        // la liste n'est pas encore scannée — on retombe alors sur le cache partagé.
-        val target = _uiState.value.localFiles.filter { it.parentUri == parentUri }
-            .ifEmpty { dev.endlesssea.app.local.LocalLibraryCache.folder(parentUri) }
-        target.forEach { f ->
-            saveLocalMeta(f.uri, f.customTitle, coverUri, introStartSec, introEndSec, outroStartSec)
-        }
-        // le cache reflète immédiatement les nouveaux repères
-        dev.endlesssea.app.local.LocalLibraryCache.publish(
-            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { f ->
-                if (f.parentUri != parentUri) f else f.copy(
-                    customCoverUri = coverUri ?: f.customCoverUri,
-                    introStartSec = introStartSec, introEndSec = introEndSec,
-                    outroStartSec = outroStartSec,
-                )
-            },
+        val old = folderMetadata(parentUri)
+        val next = old.copy(
+            coverUri = coverUri ?: old.coverUri,
+            introStartSec = introStartSec?.coerceAtLeast(0),
+            introEndSec = introEndSec?.coerceAtLeast(0),
+            outroStartSec = outroStartSec?.coerceAtLeast(0),
         )
+        val key = "folder:$parentUri"
+        val stored = prefs.localFileMeta(key)
+        prefs.setLocalFileMeta(key, stored.copy(
+            coverUri = coverUri ?: stored.coverUri,
+            introStartSec = next.introStartSec ?: -1,
+            introEndSec = next.introEndSec ?: -1,
+            outroStartSec = next.outroStartSec ?: -1,
+        ))
+        dev.endlesssea.app.local.LocalVideos.seriesMeta[parentUri] = next
+        val perEpisode = prefs.localFileMetadataSnapshot()
+        val defaults = dev.endlesssea.app.local.SeriesSkipMarkers(
+            next.introStartSec, next.introEndSec, next.outroStartSec,
+        )
+        fun inherit(file: LocalVideoUi): LocalVideoUi {
+            val own = perEpisode[file.uri] ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
+            val effective = dev.endlesssea.app.local.resolveEpisodeSkipMarkers(
+                dev.endlesssea.app.local.SeriesSkipMarkers(own.introStartSec, own.introEndSec, own.outroStartSec), defaults,
+            )
+            return file.copy(
+                introStartSec = effective.introStartSec, introEndSec = effective.introEndSec,
+                outroStartSec = effective.outroStartSec,
+                episodeIntroStartSec = own.introStartSec, episodeIntroEndSec = own.introEndSec,
+                episodeOutroStartSec = own.outroStartSec,
+            )
+        }
+        _uiState.value = _uiState.value.copy(
+            folderMetadata = _uiState.value.folderMetadata + (parentUri to next),
+            localFiles = _uiState.value.localFiles.map { if (it.parentUri == parentUri) inherit(it) else it },
+            localMetaTick = _uiState.value.localMetaTick + 1,
+            localScanLabel = "Repères de série enregistrés ; les repères propres aux épisodes sont conservés",
+        )
+        dev.endlesssea.app.local.LocalLibraryCache.publish(
+            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { if (it.parentUri == parentUri) inherit(it) else it },
+        )
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val exported = dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(
+                context, parentUri, next.title, next.description, next.author, next.genres,
+                next.introStartSec, next.introEndSec, next.outroStartSec,
+            )
+            _uiState.value = _uiState.value.copy(
+                localScanLabel = if (exported) "Repères de série enregistrés dans details.json"
+                    else "Repères conservés dans l'application ; dossier non modifiable",
+            )
+        }
     }
 
     /**
@@ -746,9 +803,18 @@ class LibraryViewModel @Inject constructor(
      * scanner relit ce fichier à chaque scan — les métadonnées survivent donc à
      * une réinstallation et restent lisibles par d'autres applications.
      */
-    fun folderMetadata(uri: String): dev.endlesssea.app.local.SeriesMeta =
-        _uiState.value.folderMetadata[uri] ?: dev.endlesssea.app.local.LocalVideos.seriesMeta[uri]
-        ?: dev.endlesssea.app.local.SeriesMeta()
+    fun folderMetadata(uri: String): dev.endlesssea.app.local.SeriesMeta {
+        val base = _uiState.value.folderMetadata[uri]
+            ?: dev.endlesssea.app.local.LocalVideos.seriesMeta[uri]
+            ?: dev.endlesssea.app.local.SeriesMeta()
+        val stored = prefs.localFileMeta("folder:$uri")
+        return base.copy(
+            coverUri = stored.coverUri ?: base.coverUri,
+            introStartSec = dev.endlesssea.app.local.seriesMarkerValue(stored.introStartSec, base.introStartSec),
+            introEndSec = dev.endlesssea.app.local.seriesMarkerValue(stored.introEndSec, base.introEndSec),
+            outroStartSec = dev.endlesssea.app.local.seriesMarkerValue(stored.outroStartSec, base.outroStartSec),
+        )
+    }
 
     fun folderCards(files: List<LocalVideoUi> = _uiState.value.localFiles): List<SearchItemUi> {
         val managed = _uiState.value.downloadedEpisodes.map { it.uri }.toSet()
@@ -766,11 +832,26 @@ class LibraryViewModel @Inject constructor(
     fun saveSeriesMeta(
         folderUri: String, title: String?, description: String? = null,
         author: String? = null, genres: List<String> = emptyList(),
+        markerDefaults: dev.endlesssea.app.local.SeriesSkipMarkers? = null,
     ) = viewModelScope.launch {
         val old = folderMetadata(folderUri)
-        val next = old.copy(title = title?.trim()?.takeIf { it.isNotBlank() },
+        val metadata = old.copy(title = title?.trim()?.takeIf { it.isNotBlank() },
             description = description?.trim()?.takeIf { it.isNotBlank() },
             author = author?.trim()?.takeIf { it.isNotBlank() }, genres = genres)
+        val next = markerDefaults?.let { metadata.copy(
+            introStartSec = it.introStartSec?.coerceAtLeast(0),
+            introEndSec = it.introEndSec?.coerceAtLeast(0),
+            outroStartSec = it.outroStartSec?.coerceAtLeast(0),
+        ) } ?: metadata
+        if (markerDefaults != null) {
+            val key = "folder:$folderUri"
+            val savedMarkers = prefs.localFileMeta(key)
+            prefs.setLocalFileMeta(key, savedMarkers.copy(
+                introStartSec = next.introStartSec ?: -1,
+                introEndSec = next.introEndSec ?: -1,
+                outroStartSec = next.outroStartSec ?: -1,
+            ))
+        }
         val id = dev.endlesssea.app.local.LocalMediaIds.series(folderUri)
         val displayTitle = next.title ?: dev.endlesssea.app.local.LocalNames.pretty(folderUri)
         // Room is authoritative for edits even on read-only SAF folders. No episode title is rewritten.
@@ -787,13 +868,36 @@ class LibraryViewModel @Inject constructor(
         )))
         val exported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             dev.endlesssea.app.local.LocalVideos.writeSeriesMeta(context, folderUri, next.title,
-                next.description, next.author, next.genres)
+                next.description, next.author, next.genres,
+                next.introStartSec, next.introEndSec, next.outroStartSec)
         }
         dev.endlesssea.app.local.LocalVideos.seriesMeta[folderUri] = next
-        _uiState.value = _uiState.value.copy(folderMetadata = _uiState.value.folderMetadata + (folderUri to next),
+        val perEpisode = prefs.localFileMetadataSnapshot()
+        val defaults = dev.endlesssea.app.local.SeriesSkipMarkers(
+            next.introStartSec, next.introEndSec, next.outroStartSec,
+        )
+        fun inherit(file: LocalVideoUi): LocalVideoUi {
+            val own = perEpisode[file.uri] ?: dev.endlesssea.app.di.AppPrefs.LocalFileMeta()
+            val effective = dev.endlesssea.app.local.resolveEpisodeSkipMarkers(
+                dev.endlesssea.app.local.SeriesSkipMarkers(own.introStartSec, own.introEndSec, own.outroStartSec), defaults,
+            )
+            return file.copy(
+                introStartSec = effective.introStartSec, introEndSec = effective.introEndSec,
+                outroStartSec = effective.outroStartSec,
+                episodeIntroStartSec = own.introStartSec, episodeIntroEndSec = own.introEndSec,
+                episodeOutroStartSec = own.outroStartSec,
+            )
+        }
+        _uiState.value = _uiState.value.copy(
+            folderMetadata = _uiState.value.folderMetadata + (folderUri to next),
+            localFiles = _uiState.value.localFiles.map { if (it.parentUri == folderUri) inherit(it) else it },
             localMetaTick = _uiState.value.localMetaTick + 1,
             localScanLabel = if (exported) "Métadonnées enregistrées dans l'app et details.json"
-                else "Métadonnées enregistrées dans l'app ; dossier non modifiable")
+                else "Métadonnées enregistrées dans l'app ; dossier non modifiable",
+        )
+        dev.endlesssea.app.local.LocalLibraryCache.publish(
+            dev.endlesssea.app.local.LocalLibraryCache.files.value.map { if (it.parentUri == folderUri) inherit(it) else it },
+        )
     }
 
     /** §catégories-perso : catégories créées par l'utilisateur. */
