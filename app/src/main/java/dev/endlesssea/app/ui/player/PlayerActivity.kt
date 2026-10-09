@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.draw.clip
@@ -268,10 +270,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         val renderMode by viewModel.videoRender.collectAsState()
         // §gestes-lecteur : zoom par pincement + déplacement à deux doigts —
         // appliqué à la surface vidéo (indépendant du mode « contenir/remplir »).
-        val zoomLayer = Modifier.graphicsLayer(
-            scaleX = pinchScale, scaleY = pinchScale,
-            translationX = panX, translationY = panY,
-        )
+        val sourceAspect by viewModel.engine.sourceAspect.collectAsState()
+        BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+        val frame = dev.endlesssea.player.videoFrameBounds(maxWidth.value, maxHeight.value, sourceAspect, zoomMode)
         androidx.compose.runtime.key(renderMode) {
             AndroidView(
                 factory = { ctx ->
@@ -286,17 +287,18 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     }
                 },
                 update = { videoView ->
-                    videoView.resizeMode = when (zoomMode) {
-                        1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
+                    videoView.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                 },
                 onRelease = { it.player = null },
-                modifier = Modifier.align(Alignment.Center).fillMaxSize().then(zoomLayer),
+                modifier = Modifier.fillMaxSize().graphicsLayer(
+                    scaleX = frame.width / maxWidth.value * pinchScale * state.videoScale,
+                    scaleY = frame.height / maxHeight.value * pinchScale * state.videoScale,
+                    translationX = panX, translationY = panY,
+                ),
             )
         }
 
+        }
         // §gestes-lecteur : pincement (zoom 1×–3×) + déplacement à deux doigts.
         if (pinchZoomOn) {
             Box(
@@ -711,7 +713,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     }
                 },
-                onCycleZoom = { zoomMode = (zoomMode + 1) % 3 },
+                onCycleZoom = {
+                    zoomMode = (zoomMode + 1) % 3
+                    pinchScale = 1f; panX = 0f; panY = 0f
+                    viewModel.setVideoScale(1f)
+                },
                 onCycleSpeed = {
                     val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
                     viewModel.setSpeed(next)
@@ -841,7 +847,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     TextButton(onClick = { showMoreSheet = false; showAudioDialog = true }) { Text("Audio") }
                     TextButton(onClick = { viewModel.toggleLock(); showMoreSheet = false }) { Text("Verrouiller") }
                 }
-                TextButton(onClick = { zoomMode = (zoomMode + 1) % 3 }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
+                TextButton(onClick = { zoomMode = (zoomMode + 1) % 3; pinchScale = 1f; panX = 0f; panY = 0f; viewModel.setVideoScale(1f) }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
                 TextButton(onClick = { showMoreSheet = false; showSkipDialog = true }) { Text("Configurer les sauts") }
                 if (playerThemeName == "cinema") {
                     Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)

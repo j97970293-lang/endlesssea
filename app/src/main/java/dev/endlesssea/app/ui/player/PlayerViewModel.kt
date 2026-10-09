@@ -381,103 +381,24 @@ class PlayerViewModel @Inject constructor(
 
     private fun applyCurrentEffects(settings: List<Any>) {
         val st = _uiState.value
-        val effects = mutableListOf<androidx.media3.common.Effect>()
-
-        // 0) §upscale : AGRANDISSEMENT réel de l'image avant tout le reste.
-        //    On raisonne en ÉCHELLE (x1.5, x2) et pas en « 720p/1080p » :
-        //    le gain dépend de la définition de la source, pas d'une cible fixe.
-        //    L'agrandissement seul ne se voit pas (l'écran redescend l'image) :
-        //    c'est le passage de netteté APRÈS l'agrandissement qui produit le
-        //    rendu « HD », exactement comme un upscaler anime.
-        val scale = st.videoScale.coerceIn(1f, 2f)
-        if (scale > 1.01f) {
-            runCatching {
-                effects += androidx.media3.effect.ScaleAndRotateTransformation.Builder()
-                    .setScale(scale, scale)
-                    .build()
-            }
+        val style = when (st.enhance) {
+            "anime" -> dev.endlesssea.player.LiveVideoSettings(saturation = .08f, sharpness = .55f)
+            "anime_fort" -> dev.endlesssea.player.LiveVideoSettings(saturation = .12f, contrast = 1.08f, sharpness = .95f)
+            "net" -> dev.endlesssea.player.LiveVideoSettings(saturation = .04f, sharpness = .35f)
+            "eclat" -> dev.endlesssea.player.LiveVideoSettings(saturation = .18f, contrast = 1.22f)
+            "doux" -> dev.endlesssea.player.LiveVideoSettings(brightness = .02f, saturation = -.06f, contrast = .92f)
+            "cinema" -> dev.endlesssea.player.LiveVideoSettings(contrast = 1.1f, temperature = .4f)
+            "nuit" -> dev.endlesssea.player.LiveVideoSettings(brightness = .14f, contrast = .95f)
+            else -> dev.endlesssea.player.LiveVideoSettings()
         }
-        // Netteté utilisateur : appliquée dès qu'elle est > 0, quel que soit le profil.
-        val sharpen = when {
-            st.videoSharpen > 0.01f -> st.videoSharpen
-            scale > 1.01f -> 0.6f
-            else -> 0f
-        }
-        if (sharpen > 0.01f) {
-            runCatching { effects += dev.endlesssea.player.SharpenEffect(sharpen) }
-        }
-
-        // 1) profil d'amélioration (style d'image, sans notion de définition)
-        when (st.enhance) {
-            "anime" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.55f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(8f).build()
-            }
-            "anime_fort" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.95f) }
-                runCatching { effects += androidx.media3.effect.Contrast(0.08f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(12f).build()
-            }
-            "net" -> {
-                runCatching { effects += dev.endlesssea.player.SharpenEffect(0.35f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(4f).build()
-            }
-            "eclat" -> {
-                runCatching { effects += androidx.media3.effect.Contrast(0.22f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(18f).build()
-            }
-            "doux" -> {
-                runCatching { effects += androidx.media3.effect.Contrast(-0.08f) }
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustSaturation(-6f).adjustLightness(2f).build()
-            }
-            "cinema" -> {
-                runCatching {
-                    effects += androidx.media3.effect.RgbAdjustment.Builder()
-                        .setRedScale(1.06f).setGreenScale(1.0f).setBlueScale(0.94f).build()
-                }
-                runCatching { effects += androidx.media3.effect.Contrast(0.10f) }
-            }
-            "nuit" -> {
-                effects += androidx.media3.effect.HslAdjustment.Builder()
-                    .adjustLightness(14f).build()
-                runCatching { effects += androidx.media3.effect.Contrast(-0.05f) }
-            }
-        }
-        // Keep the active output surface: Media3's video graph also supports SurfaceView.
-
-        // 2) réglages fins de l'utilisateur
-        if (st.filterContrast != 1f) {
-            runCatching {
-                effects += androidx.media3.effect.Contrast((st.filterContrast - 1f).coerceIn(-1f, 1f))
-            }
-        }
-        if (st.filterTemp != 0f) {
-            runCatching {
-                val t = st.filterTemp.coerceIn(-1f, 1f)
-                effects += androidx.media3.effect.RgbAdjustment.Builder()
-                    .setRedScale(1f + 0.15f * t)
-                    .setBlueScale(1f - 0.15f * t)
-                    .build()
-            }
-        }
-        if (st.filterSharp > 0f) {
-            runCatching { effects += dev.endlesssea.player.SharpenEffect(st.filterSharp * 0.6f) }
-        }
-        // 3) le triplet classique (luminosité / saturation / teinte), toujours en dernier
-        val lightness = st.filterBrightness + (st.filterGamma - 1f) * 20f
-        effects += androidx.media3.effect.HslAdjustment.Builder()
-            .adjustLightness(lightness.coerceIn(-100f, 100f))
-            .adjustSaturation(st.filterSaturation)
-            .adjustHue(st.filterHue)
-            .build()
-        engine.applyVideoEffects(effects).onSuccess { appliedEffectSettings = settings }.onFailure {
-            _uiState.value = _uiState.value.copy(toast = "Impossible d'appliquer ce réglage vidéo : ${it.message ?: "erreur du moteur"}")
-        }
+        engine.applyVideoSettings(style.copy(
+            brightness = style.brightness + st.filterBrightness / 100f,
+            saturation = style.saturation + st.filterSaturation / 100f, hue = st.filterHue,
+            contrast = style.contrast * st.filterContrast, gamma = st.filterGamma,
+            temperature = style.temperature + st.filterTemp,
+            sharpness = maxOf(style.sharpness, st.videoSharpen, st.filterSharp * .6f),
+        ))
+        appliedEffectSettings = settings
     }
 
     fun applyPreset(preset: VideoFilterPreset) =

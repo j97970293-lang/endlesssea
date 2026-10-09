@@ -59,6 +59,15 @@ class EsPlayer(
         .setSeekBackIncrementMs(10_000)
         .build()
 
+    private val liveVideoEffect = LiveVideoEffect()
+    private val _sourceAspect = MutableStateFlow(16f / 9f)
+    val sourceAspect: StateFlow<Float> = _sourceAspect
+    private fun publishSourceAspect() {
+        val format = player.videoFormat ?: return
+        if (format.width <= 0 || format.height <= 0) return
+        val ratio = format.width * format.pixelWidthHeightRatio / format.height
+        _sourceAspect.value = if (format.rotationDegrees == 90 || format.rotationDegrees == 270) 1f / ratio else ratio
+    }
     private val _playbackRequested = MutableStateFlow(false)
     /** Transport icon follows intent, including buffering, rather than rendered frames. */
     val playbackRequested: StateFlow<Boolean> = _playbackRequested
@@ -113,8 +122,8 @@ class EsPlayer(
 
     init {
         // Media3 1.5 creates its video graph only on the first renderer enable (or reset).
-        // Install an empty chain BEFORE any prepare, so live edits can use that graph.
-        player.setVideoEffects(emptyList())
+        // Install ONE permanent shader before prepare; later edits update uniforms only.
+        player.setVideoEffects(listOf(liveVideoEffect))
         player.addListener(object : Player.Listener {
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 cancelRelativeSeek()
@@ -125,6 +134,7 @@ class EsPlayer(
             override fun onIsPlayingChanged(playing: Boolean) { _isPlaying.value = playing }
             override fun onTracksChanged(tracks: Tracks) {
                 publishTracks(tracks)
+                publishSourceAspect()
                 // §stats : format vidéo courant (codec, débit, images/s)
                 val format = tracks.groups
                     .filter { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
@@ -142,6 +152,7 @@ class EsPlayer(
             }
 
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                publishSourceAspect()
                 _stats.value = _stats.value.copy(
                     width = videoSize.width, height = videoSize.height,
                     pixelRatio = videoSize.pixelWidthHeightRatio,
@@ -364,11 +375,9 @@ class EsPlayer(
         player.playbackParameters = PlaybackParameters(factor.coerceIn(0.25f, 4f), 1f)
     }
 
-    /** Apply to the existing graph without replacing the output surface or changing play intent. */
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    fun applyVideoEffects(effects: List<androidx.media3.common.Effect>): Result<Unit> = runCatching {
-        player.setVideoEffects(effects)
-        // A paused frame needs a refresh; never force repeated seeks while playing/buffering.
+    /** Updates uniforms only: no renderer rebuild, surface replacement, or buffer reallocation. */
+    fun applyVideoSettings(settings: LiveVideoSettings) {
+        liveVideoEffect.update(settings)
         if (!player.playWhenReady && player.playbackState == Player.STATE_READY && player.isCurrentMediaItemSeekable) {
             player.seekTo(player.currentPosition.coerceAtLeast(0L))
         }

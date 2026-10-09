@@ -161,10 +161,7 @@ fun EsBottomBar(
 @Composable
 fun EsNavGraph(nav: NavHostController) {
     // L'id composite « ext:url » peut contenir des caractères spéciaux → encodage
-    fun openDetails(nav: NavHostController, id: String) = nav.navigate(
-        if (id.startsWith("local:")) "localDetails/${Uri.encode(id.removePrefix("local:"))}"
-        else "details/${Uri.encode(id)}",
-    )
+    fun openDetails(nav: NavHostController, id: String) = nav.navigate("details/${Uri.encode(id)}")
 
     val motion = dev.endlesssea.app.ui.motion.LocalAppMotion.current
     val tabs = allTabScreens.map { it.route }.toSet()
@@ -270,7 +267,7 @@ fun EsNavGraph(nav: NavHostController) {
                 onMediaClick = { openDetails(nav, it) },
                 // §fiche-locale : un dossier local s'ouvre comme une fiche de source
                 onLocalFolderClick = { folderUri ->
-                    nav.navigate("localDetails/" + Uri.encode(folderUri))
+                    openDetails(nav, dev.endlesssea.app.local.LocalMediaIds.series(folderUri))
                 },
                 // §telecharges-bibliotheque : la fiche d'une « série » téléchargée
                 onDownloadedFolderClick = { key ->
@@ -286,9 +283,11 @@ fun EsNavGraph(nav: NavHostController) {
             )
         }
         composable("localDetails/{folder}") { entry ->
-            dev.endlesssea.app.ui.local.LocalDetailsScreen(
-                folderUri = Uri.decode(entry.arguments?.getString("folder").orEmpty()),
+            DetailsScreen(
+                mediaId = dev.endlesssea.app.local.LocalMediaIds.series(entry.arguments?.getString("folder").orEmpty()),
                 onBack = { nav.popBackStack() },
+                onDownloadQueued = { nav.navigate(Screen.Downloads.route) },
+                onOpenTrackers = { nav.navigate("trackers") },
             )
         }
         composable(Screen.Downloads.route) { DownloadsScreen() }

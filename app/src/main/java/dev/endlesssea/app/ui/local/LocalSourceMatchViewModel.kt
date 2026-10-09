@@ -101,7 +101,7 @@ internal class LocalSourceMatchViewModel @Inject constructor(
                     val previous = database.mediaDao().byId(id)
                     val oldIds = org.json.JSONObject(previous?.externalIdsJson ?: "{}")
                     val fileMeta = LocalVideos.seriesMeta[folder]
-                    val preserveManual = (previous != null && (!oldIds.has("local_source") || oldIds.optBoolean("local_manual_meta"))) ||
+                    val preserveManual = (previous != null && ((!oldIds.has("local_source") && !oldIds.optBoolean("local_generated")) || oldIds.optBoolean("local_manual_meta"))) ||
                         (previous == null && fileMeta != null)
                     val manualSynopsis = previous?.synopsis ?: fileMeta?.description
                     val manualGenres = previous?.genresJson ?: org.json.JSONArray(fileMeta?.genres.orEmpty()).toString()

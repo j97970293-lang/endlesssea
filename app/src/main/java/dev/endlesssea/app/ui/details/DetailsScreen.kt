@@ -116,6 +116,10 @@ fun DetailsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var localTool by remember { mutableStateOf<String?>(null) }
+    if (viewModel.isLocal) localTool?.let { mode ->
+        dev.endlesssea.app.ui.local.LocalDetailsTools(viewModel, mode, { localTool = null })
+    }
     val snackbar = remember { SnackbarHostState() }
     var downloadSheetEpisode by remember { mutableStateOf<Episode?>(null) }
     /** §fiche-serveurs : épisode dont le panneau « serveurs de lecture » est ouvert. */
@@ -154,7 +158,7 @@ fun DetailsScreen(
         val offline = state.deviceFiles.mapNotNull { it.episodeId }.toSet()
         state.episodes.filter { ep ->
             (selectedSeason == null || ep.season == selectedSeason) && (!offlineOnly || ep.id in offline) &&
-                dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery, ep.number.toDouble(), ep.title)
+                dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery, ep.number.takeIf { it.isFinite() }?.toString()?.toDoubleOrNull(), ep.title)
         }
     }
 
@@ -255,8 +259,8 @@ fun DetailsScreen(
                 dismissButton = {
                     TextButton(onClick = { deleteCandidate = null }) { Text("Annuler") }
                 },
-                title = { Text("Supprimer ce téléchargement ?") },
-                text = { Text(f.label) },
+                title = { Text(if (f.managedDownload) "Supprimer ce téléchargement ?" else "Supprimer le fichier original ?") },
+                text = { Text(f.label + if (f.managedDownload) "" else "\nLa vidéo sera supprimée du stockage, pas seulement retirée de la fiche.") },
             )
         }
 
@@ -448,6 +452,14 @@ fun DetailsScreen(
                                 Icon(Icons.Filled.MoreVert, "Plus d'actions")
                             }
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                                if (viewModel.isLocal) {
+                                    DropdownMenuItem(text = { Text("Modifier les métadonnées / l'affiche") },
+                                        onClick = { moreMenu = false; localTool = "metadata" })
+                                    DropdownMenuItem(text = { Text("Associer à une fiche en ligne") },
+                                        onClick = { moreMenu = false; localTool = "source" })
+                                    DropdownMenuItem(text = { Text("Actualiser les fichiers") },
+                                        onClick = { moreMenu = false; viewModel.load() })
+                                }
                                 state.details?.url?.takeIf { it.startsWith("http") }?.let { url ->
                                     DropdownMenuItem(
                                         text = { Text("Ouvrir dans le navigateur") },
@@ -516,7 +528,7 @@ fun DetailsScreen(
                             ) {
                                 Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lire")
                             }
-                        if (state.episodes.size > 1) {
+                        if (state.episodes.size > 1 && !viewModel.isLocal) {
                             OutlinedButton(
                                 onClick = { serverOrderDialog = true },
                                 enabled = !state.batchRunning,
@@ -687,9 +699,11 @@ fun DetailsScreen(
                                 loading = state.linksLoadingEpisode == episode.id,
                                 onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
                                 downloaded = viewModel.downloadedFor(episode.id) != null,
+                                localVideo = viewModel.isLocal,
+                                onEdit = if (viewModel.isLocal) ({ localTool = "episode:${episode.id}" }) else null,
                                 onDownload = {
                                     val local = viewModel.downloadedFor(episode.id)
-                                    if (local != null) deleteCandidate = local else downloadSheetEpisode = episode
+                                    if (local != null) deleteCandidate = local else if (!viewModel.isLocal) downloadSheetEpisode = episode
                                 },
                                 isMovie = true,
                                 mediaTitle = state.details?.title,
@@ -712,9 +726,11 @@ fun DetailsScreen(
                             loading = state.linksLoadingEpisode == episode.id,
                             onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
                                 downloaded = viewModel.downloadedFor(episode.id) != null,
+                                localVideo = viewModel.isLocal,
+                                onEdit = if (viewModel.isLocal) ({ localTool = "episode:${episode.id}" }) else null,
                             onDownload = {
                                     val local = viewModel.downloadedFor(episode.id)
-                                    if (local != null) deleteCandidate = local else downloadSheetEpisode = episode
+                                    if (local != null) deleteCandidate = local else if (!viewModel.isLocal) downloadSheetEpisode = episode
                                 },
                         )
                     }
@@ -1609,6 +1625,7 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
 }
 
 /** Ligne d'épisode style référence : vignette + badge EP + titre + icône téléchargement. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeRowAnymex(
     episode: Episode,
@@ -1619,6 +1636,8 @@ private fun EpisodeRowAnymex(
     isMovie: Boolean = false,
     mediaTitle: String? = null,
     downloaded: Boolean = false,
+    localVideo: Boolean = false,
+    onEdit: (() -> Unit)? = null,
 ) {
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1632,7 +1651,9 @@ private fun EpisodeRowAnymex(
                     .clip(RoundedCornerShape(12.dp))
                     .clickable(onClick = onPlay),
             ) {
-                if (episode.thumbnailUrl != null) {
+                if (localVideo) {
+                    dev.endlesssea.app.ui.local.LocalVideoThumbnail(episode.id, 0L, Modifier.fillMaxSize())
+                } else if (episode.thumbnailUrl != null) {
                     AsyncImage(
                         model = episode.thumbnailUrl,
                         contentDescription = null,
@@ -1651,7 +1672,7 @@ private fun EpisodeRowAnymex(
                     modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
                 ) {
                     Text(
-                        "EP ${episode.number.toString().removeSuffix(".0")}",
+                        if (episode.number.isFinite()) "EP ${episode.number.toString().removeSuffix(".0")}" else "Fichier",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
@@ -1659,7 +1680,7 @@ private fun EpisodeRowAnymex(
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).clickable(onClick = onPlay)) {
+            Column(Modifier.weight(1f).combinedClickable(onClick = onPlay, onLongClick = onEdit)) {
                 dev.endlesssea.app.ui.components.ExpandableText(
                     text = when {
                         isMovie -> episode.title?.takeIf { it.isNotBlank() } ?: mediaTitle ?: "Film"
@@ -1681,9 +1702,10 @@ private fun EpisodeRowAnymex(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            if (onEdit != null) IconButton(onClick = onEdit) { Icon(Icons.Filled.MoreVert, "Modifier cet épisode") }
             if (loading) {
                 dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
-            } else {
+            } else if (!localVideo || downloaded) {
                 IconButton(onClick = onDownload) {
                     Icon(if (downloaded) Icons.Filled.Delete else Icons.Filled.Download, if (downloaded) "Supprimer le fichier hors ligne" else "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
                 }

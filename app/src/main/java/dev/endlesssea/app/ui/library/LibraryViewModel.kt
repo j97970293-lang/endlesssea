@@ -778,7 +778,7 @@ class LibraryViewModel @Inject constructor(
             titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle))
         mediaDao.upsertAll(listOf(base.copy(
             customTitle = next.title, titleKey = dev.endlesssea.core.util.FileNames.normalizedKey(displayTitle),
-            synopsis = next.description, posterUrl = folderCover(folderUri) ?: next.coverUri,
+            synopsis = next.description, posterUrl = folderCover(folderUri) ?: next.coverUri ?: base.posterUrl,
             genresJson = org.json.JSONArray(next.genres).toString(),
             studiosJson = org.json.JSONArray(listOfNotNull(next.author)).toString(),
             externalIdsJson = org.json.JSONObject(base.externalIdsJson).put("local_manual_meta", true).toString(),

@@ -58,6 +58,7 @@ import dev.endlesssea.app.ui.library.playLocal
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@Deprecated("Local folders now use the common DetailsScreen; retained only as historical implementation")
 fun LocalDetailsScreen(
     folderUri: String,
     onBack: () -> Unit,
