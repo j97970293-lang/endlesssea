@@ -184,6 +184,7 @@ class DetailsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 loading = false, details = details.copy(title = stored?.customTitle ?: details.title,
                     posterUrl = stored?.customCoverUri ?: details.posterUrl,
+                    bannerUrl = if (metadataPinned) stored?.bannerUrl else details.bannerUrl,
                     synopsis = if (metadataPinned) stored?.synopsis else details.synopsis,
                     genres = if (metadataPinned) stored?.toDetails()?.genres.orEmpty() else details.genres,
                     year = if (metadataPinned) stored?.year else details.year), episodes = episodes,
@@ -223,6 +224,7 @@ class DetailsViewModel @Inject constructor(
         val incoming = details.toEntity()
         mediaDao.upsertAll(listOf(incoming.copy(customTitle = previous?.customTitle,
             customCoverUri = previous?.customCoverUri, externalIdsJson = previous?.externalIdsJson ?: "{}",
+            bannerUrl = if (pinned) previous?.bannerUrl else incoming.bannerUrl,
             synopsis = if (pinned) previous?.synopsis else incoming.synopsis,
             genresJson = if (pinned) previous!!.genresJson else incoming.genresJson,
             year = if (pinned) previous?.year else incoming.year)))
@@ -502,12 +504,20 @@ class DetailsViewModel @Inject constructor(
             val manual = ids.optBoolean("local_manual_meta")
             ids.put("metadata_provider",service).put("metadata_remote_id",remoteId)
                 .put("metadata_import_title",metadata.title).put("metadata_import_cover",metadata.posterUrl)
-            mediaDao.upsertAll(listOf(old.copy(customTitle = title, customCoverUri = cover,
+            val imported = old.copy(customTitle = title, customCoverUri = cover,
                 synopsis = if (manual) old.synopsis else metadata.synopsis ?: old.synopsis,
                 bannerUrl = metadata.bannerUrl ?: old.bannerUrl, year = metadata.year ?: old.year,
                 genresJson = if (manual || metadata.genres.isEmpty()) old.genresJson else org.json.JSONArray(metadata.genres).toString(),
-                externalIdsJson = ids.toString())))
-            load()
+                externalIdsJson = ids.toString())
+            mediaDao.upsertAll(listOf(imported))
+            // No source reload: importing metadata must not wait on the video extension,
+            // and must preserve its existing episodes and playback identifiers.
+            val display = imported.toDetails()
+            _uiState.value = _uiState.value.copy(details = (_uiState.value.details ?: display).copy(
+                title = display.title, posterUrl = display.posterUrl, bannerUrl = display.bannerUrl,
+                synopsis = display.synopsis, genres = display.genres, year = display.year))
+            _trackerSearch.value = TrackerSearchState()
+            trackerTick.value += 1
             _uiState.value = _uiState.value.copy(message = "Métadonnées importées ; vos modifications personnelles restent prioritaires. Aucun suivi distant modifié.")
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { _uiState.value = _uiState.value.copy(message = "Import impossible : ${e.message}") }

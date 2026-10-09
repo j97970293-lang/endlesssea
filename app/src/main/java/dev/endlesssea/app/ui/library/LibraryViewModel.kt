@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -237,13 +238,14 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             category.flatMapLatest { cat ->
                 when (cat) { "ALL" -> libraryDao.observeAll(); "FAV" -> libraryDao.observeFavorites(); else -> libraryDao.observeByCategory(cat) }
-            }.collect { entries ->
+            }.combine(mediaDao.observeLibraryMedia()) { entries, media -> entries to media.associateBy { it.id } }
+                .collect { (entries, mediaById) ->
                 rawStatuses = entries.associate { it.mediaId to it.status }
                 // §bibliotheque-sections : « Récemment ajoutés » = ordre d'ajout réel
                 // (LibraryEntity.addedAt), pas l'ordre alphabétique de la grille.
                 val byAddedAt = entries.sortedByDescending { it.addedAt }
                 val recentUi = byAddedAt.mapNotNull { entry ->
-                    mediaDao.byId(entry.mediaId)?.let { media ->
+                    mediaById[entry.mediaId]?.let { media ->
                         SearchItemUi(
                             id = media.id,
                             title = media.customTitle ?: media.title,
@@ -255,7 +257,7 @@ class LibraryViewModel @Inject constructor(
                 }.take(12)
                 _uiState.value = _uiState.value.copy(recentlyAdded = recentUi)
                 rawItems = entries.mapNotNull { entry ->
-                    mediaDao.byId(entry.mediaId)?.let { media ->
+                    mediaById[entry.mediaId]?.let { media ->
                         SearchItemUi(
                             id = media.id,
                             title = media.customTitle ?: media.title,

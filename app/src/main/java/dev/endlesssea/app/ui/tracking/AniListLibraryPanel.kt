@@ -30,10 +30,10 @@ internal fun AniListLibraryPanel(query: String, onMediaClick: (String) -> Unit, 
     val menus = LocalSectionMenu.current
     var status by remember { mutableStateOf("ALL") }
     var statuses by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<RemoteLibraryEntry?>(null) }
-    var matching by remember { mutableStateOf(false) }
-    var targetQuery by remember { mutableStateOf("") }
-    var target by remember { mutableStateOf<SearchItemUi?>(null) }
+    var selected by remember(state.account) { mutableStateOf<RemoteLibraryEntry?>(null) }
+    var matching by remember(state.account) { mutableStateOf(false) }
+    var targetQuery by remember(state.account) { mutableStateOf("") }
+    var target by remember(state.account) { mutableStateOf<SearchItemUi?>(null) }
     if (state.account == null) {
         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Retrouvez votre liste AniList", style = MaterialTheme.typography.titleLarge)

@@ -27,3 +27,7 @@ La bannière est dérivée des mêmes rangées et du même identifiant de source
 ## Validation
 
 Tests ajoutés : parsing, statuts, erreurs, liste vide, pagination authentifiée simulée, import sans écrasement des écritures en attente et isolation des sources du carrousel. Les tests API utilisent des réponses interceptées, pas le compte de l'utilisateur. Vérification réelle à effectuer sur téléphone : connexion AniList, import de sa liste, modification depuis une autre application puis actualisation, import des métadonnées, navigation et lisibilité des cartes.
+
+## Reactive metadata follow-up
+
+Library cards and manual matching targets observe a Room join of library membership and media metadata: imports/edits update without restarting, and the grid no longer performs a SQL lookup per card. Explicit metadata imports update the common fiche without reloading the video extension; pinned banners survive subsequent source refreshes. Account changes dismiss AniList matching dialogs. A cache-write failure does not hide a successfully fetched remote list.

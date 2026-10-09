@@ -7,7 +7,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.endlesssea.app.tracking.*
 import dev.endlesssea.app.ui.search.SearchItemUi
-import dev.endlesssea.data.db.LibraryDao
 import dev.endlesssea.data.db.MediaDao
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -19,7 +18,7 @@ internal data class AniListLibraryState(val account: String? = null, val entries
 
 @HiltViewModel
 internal class AniListLibraryViewModel @Inject constructor(private val repository: TrackerRepository,
-    private val libraryDao: LibraryDao, private val mediaDao: MediaDao,
+    private val mediaDao: MediaDao,
     @ApplicationContext private val context: Context) : ViewModel() {
     private val _state = MutableStateFlow(AniListLibraryState())
     val state = _state.asStateFlow()
@@ -40,10 +39,10 @@ internal class AniListLibraryViewModel @Inject constructor(private val repositor
         viewModelScope.launch { repository.links.collect { links ->
             _state.value = _state.value.copy(linked = links.filter { it.service == "ANILIST" }.groupBy({ it.remoteId }, { it.mediaId }))
         } }
-        viewModelScope.launch { libraryDao.observeAll().collect { list ->
-            _state.value = _state.value.copy(targets = list.mapNotNull { item -> mediaDao.byId(item.mediaId)?.let {
+        viewModelScope.launch { mediaDao.observeLibraryMedia().collect { list ->
+            _state.value = _state.value.copy(targets = list.map {
                 SearchItemUi(it.id, it.customTitle ?: it.title, it.customCoverUri ?: it.posterUrl)
-            } })
+            })
         } }
     }
     fun refresh() {
@@ -54,8 +53,12 @@ internal class AniListLibraryViewModel @Inject constructor(private val repositor
             try {
                 val entries = repository.pullLibrary("ANILIST")
                 val now = System.currentTimeMillis()
-                withContext(Dispatchers.IO) { writeCache(name, entries, now) }
-                if (_state.value.account == name) _state.value = _state.value.copy(entries = entries, busy = false, updatedAt = now)
+                val cacheError = try {
+                    withContext(Dispatchers.IO) { writeCache(name, entries, now) }
+                    null
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { "Liste actualisée, mais la copie hors ligne n’a pas pu être enregistrée." }
+                if (_state.value.account == name) _state.value = _state.value.copy(entries = entries, busy = false, updatedAt = now, error = cacheError)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (_state.value.account == name) _state.value = _state.value.copy(busy = false,
                 error = "${e.message ?: "AniList indisponible"}. La dernière liste importée est conservée.") }
