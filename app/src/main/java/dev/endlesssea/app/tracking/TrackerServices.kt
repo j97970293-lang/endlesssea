@@ -491,7 +491,8 @@ class ShikimoriService(private val http: OkHttpClient) : TrackerService {
 class TmdbService(private val http: OkHttpClient) : TrackerService {
     override val id = "TMDB"
     private fun JSONObject.text(key: String) = optString(key).takeUnless { it.isBlank() || it == "null" }
-
+    private fun safeLanguage(value: String) =
+        value.takeIf { it in setOf("fr-FR", "en-US", "ja-JP", "es-ES") } ?: "fr-FR"
 
     override suspend fun whoAmI(account: dev.endlesssea.data.db.TrackerAccountEntity): String? =
         withContext(Dispatchers.IO) {
@@ -503,9 +504,15 @@ class TmdbService(private val http: OkHttpClient) : TrackerService {
     override suspend fun search(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
         query: String,
+    ): List<TrackerSearchHit> = search(account, query, "fr-FR")
+
+    suspend fun search(
+        account: dev.endlesssea.data.db.TrackerAccountEntity,
+        query: String,
+        language: String,
     ): List<TrackerSearchHit> = withContext(Dispatchers.IO) {
         val key = account.apiKey ?: return@withContext emptyList()
-        val url = "$API/search/multi?api_key=$key&include_adult=false&language=fr-FR&query=" +
+        val url = "$API/search/multi?api_key=$key&include_adult=false&language=${safeLanguage(language)}&query=" +
             URLEncoder.encode(query, "UTF-8")
         val body = http.getJson(url)
         val arr = JSONObject(body).optJSONArray("results") ?: return@withContext emptyList()
@@ -537,12 +544,18 @@ class TmdbService(private val http: OkHttpClient) : TrackerService {
     override suspend fun details(
         account: dev.endlesssea.data.db.TrackerAccountEntity,
         remoteId: String,
+    ): TrackerDetails? = details(account, remoteId, "fr-FR")
+
+    suspend fun details(
+        account: dev.endlesssea.data.db.TrackerAccountEntity,
+        remoteId: String,
+        language: String,
     ): TrackerDetails? = withContext(Dispatchers.IO) {
         val key = account.apiKey ?: return@withContext null
         val parts = remoteId.split(":")
         if (parts.size != 2) return@withContext null
         val (kind, tmdbId) = parts
-        val body = http.getJson("$API/$kind/$tmdbId?api_key=$key&language=fr-FR&append_to_response=videos")
+        val body = http.getJson("$API/$kind/$tmdbId?api_key=$key&language=${safeLanguage(language)}&append_to_response=videos")
         val root = JSONObject(body)
         // Bande-annonce : on préfère la VF, sinon la VO (les deux sont fréquentes).
         val videos = root.optJSONObject("videos")?.optJSONArray("results")

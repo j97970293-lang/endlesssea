@@ -33,6 +33,25 @@ class TrackerServicesTest {
         assertNull(details.bannerUrl)
     }
 
+    @Test fun tmdbSearchAndDetailsUseTheSelectedMetadataLanguage() = runBlocking {
+        val service = TmdbService(client { request ->
+            when {
+                request.url.encodedPath.endsWith("/search/multi") -> {
+                    assertEquals("ja-JP", request.url.queryParameter("language"))
+                    200 to """{"results":[{"media_type":"movie","id":42,"title":"映画"}]}"""
+                }
+                request.url.encodedPath.endsWith("/movie/42") -> {
+                    assertEquals("es-ES", request.url.queryParameter("language"))
+                    200 to """{"title":"Película","overview":"Resumen","genres":[]}"""
+                }
+                else -> error("Unexpected ${request.url}")
+            }
+        })
+        val account = TrackerAccountEntity("TMDB", apiKey = "test")
+        assertEquals("movie:42", service.search(account, "akira", "ja-JP").single().remoteId)
+        assertEquals("Película", service.details(account, "movie:42", "es-ES")?.title)
+    }
+
     @Test fun readsAniListProgressBeforeWriting() = runBlocking {
         val service = AniListService(client { request ->
             assertTrue(request.text().contains("mediaListEntry"))

@@ -1005,6 +1005,15 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putBoolean("tracker_enrich_tmdb", v).apply(); _enrichWithTmdb.value = v
     }
 
+    /** Langue TMDB des titres, synopsis et genres (n'affecte pas les services de suivi). */
+    private val _metadataLanguage = MutableStateFlow(p.getString("metadata_language", "fr-FR") ?: "fr-FR")
+    val metadataLanguage: StateFlow<String> = _metadataLanguage
+    fun setMetadataLanguage(v: String) {
+        val safe = v.takeIf { it in listOf("fr-FR", "en-US", "ja-JP", "es-ES") } ?: "fr-FR"
+        p.edit().putString("metadata_language", safe).apply()
+        _metadataLanguage.value = safe
+    }
+
     // ---------------------------------------------------------------- téléchargement avancé
     /** §debit (conversation 10) : plafond de bande passante en Ko/s (0 = illimité). */
     private val _downloadSpeedLimitKb = MutableStateFlow(p.getInt("dl_speed_limit_kb", 0))

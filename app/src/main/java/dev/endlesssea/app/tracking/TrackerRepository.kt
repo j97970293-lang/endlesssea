@@ -115,7 +115,10 @@ class TrackerRepository @Inject constructor(
     suspend fun searchChecked(id: String, query: String): List<TrackerSearchHit> = withContext(Dispatchers.IO) {
         val svc = service(id) ?: throw TrackerError("Service inconnu")
         val account = activeAccount(id) ?: throw TrackerError("Connectez ou réactivez ce compte")
-        withFreshAccount(account) { svc.search(it, query) }
+        withFreshAccount(account) { fresh ->
+            if (svc is TmdbService) svc.search(fresh, query, prefs.metadataLanguage.value)
+            else svc.search(fresh, query)
+        }
     }
 
     suspend fun search(id: String, query: String): List<TrackerSearchHit> = try {
@@ -271,7 +274,10 @@ class TrackerRepository @Inject constructor(
     ): TrackerDetails? = withContext(Dispatchers.IO) {
         val account = activeAccount("TMDB") ?: return@withContext null
         val svc = service("TMDB") ?: return@withContext null
-        runCatching { svc.details(account, remoteIdWithKind) }.getOrNull()
+        runCatching {
+            if (svc is TmdbService) svc.details(account, remoteIdWithKind, prefs.metadataLanguage.value)
+            else svc.details(account, remoteIdWithKind)
+        }.getOrNull()
     }
 
     /** Read-only pull. No remote list entry is created and no pending local write is overwritten. */
@@ -294,8 +300,12 @@ class TrackerRepository @Inject constructor(
     }
 
     suspend fun metadata(serviceId: String, remoteId: String): TrackerDetails? = withContext(Dispatchers.IO) {
+        val svc = service(serviceId) ?: throw TrackerError("Service indisponible")
         val account = activeAccount(serviceId) ?: throw TrackerError("Service non connecté")
-        withFreshAccount(account) { service(serviceId)?.details(it, remoteId) }
+        withFreshAccount(account) { fresh ->
+            if (svc is TmdbService) svc.details(fresh, remoteId, prefs.metadataLanguage.value)
+            else svc.details(fresh, remoteId)
+        }
     }
 
     /** Recherche TMDB (sert à trouver l'identifiant à partir du titre). */

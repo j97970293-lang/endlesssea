@@ -23,6 +23,7 @@ data class TrackersUiState(
     val busy: Boolean = false,
     val autoMark: Boolean = true,
     val enrichTmdb: Boolean = true,
+    val metadataLanguage: String = "fr-FR",
 )
 
 /**
@@ -54,6 +55,9 @@ class TrackersViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.enrichWithTmdb.collect { v -> _uiState.value = _uiState.value.copy(enrichTmdb = v) }
         }
+        viewModelScope.launch {
+            prefs.metadataLanguage.collect { v -> _uiState.value = _uiState.value.copy(metadataLanguage = v) }
+        }
         // Une mise à jour en attente (épisode vu hors ligne) part dès l'ouverture.
         viewModelScope.launch {
             val count = runCatching { repo.syncPending() }.getOrDefault(0)
@@ -84,6 +88,7 @@ class TrackersViewModel @Inject constructor(
 
     fun setAutoMark(v: Boolean) = prefs.setAutoMarkWatched(v)
     fun setEnrichTmdb(v: Boolean) = prefs.setEnrichWithTmdb(v)
+    fun setMetadataLanguage(v: String) = prefs.setMetadataLanguage(v)
     fun clearNotice() { _uiState.value = _uiState.value.copy(notice = null) }
 
     /** Connexion : le jeton (ou la clé TMDB) est vérifié avant d'être conservé. */

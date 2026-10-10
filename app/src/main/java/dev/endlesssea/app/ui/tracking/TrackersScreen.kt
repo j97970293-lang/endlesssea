@@ -1,6 +1,7 @@
 package dev.endlesssea.app.ui.tracking
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -88,6 +89,30 @@ fun TrackersScreen(
                     }
                     Switch(checked = state.enrichTmdb, onCheckedChange = { viewModel.setEnrichTmdb(it) })
                 }
+                Spacer(Modifier.height(8.dp))
+                Text("Langue des affiches, synopsis et genres TMDB", style = MaterialTheme.typography.titleSmall)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(
+                        "fr-FR" to "Français",
+                        "en-US" to "English",
+                        "ja-JP" to "日本語",
+                        "es-ES" to "Español",
+                    ).forEach { (code, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = state.metadataLanguage == code,
+                            onClick = { viewModel.setMetadataLanguage(code) },
+                            label = { Text(label, maxLines = 1, softWrap = false) },
+                        )
+                    }
+                }
+                Text(
+                    "Le réglage s'applique aux recherches et aux métadonnées TMDB ; il n'affecte pas le suivi AniList/MAL.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         item {
