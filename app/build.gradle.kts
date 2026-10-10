@@ -108,6 +108,7 @@ dependencies {
     testImplementation(libs.test.junit)
     testImplementation(libs.test.truth)
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)

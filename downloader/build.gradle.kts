@@ -36,4 +36,5 @@ dependencies {
     testImplementation(libs.test.kotlinx.coroutines)
     testImplementation(libs.squareup.mockwebserver)
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }
