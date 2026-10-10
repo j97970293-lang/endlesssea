@@ -115,6 +115,8 @@ class DetailsViewModel @Inject constructor(
     val usePosterColor = prefs.usePosterColor
 
     val serverOrder = prefs.serverOrder
+    val preferredAudioLanguage = prefs.preferredAudioLang
+    val preferredPlaybackQuality = prefs.preferredPlaybackQuality
     fun saveServerOrder(order: List<String>) = prefs.setServerOrder(order)
     val uiState: StateFlow<DetailsUiState> = _uiState
 
@@ -560,8 +562,12 @@ class DetailsViewModel @Inject constructor(
     }
 
     /** Action explicite sur l'historique local ; ne modifie pas le compte distant. */
-    fun markAllWatched() = viewModelScope.launch {
-        val episodes = _uiState.value.episodes
+    fun markAllWatched() = markEpisodesWatched(_uiState.value.episodes.map { it.id }.toSet())
+
+    /** Marque une sélection d'épisodes comme vue, sans modifier le tracker distant. */
+    fun markEpisodesWatched(episodeIds: Set<String>) = viewModelScope.launch {
+        val episodes = _uiState.value.episodes.filter { it.id in episodeIds }
+        if (episodes.isEmpty()) return@launch
         historyDao.upsertAll(episodes.map { ep ->
             val old = historyDao.byEpisode(ep.id)
             dev.endlesssea.data.db.WatchHistoryEntity(
@@ -571,8 +577,9 @@ class DetailsViewModel @Inject constructor(
             )
         })
         watchedCount.value = historyDao.watchedCount(mediaId)
-        resumeEpisodeId.value = null
-        _uiState.value = _uiState.value.copy(message = "Épisodes marqués vus dans l'historique local")
+        if (resumeEpisodeId.value?.let { it in episodeIds } == true) resumeEpisodeId.value = null
+        refreshResume()
+        _uiState.value = _uiState.value.copy(message = "${episodes.size} épisode(s) marqué(s) vu(s) dans l'historique local")
     }
 
     fun unlinkTracker() = viewModelScope.launch {
@@ -695,13 +702,19 @@ class DetailsViewModel @Inject constructor(
     /** §fiche-serveurs : priorité des serveurs configurée par l'utilisateur (réglages). */
     fun serverPriority(): List<String> = prefs.serverOrder.value
 
-    /** Met la langue préférée (réglage global) en premier, sans casser l'ordre qualité. */
+    /** Priorise la langue préférée, le serveur mémorisé puis la qualité visée. */
     private fun orderByLangPref(links: List<VideoLink>): List<VideoLink> {
-        val pref = prefs.preferredAudioLang.value
-        if (pref == "auto" || links.size < 2) return links
+        if (links.size < 2) return links
+        val language = prefs.preferredAudioLang.value
+        val quality = prefs.preferredPlaybackQuality.value
+        val servers = prefs.serverOrder.value
+        fun serverRank(name: String): Int =
+            servers.indexOfFirst { it.equals(name, ignoreCase = true) }.let { if (it < 0) Int.MAX_VALUE else it }
         return links.sortedWith(
-            compareByDescending<VideoLink> { it.audioLang.iso == pref }
-                .thenByDescending { it.quality.ordinal },
+            compareBy<VideoLink> { if (language == "auto" || it.audioLang.iso == language) 0 else 1 }
+                .thenBy { serverRank(it.server) }
+                .thenBy { playbackQualityRank(it.quality, quality) }
+                .thenBy { if (it.streamType == dev.endlesssea.extensions.api.model.StreamType.EMBED) 1 else 0 },
         )
     }
 
@@ -712,6 +725,31 @@ class DetailsViewModel @Inject constructor(
 
     /** Supprime un téléchargement (appui long). */
     fun deleteDeviceFile(f: DeviceFileUi) = viewModelScope.launch {
+        if (!deleteDeviceFileNow(f)) {
+            _uiState.value = _uiState.value.copy(message = "Suppression impossible : le fichier hors ligne est conservé.")
+            return@launch
+        }
+        if (isLocal) load() else refreshDeviceFiles()
+        _uiState.value = _uiState.value.copy(message = if (isLocal) "Fichier local supprimé." else "Fichier hors ligne supprimé ; l'épisode reste disponible depuis sa source.")
+    }
+
+    /** Supprime plusieurs téléchargements terminés après une confirmation explicite. */
+    fun deleteDeviceFiles(files: List<DeviceFileUi>) = viewModelScope.launch {
+        val uniqueFiles = files.filter { it.managedDownload }.distinctBy { it.targetUri }
+        if (uniqueFiles.isEmpty()) return@launch
+        var removed = 0
+        uniqueFiles.forEach { file -> if (deleteDeviceFileNow(file)) removed++ }
+        refreshDeviceFiles()
+        val failed = uniqueFiles.size - removed
+        _uiState.value = _uiState.value.copy(
+            message = buildString {
+                append("$removed téléchargement(s) supprimé(s)")
+                if (failed > 0) append(" · $failed fichier(s) impossible(s) à supprimer")
+            },
+        )
+    }
+
+    private suspend fun deleteDeviceFileNow(f: DeviceFileUi): Boolean {
         val deleted = withContext(Dispatchers.IO) {
             if (!dev.endlesssea.app.local.DownloadLocator.exists(context, f.targetUri)) true
             else runCatching {
@@ -720,16 +758,14 @@ class DetailsViewModel @Inject constructor(
                 else java.io.File(uri.path ?: f.targetUri).delete()
             }.getOrDefault(false)
         }
-        if (!deleted) {
-            _uiState.value = _uiState.value.copy(message = "Suppression impossible : le fichier hors ligne est conservé.")
-            return@launch
-        }
+        if (!deleted) return false
         if (f.managedDownload) downloads.cancel(f.id, deleteFiles = true)
         if (isLocal) {
-            dev.endlesssea.app.local.LocalLibraryCache.publish(dev.endlesssea.app.local.LocalLibraryCache.files.value.filterNot { it.uri == f.targetUri })
-            load()
-        } else refreshDeviceFiles()
-        _uiState.value = _uiState.value.copy(message = if (isLocal) "Fichier local supprimé." else "Fichier hors ligne supprimé ; l'épisode reste disponible depuis sa source.")
+            dev.endlesssea.app.local.LocalLibraryCache.publish(
+                dev.endlesssea.app.local.LocalLibraryCache.files.value.filterNot { it.uri == f.targetUri },
+            )
+        }
+        return true
     }
 
     /** Select offline/online at the moment of the tap, not from a stale badge. */
@@ -904,7 +940,11 @@ class DetailsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(message = "Résolution des liens… (${i + 1}/${episodes.size})")
             try {
                 val links = resolveBatchLinks(episode)
-                val best = selectBatchDownload(links, serverPriority, excludedServers, language, quality)
+                val best = selectBatchDownload(
+                    links, serverPriority, excludedServers, language, quality,
+                    preferredQuality = prefs.preferredPlaybackQuality.value,
+                    preferredLanguage = prefs.preferredAudioLang.value,
+                )
                 if (best == null) { streamOnly++; return@forEachIndexed }
                 enqueueAndWait(episode, best)
                 added++

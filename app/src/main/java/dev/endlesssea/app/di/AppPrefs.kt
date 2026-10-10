@@ -15,6 +15,8 @@ import javax.inject.Singleton
 class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     companion object {
+        private val PLAYBACK_QUALITY_OPTIONS = setOf("auto", "2160", "1440", "1080", "720", "480", "360")
+
         /**
          * Variantes « tout teinté » pour le verre (§24) : couleurs PROFONDES et
          * désaturées — un verre tout bleu/vert/rouge DOIT rester lisible.
@@ -355,8 +357,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     /**
      * §rendu-vidéo : surface de rendu du lecteur.
      *  - "texture" (défaut) : TextureView, nécessaire aux filtres vidéo ;
-     *  - "surface" : SurfaceView, plus rapide / moins gourmand, compatible HDR
-     *    et Android TV, mais sans filtres.
+     *  - "surface" : SurfaceView avec effets GPU désactivés ; privilégie le
+     *    chemin HDR natif de l'appareil quand source/décodeur/écran le permettent.
      */
     private val _videoRender = MutableStateFlow(p.getString("video_render", "texture") ?: "texture")
     val videoRender: StateFlow<String> = _videoRender
@@ -426,6 +428,17 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val s = if (v in listOf("auto", "vf", "vostfr", "vo")) v else "auto"
         p.edit().putString("pref_audio_lang", s).apply()
         _preferredAudioLang.value = s
+    }
+
+    /** Qualité de lecture visée : « auto » ou une résolution en pixels. */
+    private val _preferredPlaybackQuality = MutableStateFlow(
+        p.getString("playback_quality", "auto")?.takeIf { it in PLAYBACK_QUALITY_OPTIONS } ?: "auto",
+    )
+    val preferredPlaybackQuality: StateFlow<String> = _preferredPlaybackQuality
+    fun setPreferredPlaybackQuality(v: String) {
+        val safe = v.takeIf { it in PLAYBACK_QUALITY_OPTIONS } ?: "auto"
+        p.edit().putString("playback_quality", safe).apply()
+        _preferredPlaybackQuality.value = safe
     }
 
     // ---------------------------------------------------------------- apparence avancée
@@ -1003,6 +1016,15 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val enrichWithTmdb: StateFlow<Boolean> = _enrichWithTmdb
     fun setEnrichWithTmdb(v: Boolean) {
         p.edit().putBoolean("tracker_enrich_tmdb", v).apply(); _enrichWithTmdb.value = v
+    }
+
+    /** Langue TMDB des titres, synopsis et genres (n'affecte pas les services de suivi). */
+    private val _metadataLanguage = MutableStateFlow(p.getString("metadata_language", "fr-FR") ?: "fr-FR")
+    val metadataLanguage: StateFlow<String> = _metadataLanguage
+    fun setMetadataLanguage(v: String) {
+        val safe = v.takeIf { it in listOf("fr-FR", "en-US", "ja-JP", "es-ES") } ?: "fr-FR"
+        p.edit().putString("metadata_language", safe).apply()
+        _metadataLanguage.value = safe
     }
 
     // ---------------------------------------------------------------- téléchargement avancé

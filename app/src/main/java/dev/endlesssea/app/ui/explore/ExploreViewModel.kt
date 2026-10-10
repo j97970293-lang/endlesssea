@@ -86,10 +86,18 @@ class ExploreViewModel @Inject constructor(
                     // ---- Catalogues par genre : l'extension déclare ses rangées (api≤1 ignoré → « main »)
                     val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
                         .filter { it.key.isNotBlank() }
-                    val catList = declared.ifEmpty {
+                    val catList = if (declared.isEmpty()) {
                         listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+                    } else {
+                        // Garder visibles les rubriques éditoriales même si une extension
+                        // déclare beaucoup de genres avant son planning ou ses actualités.
+                        val editorial = listOf(ExploreSpecialKind.PROGRAMS, ExploreSpecialKind.NEWS)
+                            .mapNotNull { kind -> declared.firstOrNull { exploreSpecialKind(it.key, it.title) == kind } }
+                        val regular = declared.filter { exploreSpecialKind(it.key, it.title) == null }
+                            .take(MAX_CATEGORIES_PER_EXT)
+                        (editorial + regular).distinctBy { it.key }
                     }
-                    catList.take(MAX_CATEGORIES_PER_EXT).forEach { cat ->
+                    catList.forEach { cat ->
                         val actualKey = if (declared.isEmpty()) "main" else cat.key
                         runCatching {
                             ext.getMainPage(MainPageRequest(category = actualKey, page = 1))

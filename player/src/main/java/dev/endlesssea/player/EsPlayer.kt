@@ -63,6 +63,7 @@ class EsPlayer(
         .build()
 
     private val liveVideoEffect = LiveVideoEffect()
+    private var videoEffectsEnabled = true
     private val _sourceAspect = MutableStateFlow(16f / 9f)
     val sourceAspect: StateFlow<Float> = _sourceAspect
     private fun publishSourceAspect() {
@@ -415,6 +416,17 @@ class EsPlayer(
     /** §vitesse : vitesse temporaire (appui long) — restaurée par l'écran. */
     fun setTemporarySpeed(factor: Float) {
         player.playbackParameters = PlaybackParameters(factor.coerceIn(0.25f, 4f), 1f)
+    }
+
+    /**
+     * Enables the GPU filter chain or removes it entirely for native SurfaceView
+     * playback. With no frame effects, Android/Media3 can use the device HDR path
+     * when the stream, decoder, display, and OS all support it.
+     */
+    fun setVideoEffectsEnabled(enabled: Boolean) {
+        if (videoEffectsEnabled == enabled) return
+        player.setVideoEffects(if (enabled) listOf(liveVideoEffect) else emptyList())
+        videoEffectsEnabled = enabled
     }
 
     /** Updates uniforms only: no renderer rebuild, surface replacement, or buffer reallocation. */

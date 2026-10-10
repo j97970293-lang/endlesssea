@@ -209,6 +209,14 @@ class PlayerViewModel @Inject constructor(
     private var appliedEffectSettings: List<Any>? = null
 
     init {
+        // §HDR : SurfaceView + chaîne d'effets vide pour le passthrough natif ;
+        // la prise en charge effective dépend de la source et de l'appareil.
+        runCatching { engine.setVideoEffectsEnabled(prefs.videoRender.value != "surface") }
+        viewModelScope.launch {
+            prefs.videoRender.collect { mode ->
+                runCatching { engine.setVideoEffectsEnabled(mode != "surface") }
+            }
+        }
         // §sous-titres / §audio (conversation 1) : on réapplique les réglages
         // retenus (décalage ± des pistes externes, boost jusqu'à 200 %).
         runCatching { engine.setAudioBoost(prefs.audioBoostPercent.value) }
@@ -849,7 +857,11 @@ class PlayerViewModel @Inject constructor(
 
     /** §rendu-vidéo : "texture" (filtres) ou "surface" (perf/HDR). */
     val videoRender: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.videoRender
-    fun setVideoRender(v: String) = prefs.setVideoRender(v)
+    fun setVideoRender(v: String) {
+        val mode = if (v == "surface") "surface" else "texture"
+        prefs.setVideoRender(mode)
+        runCatching { engine.setVideoEffectsEnabled(mode != "surface") }
+    }
 
     /** §gestes-lecteur : pincer pour zoomer · inverseur volume/luminosité. */
     val pinchZoomEnabled: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.pinchZoom

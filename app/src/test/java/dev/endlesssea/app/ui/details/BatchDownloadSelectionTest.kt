@@ -23,4 +23,26 @@ class BatchDownloadSelectionTest {
         val chosen = link("A", quality = Quality.Q1080)
         assertEquals(chosen, selectBatchDownload(listOf(link("A"), chosen, link("B", quality = Quality.Q4K)), listOf("A", "B")))
     }
+
+    @Test fun preferredQualityTargetsResolutionWithoutOverridingServerOrder() {
+        val q720 = link("A", quality = Quality.Q720)
+        val q1080 = link("A", quality = Quality.Q1080)
+        val q4k = link("A", quality = Quality.Q4K)
+        assertEquals(q1080, preferredPlaybackLink(listOf(q720, q1080, q4k), "1080"))
+        assertEquals(q720, preferredPlaybackLink(listOf(q720, q4k), "1080"))
+        assertEquals(q4k, preferredPlaybackLink(listOf(q720, q4k), "auto"))
+
+        val preferredServer = link("A", quality = Quality.Q720)
+        val higherQualityElsewhere = link("B", quality = Quality.Q1080)
+        assertEquals(
+            preferredServer,
+            selectBatchDownload(
+                listOf(higherQualityElsewhere, preferredServer), listOf("A", "B"), preferredQuality = "1080",
+            ),
+        )
+
+        val vf = link("A", lang = AudioLang.VF, quality = Quality.Q720)
+        val vostfr = link("A", lang = AudioLang.VOSTFR, quality = Quality.Q1080)
+        assertEquals(vf, selectBatchDownload(listOf(vostfr, vf), listOf("A"), preferredLanguage = "vf"))
+    }
 }

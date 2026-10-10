@@ -1091,8 +1091,9 @@ fun SettingsScreen(
                     // §rendu-vidéo : choix de la surface de rendu
                     Text("Rendu vidéo", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Texture ou Surface : deux sorties vidéo disponibles. " +
-                            "Les filtres utilisent le GPU dans les deux modes ; fluidité et consommation dépendent de l’appareil.",
+                        "Texture active les filtres GPU. Surface désactive toute la chaîne d'effets et laisse Android/Media3 " +
+                            "gérer le HDR natif si la vidéo, le décodeur et l'écran sont compatibles. Aucun filtre ne recrée " +
+                            "les détails absents de la source.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1110,7 +1111,7 @@ fun SettingsScreen(
                         FilterChip(
                             selected = render == "surface",
                             onClick = { viewModel.setVideoRender("surface") },
-                            label = { Text("Surface (perf)", maxLines = 1, softWrap = false) },
+                            label = { Text("Surface (HDR natif)", maxLines = 1, softWrap = false) },
                         )
                     }
                 }
@@ -1243,6 +1244,33 @@ fun SettingsScreen(
                                     label = { Text(label, maxLines = 1, softWrap = false) },
                                 )
                             }
+                    }
+                }
+            }
+
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Qualité de lecture préférée", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Auto choisit la meilleure résolution. Sinon : résolution exacte, puis la plus proche en dessous, et seulement après une résolution supérieure. Un filtre strict de téléchargement remplace cette préférence.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "auto" to "Auto", "2160" to "4K", "1440" to "1440p",
+                            "1080" to "1080p", "720" to "720p", "480" to "480p", "360" to "360p",
+                        ).forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.preferredPlaybackQuality == key,
+                                onClick = { viewModel.setPreferredPlaybackQuality(key) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
+                            )
+                        }
                     }
                 }
             }

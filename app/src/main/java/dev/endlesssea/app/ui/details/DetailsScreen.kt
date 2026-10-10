@@ -128,6 +128,8 @@ fun DetailsScreen(
     var playSheetEpisode by remember { mutableStateOf<Episode?>(null) }
     /** §telecharge-tout-sélect : dialogue de sélection d'épisodes (après le tri serveurs). */
     var batchSelectDialog by remember { mutableStateOf(false) }
+    /** Sélection amorcée depuis la liste avant le tri des serveurs. */
+    var batchSelectionSeed by remember { mutableStateOf<Set<String>?>(null) }
     /** Priorité de serveurs choisie dans l'étape 1 du « Tout télécharger ». */
     var batchPriority by remember { mutableStateOf<List<String>?>(null) }
     var batchExcluded by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -136,6 +138,9 @@ fun DetailsScreen(
     // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
+    var episodeSelectionMode by remember(mediaId) { mutableStateOf(false) }
+    var selectedEpisodeIds by remember(mediaId) { mutableStateOf<Set<String>>(emptySet()) }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
     var episodeQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var offlineOnly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var synopsisExpanded by remember { mutableStateOf(false) }
@@ -173,6 +178,27 @@ fun DetailsScreen(
             (selectedSeason == null || ep.season == selectedSeason) && (!offlineOnly || ep.id in offline) &&
                 dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery, ep.number.takeIf { it.isFinite() }?.toString()?.toDoubleOrNull(), ep.title)
         }
+    }
+    val selectedEpisodes = episodesShown.filter { it.id in selectedEpisodeIds }
+    val selectedVisibleIds = selectedEpisodes.mapTo(hashSetOf()) { it.id }
+    val selectedDownloadFiles = state.deviceFiles.filter {
+        it.managedDownload && it.episodeId in selectedVisibleIds
+    }
+    if (confirmBulkDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmBulkDelete = false },
+            title = { Text("Supprimer ${selectedDownloadFiles.size} téléchargement(s) ?") },
+            text = { Text("Les fichiers hors ligne sélectionnés seront supprimés définitivement. Les épisodes de la source ne seront pas supprimés.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteDeviceFiles(selectedDownloadFiles)
+                    confirmBulkDelete = false
+                    selectedEpisodeIds = emptySet()
+                    episodeSelectionMode = false
+                }) { Text("Supprimer") }
+            },
+            dismissButton = { TextButton(onClick = { confirmBulkDelete = false }) { Text("Annuler") } },
+        )
     }
 
     // §film-et-serie : une même fiche peut porter un FILM et des saisons (cas
@@ -295,10 +321,10 @@ fun DetailsScreen(
                         Icon(Icons.Filled.ArrowBack, "Retour", tint = Color.White)
                     }
                     Spacer(Modifier.weight(1f))
-                    (state.details?.posterUrl ?: state.details?.bannerUrl)?.let { img ->
+                    if (!viewModel.isLocal && mediaId.isNotBlank()) {
                         val title = state.details?.title ?: "EndlessSea"
-                        ImmersiveCircleButton(onClick = { sharePoster(context, title, img) }) {
-                            Icon(Icons.Filled.Share, "Partager l'affiche", tint = Color.White)
+                        ImmersiveCircleButton(onClick = { shareMediaLink(context, title, mediaId) }) {
+                            Icon(Icons.Filled.Share, "Partager la fiche", tint = Color.White)
                         }
                         Spacer(Modifier.width(8.dp))
                     }
@@ -465,6 +491,15 @@ fun DetailsScreen(
                                 Icon(Icons.Filled.MoreVert, "Plus d'actions")
                             }
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                                if (!viewModel.isLocal && mediaId.isNotBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text("Partager la fiche") },
+                                        onClick = {
+                                            moreMenu = false
+                                            shareMediaLink(context, state.details?.title ?: "EndlessSea", mediaId)
+                                        },
+                                    )
+                                }
                                 if (viewModel.isLocal) {
                                     DropdownMenuItem(text = { Text("Modifier les métadonnées / l'affiche") },
                                         onClick = { moreMenu = false; localTool = "metadata" })
@@ -520,42 +555,49 @@ fun DetailsScreen(
                     }
                 }
 
-                // ---- Bouton « Continuer » pleine largeur (reprise) + Lire / Tout télécharger
+                // ---- Bouton unique Lire/Continuer + Tout télécharger
                 item {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                        state.resumeLabel?.let { label ->
-                            Button(
-                                onClick = { viewModel.playResume(onReady = launchPlayer()) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(label)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
+                        val resumeAvailable = state.resumeEpisodeId != null &&
+                            state.episodes.any { it.id == state.resumeEpisodeId }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Button(
                                 onClick = {
-                                    state.episodes.firstOrNull()?.let { viewModel.playEpisode(it, onReady = launchPlayer()) }
+                                    if (resumeAvailable) {
+                                        viewModel.playResume(onReady = launchPlayer())
+                                    } else {
+                                        state.episodes.firstOrNull()?.let {
+                                            viewModel.playEpisode(it, onReady = launchPlayer())
+                                        }
+                                    }
                                 },
+                                enabled = state.episodes.isNotEmpty(),
                                 modifier = Modifier.weight(1.4f),
                             ) {
-                                Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lire")
+                                Icon(Icons.Filled.PlayArrow, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    if (resumeAvailable) state.resumeLabel?.removePrefix("▶ ") ?: "Continuer"
+                                    else "Lire",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
-                        if (state.episodes.size > 1 && !viewModel.isLocal) {
-                            OutlinedButton(
-                                onClick = { serverOrderDialog = true },
-                                enabled = !state.batchRunning,
-                                modifier = Modifier.weight(1.4f),
-                            ) {
-                                if (state.batchRunning) {
-                                    dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(6.dp))
-                                } else {
-                                    Icon(Icons.Filled.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                            if (state.episodes.size > 1 && !viewModel.isLocal) {
+                                OutlinedButton(
+                                    onClick = { serverOrderDialog = true },
+                                    enabled = !state.batchRunning,
+                                    modifier = Modifier.weight(1.4f),
+                                ) {
+                                    if (state.batchRunning) {
+                                        dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(6.dp))
+                                    } else {
+                                        Icon(Icons.Filled.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                                    }
+                                    Text("Tout télécharger")
                                 }
-                                Text("Tout télécharger")
                             }
-                        }
                         }
                     }
                 }
@@ -672,6 +714,55 @@ fun DetailsScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            TextButton(onClick = {
+                                episodeSelectionMode = !episodeSelectionMode
+                                selectedEpisodeIds = emptySet()
+                            }) {
+                                Text(if (episodeSelectionMode) "Terminer" else "Sélectionner")
+                            }
+                        }
+                        if (episodeSelectionMode) {
+                            val visibleIds = episodesShown.mapTo(hashSetOf()) { it.id }
+                            val allVisibleSelected = visibleIds.isNotEmpty() && visibleIds.all { it in selectedEpisodeIds }
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("${selectedEpisodes.size} sélectionné(s)", Modifier.weight(1f))
+                                    TextButton(onClick = {
+                                        selectedEpisodeIds = if (allVisibleSelected) {
+                                            selectedEpisodeIds - visibleIds
+                                        } else {
+                                            selectedEpisodeIds + visibleIds
+                                        }
+                                    }) { Text(if (allVisibleSelected) "Désélectionner tout" else "Tout sélectionner") }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.markEpisodesWatched(selectedEpisodes.mapTo(hashSetOf()) { it.id })
+                                            selectedEpisodeIds = emptySet()
+                                            episodeSelectionMode = false
+                                        },
+                                        enabled = selectedEpisodes.isNotEmpty(),
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Marquer vus", maxLines = 1) }
+                                    OutlinedButton(
+                                        onClick = {
+                                            batchSelectionSeed = selectedEpisodes.mapTo(hashSetOf()) { it.id }
+                                            serverOrderDialog = true
+                                        },
+                                        enabled = selectedEpisodes.isNotEmpty() && !viewModel.isLocal && !state.batchRunning,
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Télécharger", maxLines = 1) }
+                                    OutlinedButton(
+                                        onClick = { confirmBulkDelete = true },
+                                        enabled = selectedDownloadFiles.isNotEmpty(),
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Supprimer", maxLines = 1) }
+                                }
+                            }
                         }
                         TextButton(onClick = { confirmAllWatched = true }, modifier = Modifier.padding(horizontal = 16.dp)) {
                             Text("Tout marquer vu")
@@ -722,6 +813,9 @@ fun DetailsScreen(
                                 },
                                 isMovie = true,
                                 mediaTitle = state.details?.title,
+                                selectionMode = episodeSelectionMode,
+                                selected = episode.id in selectedEpisodeIds,
+                                onSelectionToggle = { selectedEpisodeIds = if (episode.id in selectedEpisodeIds) selectedEpisodeIds - episode.id else selectedEpisodeIds + episode.id },
                             )
                         }
                     }
@@ -748,6 +842,9 @@ fun DetailsScreen(
                                     val local = viewModel.downloadedFor(episode.id)
                                     if (local != null) deleteCandidate = local else if (!viewModel.isLocal) downloadSheetEpisode = episode
                                 },
+                            selectionMode = episodeSelectionMode,
+                            selected = episode.id in selectedEpisodeIds,
+                            onSelectionToggle = { selectedEpisodeIds = if (episode.id in selectedEpisodeIds) selectedEpisodeIds - episode.id else selectedEpisodeIds + episode.id },
                         )
                     }
                 }
@@ -847,7 +944,7 @@ fun DetailsScreen(
         }
         var inactive by remember { mutableStateOf(setOf<String>()) }
         AlertDialog(
-            onDismissRequest = { serverOrderDialog = false },
+            onDismissRequest = { serverOrderDialog = false; batchSelectionSeed = null },
             confirmButton = {
                 Button(onClick = {
                     val active = ordered.filter { it !in inactive }
@@ -859,7 +956,7 @@ fun DetailsScreen(
                     serverOrderDialog = false
                 }) { Text("Choisir les épisodes") }
             },
-            dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
+            dismissButton = { TextButton(onClick = { serverOrderDialog = false; batchSelectionSeed = null }) { Text("Annuler") } },
             title = { Text("Serveurs & priorité") },
             text = {
                 Column(Modifier.heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.65f).verticalScroll(rememberScrollState())) {
@@ -943,12 +1040,16 @@ fun DetailsScreen(
 
     playSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
+        val preferredAudioLanguage by viewModel.preferredAudioLanguage.collectAsState()
+        val preferredQuality by viewModel.preferredPlaybackQuality.collectAsState()
+        var selectedAudioLang by remember(episode.id) { mutableStateOf<AudioLang?>(null) }
         // §serveurs-visibles : la recherche démarre à l'ouverture de la feuille,
         // et la liste se remplit au fil de l'eau (serveur par serveur).
         LaunchedEffect(episode.id) { viewModel.loadLinks(episode) }
         ModalBottomSheet(onDismissRequest = { playSheetEpisode = null }) {
-            Column(Modifier.fillMaxWidth().heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.8f)
-                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth()
+                .heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.8f)
+                .padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
                     "Lire — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
@@ -982,56 +1083,100 @@ fun DetailsScreen(
                         }
                     }
                 } else {
-                    // Ordre des serveurs : priorité glissée dans les réglages, inconnus à la fin (alpha)
+                    // VOSTFR/VF sont accessibles sans parcourir une longue liste de serveurs.
+                    val languageGroups = playbackLanguageGroups(links, preferredAudioLanguage)
+                    val availableLanguages = languageGroups.map { it.first }
+                    val selectedLanguage = selectedAudioLang
+                    LaunchedEffect(availableLanguages, selectedLanguage) {
+                        if (selectedLanguage != null && selectedLanguage !in availableLanguages) {
+                            selectedAudioLang = null
+                        }
+                    }
                     val priority = viewModel.serverPriority()
                     fun serverRank(name: String): Int {
                         val i = priority.indexOfFirst { it.equals(name, true) }
                         return if (i >= 0) i else Int.MAX_VALUE
                     }
-                    val grouped = links.groupBy { it.server.ifBlank { "Source" } }.toList()
-                        .sortedWith(compareBy<Pair<String, List<dev.endlesssea.extensions.api.model.VideoLink>>> { serverRank(it.first) }
-                            .thenBy { it.first.lowercase() })
                     val stillLoading = state.linksLoadingEpisode == episode.id
+                    val serverCount = links.map { it.server.ifBlank { "Source" } }.distinct().size
                     Text(
-                        "${grouped.size} serveur(s) — ${links.size} lien(s)" +
+                        "$serverCount serveur(s) — ${links.size} lien(s)" +
                             if (stillLoading) " · recherche en cours…" else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
-                    grouped.forEach { (server, srvLinks) ->
-                        val best = srvLinks.maxByOrNull { it.quality.pixels } ?: srvLinks.first()
-                        GlassCard(
-                            cornerRadius = 14.dp,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    if (availableLanguages.size > 1) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth().clickable {
-                                    val startIndex = links.indexOf(best).coerceAtLeast(0)
-                                    playSheetEpisode = null
-                                    viewModel.playEpisode(episode, startIndex = startIndex, onReady = launchPlayer())
-                                },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(server, style = MaterialTheme.typography.bodyLarge)
-                                    Text(
-                                        listOfNotNull(
-                                            best.quality.label,
-                                            best.audioLang.name.takeIf { l -> l != "OTHER" },
-                                            "${srvLinks.size} qualité(s)",
-                                        ).joinToString(" · "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Text("▶", color = MaterialTheme.colorScheme.primary)
+                            FilterChip(
+                                selected = selectedAudioLang == null,
+                                onClick = { selectedAudioLang = null },
+                                label = { Text("Toutes (${links.size})", maxLines = 1, softWrap = false) },
+                            )
+                            languageGroups.forEach { (lang, languageLinks) ->
+                                val count = languageLinks.size
+                                FilterChip(
+                                    selected = selectedAudioLang == lang,
+                                    onClick = { selectedAudioLang = lang },
+                                    label = { Text("${audioSection(lang)} ($count)", maxLines = 1, softWrap = false) },
+                                )
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    val languageGroupsToShow = if (selectedLanguage == null) languageGroups
+                        else languageGroups.filter { it.first == selectedLanguage }
+                    Column(
+                        Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    ) {
+                        languageGroupsToShow.forEach { (lang, languageLinks) ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(audioSection(lang), style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.weight(1f))
+                                Text("${languageLinks.size} lien(s)", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            val grouped = languageLinks.groupBy { it.server.ifBlank { "Source" } }.toList()
+                                .sortedWith(compareBy<Pair<String, List<VideoLink>>> { serverRank(it.first) }
+                                    .thenBy { it.first.lowercase() })
+                            grouped.forEach { (server, srvLinks) ->
+                                val best = preferredPlaybackLink(srvLinks, preferredQuality) ?: srvLinks.first()
+                                GlassCard(
+                                    cornerRadius = 14.dp,
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable {
+                                            val startIndex = links.indexOf(best).coerceAtLeast(0)
+                                            playSheetEpisode = null
+                                            viewModel.playEpisode(episode, startIndex = startIndex, onReady = launchPlayer())
+                                        },
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(server, style = MaterialTheme.typography.bodyLarge)
+                                            Text(
+                                                "${best.quality.label} · ${srvLinks.size} lien(s)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        Text("▶", color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(28.dp))
                     }
                 }
-                Spacer(Modifier.height(28.dp))
             }
         }
         LaunchedEffect(episode.id) {
@@ -1041,11 +1186,15 @@ fun DetailsScreen(
 
     // ---- §telecharge-tout-sélect : choix des épisodes avant « Tout télécharger »
     if (batchSelectDialog) {
-        val selected = remember { mutableStateMapOf<String, Boolean>().apply {
-            state.episodes.forEach { put(it.id, true) }
-        } }
+        val selected = remember(state.episodes, batchSelectionSeed) {
+            mutableStateMapOf<String, Boolean>().apply {
+                state.episodes.forEach { episode ->
+                    put(episode.id, batchSelectionSeed?.let { episode.id in it } ?: true)
+                }
+            }
+        }
         AlertDialog(
-            onDismissRequest = { batchSelectDialog = false },
+            onDismissRequest = { batchSelectDialog = false; batchSelectionSeed = null },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     val picked = state.episodes.filter { selected[it.id] == true }
@@ -1056,6 +1205,7 @@ fun DetailsScreen(
                             excludedServers = batchExcluded, language = batchLanguage, quality = batchQuality)
                     }
                     batchPriority = null
+                    batchSelectionSeed = null
                 }) { Text("Télécharger (${selected.count { it.value }})") }
             },
             dismissButton = {
@@ -1066,7 +1216,7 @@ fun DetailsScreen(
                     TextButton(onClick = {
                         state.episodes.forEach { selected[it.id] = false }
                     }) { Text("Aucun") }
-                    TextButton(onClick = { batchSelectDialog = false }) { Text("Annuler") }
+                    TextButton(onClick = { batchSelectDialog = false; batchSelectionSeed = null }) { Text("Annuler") }
                 }
             },
             title = { Text(if(mediaIsMovie) "Télécharger le film" else "Tout télécharger — épisodes") },
@@ -1300,6 +1450,16 @@ private suspend fun extractPosterColor(
 }
 
 /** Ouvre un lien externe (bande-annonce → lecteur/navigateur par défaut). */
+/** Partage un lien EndlessSea qui ouvre directement cette fiche sur Android. */
+private fun shareMediaLink(context: android.content.Context, title: String, mediaId: String) {
+    val link = mediaShareLink(mediaId)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, "$title\n$link\n\nOuvre ce lien dans EndlessSea.")
+    }
+    context.startActivity(Intent.createChooser(intent, "Partager la fiche"))
+}
+
 /** Partage le lien de l'affiche (apps de la fiche de partage Android). */
 private fun sharePoster(context: android.content.Context, title: String, url: String) {
     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
@@ -1664,8 +1824,14 @@ private fun EpisodeRowAnymex(
     downloaded: Boolean = false,
     localVideo: Boolean = false,
     localVideoBytes: Long = 0L,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onSelectionToggle: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
 ) {
+    val rowClick: () -> Unit = {
+        if (selectionMode) onSelectionToggle?.invoke() else onPlay()
+    }
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         cornerRadius = 16.dp,
@@ -1676,7 +1842,7 @@ private fun EpisodeRowAnymex(
                 Modifier
                     .size(width = 118.dp, height = 66.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = onPlay),
+                    .clickable(onClick = rowClick),
             ) {
                 if (localVideo) {
                     dev.endlesssea.app.ui.local.LocalVideoThumbnail(episode.id, localVideoBytes, Modifier.fillMaxSize())
@@ -1707,7 +1873,12 @@ private fun EpisodeRowAnymex(
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).combinedClickable(onClick = onPlay, onLongClick = onEdit)) {
+            Column(
+                Modifier.weight(1f).combinedClickable(
+                    onClick = rowClick,
+                    onLongClick = if (selectionMode) null else onEdit,
+                ),
+            ) {
                 dev.endlesssea.app.ui.components.ExpandableText(
                     text = when {
                         isMovie -> episode.title?.takeIf { it.isNotBlank() } ?: mediaTitle ?: "Film"
@@ -1729,12 +1900,16 @@ private fun EpisodeRowAnymex(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (onEdit != null) IconButton(onClick = onEdit) { Icon(Icons.Filled.MoreVert, "Modifier cet épisode") }
-            if (loading) {
-                dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
-            } else if (!localVideo || downloaded) {
-                IconButton(onClick = onDownload) {
-                    Icon(if (downloaded) Icons.Filled.Delete else Icons.Filled.Download, if (downloaded) "Supprimer le fichier hors ligne" else "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
+            if (selectionMode) {
+                androidx.compose.material3.Checkbox(checked = selected, onCheckedChange = { onSelectionToggle?.invoke() })
+            } else {
+                if (onEdit != null) IconButton(onClick = onEdit) { Icon(Icons.Filled.MoreVert, "Modifier cet épisode") }
+                if (loading) {
+                    dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
+                } else if (!localVideo || downloaded) {
+                    IconButton(onClick = onDownload) {
+                        Icon(if (downloaded) Icons.Filled.Delete else Icons.Filled.Download, if (downloaded) "Supprimer le fichier hors ligne" else "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }

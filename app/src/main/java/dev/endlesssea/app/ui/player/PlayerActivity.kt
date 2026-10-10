@@ -178,6 +178,8 @@ private val BUILTIN_PRESETS = listOf(
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
+    val currentLink = state.links.getOrNull(state.currentLinkIndex)
+    val renderMode by viewModel.videoRender.collectAsState()
     val isPlaying by viewModel.engine.isPlaying.collectAsState()
     val playbackRequested by viewModel.engine.playbackRequested.collectAsState()
     val subtitleTracks by viewModel.engine.availableSubtitles.collectAsState()
@@ -211,6 +213,25 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var subLoading by remember { mutableStateOf(false) }
     var subResults by remember {
         androidx.compose.runtime.mutableStateOf<List<OnlineSubtitle>>(emptyList())
+    }
+    var pendingSubtitleExport by remember {
+        mutableStateOf<Pair<dev.endlesssea.extensions.api.model.SubtitleTrack, Map<String, String>>?>(null)
+    }
+    val subtitleSavePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
+    ) { destination ->
+        val pending = pendingSubtitleExport
+        pendingSubtitleExport = null
+        if (destination != null && pending != null) {
+            playerScope.launch {
+                val result = exportSidecarSubtitle(context, pending.first, pending.second, destination)
+                val message = result.fold(
+                    onSuccess = { "Sous-titre enregistré sans la vidéo." },
+                    onFailure = { "Téléchargement du sous-titre impossible : ${it.message ?: "erreur réseau"}" },
+                )
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     // §cadrage-video : mode persistant ; 0 contenir, 1 recadrer, 2 étirer, 3 fond flou sans rognage.
@@ -279,7 +300,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         }
     }) {
         // Media3 owns surface sizing and lifecycle; Compose supplies only the custom controls.
-        val renderMode by viewModel.videoRender.collectAsState()
         // Media3 conserve les proportions avec FIT/ZOOM ; le zoom Compose ne sert qu'au pincement.
         Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }.clipToBounds()) {
             if (zoomMode == 3) {
@@ -852,7 +872,39 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 )
                 Text("Luminosité au démarrage : $screenBrightness %")
                 Slider(value = screenBrightness.toFloat(), onValueChange = { viewModel.setScreenBrightness(it.toInt()) }, valueRange = 10f..100f)
+                Text("Rendu vidéo", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = renderMode != "surface",
+                        onClick = { viewModel.setVideoRender("texture") },
+                        label = { Text("Filtres GPU") },
+                    )
+                    FilterChip(
+                        selected = renderMode == "surface",
+                        onClick = { viewModel.setVideoRender("surface") },
+                        label = { Text("Surface · HDR natif") },
+                    )
+                }
+                Text(
+                    if (renderMode == "surface") {
+                        "Effets GPU désactivés. Le HDR natif dépend de la vidéo, du décodeur et de l'écran."
+                    } else {
+                        "Filtres GPU légers actifs. Ils ajustent l'image, sans recréer les détails absents."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 TextButton(onClick = { showMoreSheet = false; showPlaylist = true }) { Text("Playlist") }
+                currentLink
+                    ?.takeIf { it.streamType != dev.endlesssea.extensions.api.model.StreamType.EMBED &&
+                        it.streamType != dev.endlesssea.extensions.api.model.StreamType.TORRENT }
+                    ?.let { currentLink ->
+                        TextButton(onClick = {
+                            showMoreSheet = false
+                            viewModel.engine.pause()
+                            openWithExternalPlayer(context, currentLink)
+                        }) { Text("Lire avec une autre application") }
+                    }
                 Row {
                     TextButton(onClick = { showMoreSheet = false; showQualityDialog = true }) { Text("Qualité") }
                     TextButton(onClick = { showMoreSheet = false; showAudioDialog = true }) { Text("Audio") }
@@ -1326,6 +1378,29 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
+                    val downloadableSubtitles = currentLink?.subtitles.orEmpty().filter {
+                        it.url.startsWith("https://", ignoreCase = true) || it.url.startsWith("http://", ignoreCase = true)
+                    }
+                    if (downloadableSubtitles.isNotEmpty()) {
+                        Text("Sous-titres de la source — téléchargement seul", style = MaterialTheme.typography.labelLarge)
+                        downloadableSubtitles.forEach { track ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(track.label.ifBlank { track.lang }, style = MaterialTheme.typography.bodyMedium)
+                                    Text(track.format.name, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = {
+                                    pendingSubtitleExport = track to currentLink?.headers.orEmpty()
+                                    subtitleSavePicker.launch(subtitleExportFileName(state.title, track))
+                                }) { Text("Télécharger") }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Text(
                         "Désactivé",
                         color = MaterialTheme.colorScheme.primary,
@@ -1385,6 +1460,52 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
             },
         )
+    }
+}
+
+private fun openWithExternalPlayer(
+    context: android.content.Context,
+    link: dev.endlesssea.extensions.api.model.VideoLink,
+) {
+    val sourceUri = runCatching { android.net.Uri.parse(link.url) }.getOrNull()
+    if (sourceUri == null || sourceUri.scheme?.let { it in setOf("content", "file", "http", "https") } != true) {
+        android.widget.Toast.makeText(context, "Cette source ne peut pas être transmise à un lecteur externe.", android.widget.Toast.LENGTH_LONG).show()
+        return
+    }
+    val targetUri = if (sourceUri.scheme == "file") {
+        runCatching {
+            androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "dev.endlesssea.fileprovider",
+                java.io.File(sourceUri.path.orEmpty()),
+            )
+        }.getOrElse {
+            android.widget.Toast.makeText(context, "Ce fichier n'est pas partageable avec les autres applications.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+    } else sourceUri
+    val extension = targetUri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()
+    val mimeType = context.contentResolver.getType(targetUri) ?: when (extension) {
+        "m3u8" -> "application/vnd.apple.mpegurl"
+        "mpd" -> "application/dash+xml"
+        else -> "video/*"
+    }
+    val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+        setDataAndType(targetUri, mimeType)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        clipData = android.content.ClipData.newRawUri("Vidéo", targetUri)
+    }
+    if (link.headers.isNotEmpty()) {
+        android.widget.Toast.makeText(
+            context,
+            "Attention : certains lecteurs externes ne reprennent pas les en-têtes du serveur. La lecture EndlessSea reste disponible.",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
+    runCatching {
+        context.startActivity(android.content.Intent.createChooser(viewIntent, "Choisir un lecteur vidéo"))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "Aucun lecteur externe compatible trouvé.", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
