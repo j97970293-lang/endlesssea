@@ -206,7 +206,7 @@ cd endlesssea
 ./gradlew :app:assembleDebug
 ```
 
-Version du code : **0.26.0** (versionCode 26 ; les commits de maintenance ne publient pas de release) — APK de débogage :
+Version du code : **0.31.0** (versionCode 31) — APK de débogage :
 `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### License
