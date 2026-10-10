@@ -19,6 +19,12 @@ class VideoPanLimitsTest {
         assertEquals(960f,limits.width,0.01f)
         assertEquals(540f,limits.height,0.01f)
     }
+    @Test fun blurredBackdropUsesTheSamePanLimitsAsFit() {
+        assertEquals(
+            videoPanLimits(1920f, 1080f, 4f / 3f, 0, 1f),
+            videoPanLimits(1920f, 1080f, 4f / 3f, 3, 1f),
+        )
+    }
     @Test fun badScaleCannotProduceNanOffsets() {
         val limits=videoPanLimits(1920f,1080f,16f/9f,0,Float.NaN)
         assertEquals(0f,limits.width,0.01f)

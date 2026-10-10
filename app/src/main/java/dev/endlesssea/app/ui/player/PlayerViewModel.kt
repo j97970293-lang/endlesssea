@@ -844,6 +844,8 @@ class PlayerViewModel @Inject constructor(
     val progressThickness: kotlinx.coroutines.flow.StateFlow<Int> get() = prefs.progressThickness
     val progressRounded: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.progressRounded
     val playerTheme: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.playerTheme
+    val playerFramingMode: kotlinx.coroutines.flow.StateFlow<Int> get() = prefs.playerFramingMode
+    fun setPlayerFramingMode(v: Int) = prefs.setPlayerFramingMode(v)
     fun setProgressPosition(v: String) = prefs.setProgressPosition(v)
     fun setToolsPosition(v: String) = prefs.setToolsPosition(v)
     fun setMegaSkipSide(v: String) = prefs.setMegaSkipSide(v)

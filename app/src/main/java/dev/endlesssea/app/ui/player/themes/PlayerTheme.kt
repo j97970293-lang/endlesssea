@@ -32,8 +32,10 @@ data class PlayerControlsState(
     /** Position de glissement en cours (0..1) ou null si l'utilisateur ne glisse pas. */
     val dragFraction: Float? = null,
     val speed: Float = 1f,
-    /** 0 = contenir · 1 = remplir · 2 = étirer. */
+    /** 0 = contenir · 1 = recadrer · 2 = étirer · 3 = fond flou sans rognage. */
     val zoomMode: Int = 0,
+    /** Un zoom/pan manuel est actif en plus du mode de cadrage choisi. */
+    val manualZoom: Boolean = false,
     val hasPrev: Boolean = false,
     val hasNext: Boolean = false,
     /** Des liens qualité/serveurs sont disponibles. */

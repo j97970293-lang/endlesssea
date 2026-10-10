@@ -646,6 +646,15 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putString("player_theme", v).apply(); _playerTheme.value = v
     }
 
+    /** §cadrage-video : mode mémorisé entre deux lectures (0..3). */
+    private val _playerFramingMode = MutableStateFlow(p.getInt("player_framing_mode", 0).coerceIn(0, 3))
+    val playerFramingMode: StateFlow<Int> = _playerFramingMode
+    fun setPlayerFramingMode(v: Int) {
+        val safe = v.coerceIn(0, 3)
+        p.edit().putInt("player_framing_mode", safe).apply()
+        _playerFramingMode.value = safe
+    }
+
     private val _seekThumb = MutableStateFlow(p.getInt("seek_thumb", 12).coerceIn(8, 20))
     val seekThumb: StateFlow<Int> = _seekThumb
     fun setSeekThumb(v: Int) { val safe = v.coerceIn(8, 20); p.edit().putInt("seek_thumb", safe).apply(); _seekThumb.value = safe }

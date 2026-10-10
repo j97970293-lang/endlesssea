@@ -13,7 +13,9 @@ data class LiveVideoSettings(
 
 data class VideoFrameBounds(val width: Float, val height: Float)
 
-/** Source aspect ratio is independent from the processed/output surface dimensions. */
+/** Source aspect ratio is independent from the processed/output surface dimensions.
+ * Modes: 0 = fit, 1 = cover/crop, 2 = stretch, 3 = fit over a separate backdrop.
+ */
 fun videoFrameBounds(width: Float, height: Float, sourceAspect: Float, mode: Int): VideoFrameBounds {
     if (mode == 2 || width <= 0f || height <= 0f || !sourceAspect.isFinite() || sourceAspect <= 0f)
         return VideoFrameBounds(width, height)
