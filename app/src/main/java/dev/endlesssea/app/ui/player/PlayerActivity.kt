@@ -234,8 +234,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         }
     }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
-    // §cadrage-video : mode persistant ; 0 contenir, 1 recadrer, 2 étirer, 3 fond flou sans rognage.
+    // §cadrage-video : transformation graphique, le lecteur n'est pas reconstruit.
     val zoomMode by viewModel.playerFramingMode.collectAsState()
+    var videoRotation by remember { mutableStateOf(0) }
     var showFramingDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
@@ -247,8 +248,22 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var panY by remember { mutableStateOf(0f) }
     var viewport by remember { mutableStateOf(androidx.compose.ui.unit.IntSize(1,1)) }
     val sourceAspect by viewModel.engine.sourceAspect.collectAsState()
+    val displayScale = dev.endlesssea.player.videoDisplayScale(
+        viewport.width.toFloat().coerceAtLeast(1f), viewport.height.toFloat().coerceAtLeast(1f),
+        sourceAspect, zoomMode,
+    )
     val panLimits = dev.endlesssea.player.videoPanLimits(viewport.width.toFloat(), viewport.height.toFloat(),
         sourceAspect, zoomMode, pinchScale * state.videoScale)
+    LaunchedEffect(state.playlistIndex) {
+        pinchScale = 1f
+        panX = 0f
+        panY = 0f
+        videoRotation = 0
+    }
+    LaunchedEffect(panLimits) {
+        panX = panX.coerceIn(-panLimits.width, panLimits.width)
+        panY = panY.coerceIn(-panLimits.height, panLimits.height)
+    }
     val currentPanLimits by androidx.compose.runtime.rememberUpdatedState(panLimits)
     val openFraming: () -> Unit = {
         pinchScale = (pinchScale * state.videoScale).coerceIn(1f,3f)
@@ -299,8 +314,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             }
         }
     }) {
-        // Media3 owns surface sizing and lifecycle; Compose supplies only the custom controls.
-        // Media3 conserve les proportions avec FIT/ZOOM ; le zoom Compose ne sert qu'au pincement.
+        // Le mode FIT reste fixe : changer resizeMode recrée la surface et renvoie la lecture au début.
+        // Ajuster, recadrer, étirer et les ratios passent par l'échelle du calque.
         Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }.clipToBounds()) {
             if (zoomMode == 3) {
                 VideoFramingBackdrop(
@@ -321,19 +336,20 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                             // The existing subtitle overlay handles the user's styling/delay settings.
                             subtitleView?.visibility = android.view.View.GONE
+                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     },
                     update = { videoView ->
-                        videoView.resizeMode = when (zoomMode) {
-                            1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                            else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        if (videoView.player !== viewModel.engine.player) videoView.player = viewModel.engine.player
+                        if (videoView.resizeMode != androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) {
+                            videoView.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     },
                     onRelease = { it.player = null },
                     modifier = Modifier.fillMaxSize().graphicsLayer(
-                        scaleX = pinchScale * state.videoScale,
-                        scaleY = pinchScale * state.videoScale,
+                        scaleX = displayScale.scaleX * pinchScale * state.videoScale,
+                        scaleY = displayScale.scaleY * pinchScale * state.videoScale,
+                        rotationZ = videoRotation.toFloat(),
                         translationX = panX.coerceIn(-panLimits.width, panLimits.width),
                         translationY = panY.coerceIn(-panLimits.height, panLimits.height),
                     ),
@@ -711,7 +727,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 dragFraction = slidingPos,
                 speed = state.speed,
                 zoomMode = zoomMode,
-                manualZoom = pinchScale != 1f || panX != 0f || panY != 0f || state.videoScale != 1f,
+                manualZoom = pinchScale != 1f || panX != 0f || panY != 0f || state.videoScale != 1f || videoRotation != 0,
                 hasPrev = state.hasPrev,
                 hasNext = state.hasNext,
                 hasLinks = state.links.isNotEmpty(),
@@ -758,7 +774,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     }
                 },
-                onCycleZoom = openFraming,
+                onCycleZoom = {
+                    viewModel.setPlayerFramingMode(dev.endlesssea.player.nextFramingMode(zoomMode))
+                    panX = 0f
+                    panY = 0f
+                },
                 onCycleSpeed = {
                     val next = SPEED_STEPS[(SPEED_STEPS.indexOf(state.speed) + 1) % SPEED_STEPS.size]
                     viewModel.setSpeed(next)
@@ -1322,23 +1342,36 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     if (showFramingDialog) {
         AlertDialog(onDismissRequest={showFramingDialog=false}, title={Text("Cadrage de l’image")},
             confirmButton={TextButton(onClick={showFramingDialog=false}) {Text("Terminé")}},
-            text={Column(Modifier.heightIn(max=360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            text={Column(Modifier.heightIn(max=480.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 listOf(
-                    0 to "Contenir — image entière, proportions conservées",
-                    1 to "Remplir par recadrage — bords coupés",
-                    2 to "Étirer — remplit, mais peut déformer",
-                    3 to "Remplir sans rogner — fond flou + image entière",
+                    0 to "Ajuster — image entière, proportions conservées",
+                    1 to "Recadrer — remplit en coupant les bords",
+                    2 to "Étirer — remplit, peut déformer",
+                    4 to "16:9",
+                    5 to "4:3",
+                    6 to "21:9",
+                    7 to "18:9",
+                    8 to "2.35:1 — cinémascope",
+                    3 to "Fond flou — image entière sur une miniature",
                 ).forEach { (mode, label) ->
                     TextButton(onClick = {
-                        val anchor = viewModel.engine.player.currentPosition
                         viewModel.setPlayerFramingMode(mode)
                         pinchScale = 1f; panX = 0f; panY = 0f; viewModel.setVideoScale(1f)
-                        viewModel.restoreIfRestarted(anchor)
                     }) {
-                        Text((if (zoomMode == mode && pinchScale == 1f) "✓ " else "") + label)
+                        Text((if (zoomMode == mode && pinchScale == 1f && videoRotation == 0) "✓ " else "") + label)
                     }
                 }
-                Text("Le fond est une miniature étendue ; son flou est coupé sur les appareils à faible mémoire.",
+                Text("Rotation", style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 90, 180, 270).forEach { degrees ->
+                        TextButton(onClick = { videoRotation = degrees }) {
+                            Text((if (videoRotation == degrees) "✓ " else "") + "${degrees}°")
+                        }
+                    }
+                }
+                Text("Le cadrage est une transformation : la lecture ne reprend pas au début. Pincer pour zoomer, glisser pour déplacer. Le bouton de cadrage fait défiler les modes. En rendu surface, ces transformations peuvent être ignorées : le rendu texture les applique.",
+                    style = MaterialTheme.typography.bodySmall)
+                Text("Le fond flou est une miniature étendue ; son flou est coupé sur les appareils à faible mémoire.",
                     style = MaterialTheme.typography.bodySmall)
                 Text("Ajuster manuellement",style=MaterialTheme.typography.titleSmall)
                 Text("Zoom : ×%.2f".format(pinchScale))
@@ -1350,7 +1383,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Slider(value=if(panLimits.height>0f) (panY/panLimits.height).coerceIn(-1f,1f) else 0f,
                     onValueChange={panY=it*panLimits.height},valueRange=-1f..1f,enabled=panLimits.height>0f)
                 Text("Les déplacements restent limités aux bords. Contenir, recadrer et fond flou gardent les proportions ; Étirer les déforme.",style=MaterialTheme.typography.bodySmall)
-                TextButton(onClick={viewModel.setPlayerFramingMode(0);pinchScale=1f;panX=0f;panY=0f;viewModel.setVideoScale(1f)}) {Text("Réinitialiser : image entière centrée")}
+                TextButton(onClick={viewModel.setPlayerFramingMode(0);pinchScale=1f;panX=0f;panY=0f;videoRotation=0;viewModel.setVideoScale(1f)}) {Text("Réinitialiser : image entière centrée")}
             }})
     }
 

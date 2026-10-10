@@ -7,6 +7,11 @@ import org.junit.Test
 class BatchDownloadSelectionTest {
     private fun link(server: String, kind: StreamType = StreamType.DIRECT_FILE, lang: AudioLang = AudioLang.VF, quality: Quality = Quality.Q720) =
         VideoLink(url = "https://example.test/$server", server = server, streamType = kind, audioLang = lang, quality = quality)
+    @Test fun partialListDownloadsWithoutWaitingForThePreferredServer() {
+        val ready = link("Autre")
+        assertEquals(ready, selectBatchDownload(listOf(ready), listOf("Prioritaire", "Autre")))
+        assertNull(selectBatchDownload(listOf(link("Prioritaire", StreamType.EMBED)), listOf("Prioritaire")))
+    }
     @Test fun embedDoesNotBlockNextServer() {
         val file = link("B")
         assertEquals(file, selectBatchDownload(listOf(link("A", StreamType.EMBED), file), listOf("A", "B")))

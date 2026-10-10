@@ -5,7 +5,7 @@ import org.junit.Test
 
 class TrailerUrlsTest {
     @Test fun youtubeQueryOrderAndShorts() {
-        assertEquals("https://www.youtube.com/embed/abcdefghijk?playsinline=1&rel=0", TrailerUrls.embed("https://www.youtube.com/watch?feature=share&v=abcdefghijk"))
+        assertEquals("https://www.youtube-nocookie.com/embed/abcdefghijk?autoplay=1&playsinline=1&rel=0&modestbranding=1", TrailerUrls.embed("https://www.youtube.com/watch?feature=share&v=abcdefghijk"))
         assertNotNull(TrailerUrls.embed("https://youtube.com/shorts/abcdefghijk"))
         assertNotNull(TrailerUrls.embed("https://youtu.be/abcdefghijk?t=12"))
     }

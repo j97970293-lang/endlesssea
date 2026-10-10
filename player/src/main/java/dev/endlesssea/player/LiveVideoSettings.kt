@@ -25,10 +25,14 @@ fun videoFrameBounds(width: Float, height: Float, sourceAspect: Float, mode: Int
     return VideoFrameBounds(fitWidth * scale, fitHeight * scale)
 }
 
-/** Pan only as far as an edge: preserve the image in fit mode, avoid new blank borders in fill mode. */
+/** Pan only as far as an edge of the transformed picture, including pinch on top of the framing mode. */
 fun videoPanLimits(width: Float, height: Float, sourceAspect: Float, mode: Int, zoom: Float): VideoFrameBounds {
-    val frame = videoFrameBounds(width, height, sourceAspect, mode)
-    val scale = zoom.takeIf { it.isFinite() }?.coerceIn(1f,12f) ?: 1f
-    return VideoFrameBounds(kotlin.math.abs(frame.width * scale - width) / 2f,
-        kotlin.math.abs(frame.height * scale - height) / 2f)
+    if (width <= 0f || height <= 0f) return VideoFrameBounds(0f, 0f)
+    val aspect = sourceAspect.takeIf { it.isFinite() && it > 0f } ?: (16f / 9f)
+    val fit = videoFrameBounds(width, height, aspect, 0)
+    val display = videoDisplayScale(width, height, aspect, mode)
+    val pinch = zoom.takeIf { it.isFinite() }?.coerceIn(1f, 12f) ?: 1f
+    val shownW = fit.width * display.scaleX * pinch
+    val shownH = fit.height * display.scaleY * pinch
+    return VideoFrameBounds(kotlin.math.abs(shownW - width) / 2f, kotlin.math.abs(shownH - height) / 2f)
 }

@@ -20,11 +20,19 @@ import dev.endlesssea.extensions.api.model.LinkRequest
 import dev.endlesssea.extensions.api.model.MediaDetails
 import dev.endlesssea.extensions.api.model.VideoLink
 import dev.endlesssea.extensions.loader.ExtensionRegistry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -77,6 +85,8 @@ data class DetailsUiState(
     val libraryStatus: String = "NONE",
     /** §hors-ligne : fichiers présents sur l'appareil pour cette fiche. */
     val deviceFiles: List<DeviceFileUi> = emptyList(),
+    /** Recherche publique d'une bande-annonce quand la source n'en donne pas. */
+    val trailerLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -213,14 +223,14 @@ class DetailsViewModel @Inject constructor(
             }
             _uiState.value = _uiState.value.copy(
                 loading = false, details = displayed, episodes = episodes,
+                trailerLoading = displayed.trailerUrl.isNullOrBlank(),
             )
             refreshLibraryFlags()
             refreshResume()
             refreshDeviceFiles()
             fillMissingEpisodeCatalog(details, episodes)
-            // §bandes-annonces (conversation 11) : la source ne fournit pas
-            // toujours d'affiche ni de bande-annonce — TMDB complète SI une clé
-            // est enregistrée (jamais d'appel réseau sans compte connecté).
+            // La source oublie souvent la bande-annonce. TMDB complète si une clé
+            // existe ; sinon AniList, Kitsu et Jikan (catalogues publics).
             enrichFromTmdb(details)
         }
         remote.onFailure { e ->
@@ -449,24 +459,59 @@ class DetailsViewModel @Inject constructor(
      * enregistrée, et rien de ce que fournit l'extension n'est écrasé.
      */
     private fun enrichFromTmdb(details: dev.endlesssea.extensions.api.model.MediaDetails) {
-        if (!prefs.enrichWithTmdb.value) return
-        if (details.posterUrl != null && details.bannerUrl != null && details.trailerUrl != null) return
+        val needsArt = prefs.enrichWithTmdb.value &&
+            (details.posterUrl == null || details.bannerUrl == null || details.trailerUrl == null)
+        val needsTrailer = details.trailerUrl.isNullOrBlank()
+        if (!needsArt && !needsTrailer) return
         viewModelScope.launch {
-            val hit = trackers.searchTmdb(details.title).firstOrNull() ?: return@launch
-            val tmdb = trackers.enrich(hit.remoteId) ?: return@launch
-            val current = _uiState.value.details ?: return@launch
-            // Champs immuables : on reconstruit la fiche (les extensions restent
-            // prioritaires — TMDB ne remplit que ce qui manque).
-            val enriched = current.copy(
-                posterUrl = current.posterUrl ?: tmdb.posterUrl,
-                bannerUrl = current.bannerUrl ?: tmdb.bannerUrl,
-                synopsis = current.synopsis ?: tmdb.synopsis,
-            )
-            enriched.trailerUrl = current.trailerUrl ?: tmdb.trailerUrl
-            enriched.characters = current.characters
-            enriched.rating = current.rating
-            enriched.ratingCount = current.ratingCount
-            _uiState.value = _uiState.value.copy(details = enriched)
+            if (needsTrailer) _uiState.update { it.copy(trailerLoading = true) }
+            if (needsArt) {
+                runCatching {
+                    val hit = trackers.searchTmdb(details.title).firstOrNull() ?: return@runCatching
+                    val tmdb = trackers.enrich(hit.remoteId) ?: return@runCatching
+                    val current = _uiState.value.details ?: return@runCatching
+                    val enriched = current.copy(
+                        posterUrl = current.posterUrl ?: tmdb.posterUrl,
+                        bannerUrl = current.bannerUrl ?: tmdb.bannerUrl,
+                        synopsis = current.synopsis ?: tmdb.synopsis,
+                    )
+                    enriched.trailerUrl = current.trailerUrl ?: tmdb.trailerUrl
+                    enriched.characters = current.characters
+                    enriched.rating = current.rating
+                    enriched.ratingCount = current.ratingCount
+                    _uiState.update { it.copy(details = enriched) }
+                }
+            }
+            val current = _uiState.value.details
+            if (current != null && current.trailerUrl.isNullOrBlank()) {
+                val url = runCatching { TrailerLookup.find(http, current.title) }.getOrNull()
+                val latest = _uiState.value.details
+                if (!url.isNullOrBlank() && latest != null && latest.trailerUrl.isNullOrBlank()) {
+                    latest.trailerUrl = url
+                    _uiState.update { it.copy(details = latest, trailerLoading = false) }
+                    return@launch
+                }
+            }
+            _uiState.update { it.copy(trailerLoading = false) }
+        }
+    }
+
+    /** Relance la recherche publique, sans effacer l'affiche ni le résumé. */
+    fun refreshTrailer() {
+        val details = _uiState.value.details ?: return
+        details.trailerUrl = null
+        _uiState.update { it.copy(details = details, trailerLoading = true) }
+        viewModelScope.launch {
+            val url = runCatching { TrailerLookup.find(http, details.title) }.getOrNull()
+            val latest = _uiState.value.details ?: return@launch
+            if (!url.isNullOrBlank() && latest.trailerUrl.isNullOrBlank()) latest.trailerUrl = url
+            _uiState.update {
+                it.copy(
+                    details = latest,
+                    trailerLoading = false,
+                    message = if (url.isNullOrBlank()) "Aucune bande-annonce trouvée pour ce titre" else it.message,
+                )
+            }
         }
     }
 
@@ -680,55 +725,73 @@ class DetailsViewModel @Inject constructor(
      * les plus lents continuent de charger, au lieu d'attendre le dernier
      * timeout de 20 s.
      */
-    fun loadLinks(episode: Episode, onDone: (List<VideoLink>) -> Unit = {}) = viewModelScope.launch {
-        val cached = _uiState.value.linksByEpisode[episode.id]
-        if (_uiState.value.linksLoadingEpisode == episode.id) return@launch // déjà en cours
-        if (cached != null) { onDone(cached); return@launch }
-        _uiState.value = _uiState.value.copy(linksLoadingEpisode = episode.id)
+    private val linkJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val linkGeneration = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
-        val collected = mutableListOf<VideoLink>()
-        // §serveurs-bloques : une source qui ne répond jamais laissait la feuille
-        // « serveurs » tourner à l'infini. Plafond dur à 90 s, et on garde ce qui
-        // est déjà arrivé. L'erreur éventuelle est remontée à l'écran.
-        val failure = runCatching {
-            dev.endlesssea.app.withCaptchaRetry {
-                withContext(Dispatchers.IO) {
-                    kotlinx.coroutines.withTimeoutOrNull(90_000) {
-                        registry.instance(extensionId)
-                            .linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
-                            .collect { link ->
-                                if (collected.none { it.url == link.url }) collected += link
-                                // Publication immédiate : la feuille serveurs se remplit en direct.
-                                // Préférence VF/VOSTFR appliquée au fur et à mesure.
-                                val partial = orderByLangPref(collected.toList())
-                                _uiState.value = _uiState.value.copy(
-                                    linksByEpisode = _uiState.value.linksByEpisode + (episode.id to partial),
-                                )
-                            }
+    fun loadLinks(episode: Episode, force: Boolean = false, onDone: (List<VideoLink>) -> Unit = {}) {
+        val cached = _uiState.value.linksByEpisode[episode.id]
+        if (!force && cached != null) { onDone(cached); return }
+        val running = linkJobs[episode.id]
+        if (!force && running?.isActive == true) return
+        val generation = (linkGeneration[episode.id] ?: 0) + 1
+        linkGeneration[episode.id] = generation
+        running?.cancel()
+        _uiState.update {
+            it.copy(
+                linksLoadingEpisode = episode.id,
+                linksByEpisode = if (force) it.linksByEpisode - episode.id else it.linksByEpisode,
+            )
+        }
+        linkJobs[episode.id] = viewModelScope.launch {
+            val collected = mutableListOf<VideoLink>()
+            val failure = runCatching {
+                dev.endlesssea.app.withCaptchaRetry {
+                    withContext(Dispatchers.IO) {
+                        withTimeoutOrNull(90_000) {
+                            registry.instance(extensionId)
+                                .linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
+                                .collect { link ->
+                                    if (linkGeneration[episode.id] != generation) return@collect
+                                    if (collected.none { it.url == link.url }) collected += link
+                                    val partial = orderByLangPref(collected.toList())
+                                    _uiState.update { state ->
+                                        if (linkGeneration[episode.id] != generation) state
+                                        else state.copy(linksByEpisode = state.linksByEpisode + (episode.id to partial))
+                                    }
+                                }
+                        }
                     }
                 }
+            }.exceptionOrNull()
+            if (failure is CancellationException) throw failure
+            if (linkGeneration[episode.id] != generation) return@launch
+            if (collected.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        linksLoadingEpisode = if (it.linksLoadingEpisode == episode.id) null else it.linksLoadingEpisode,
+                        linksByEpisode = it.linksByEpisode - episode.id,
+                        message = when {
+                            failure != null -> "Lecture impossible : " +
+                                (failure.message?.take(120) ?: failure::class.java.simpleName)
+                            else -> "Cette source n'a renvoyé aucun serveur pour cet épisode"
+                        },
+                    )
+                }
+            } else {
+                val ordered = orderByLangPref(collected.toList())
+                _uiState.update {
+                    it.copy(
+                        linksLoadingEpisode = if (it.linksLoadingEpisode == episode.id) null else it.linksLoadingEpisode,
+                        linksByEpisode = it.linksByEpisode + (episode.id to ordered),
+                    )
+                }
+                onDone(ordered)
             }
-        }.exceptionOrNull()
-
-        if (collected.isEmpty()) {
-            _uiState.value = _uiState.value.copy(
-                linksLoadingEpisode = null,
-                linksByEpisode = _uiState.value.linksByEpisode - episode.id,
-                message = when {
-                    failure != null -> "Lecture impossible : " +
-                        (failure.message?.take(120) ?: failure::class.java.simpleName)
-                    else -> "Cette source n'a renvoyé aucun serveur pour cet épisode"
-                },
-            )
-        } else {
-            val ordered = orderByLangPref(collected.toList())
-            _uiState.value = _uiState.value.copy(
-                linksLoadingEpisode = null,
-                linksByEpisode = _uiState.value.linksByEpisode + (episode.id to ordered),
-            )
-            onDone(ordered)
         }
     }
+
+    /** Bouton « Relancer la recherche » : ignore le cache et la recherche en cours. */
+    fun reloadLinks(episode: Episode) = loadLinks(episode, force = true)
 
     /** §fiche-serveurs : priorité des serveurs configurée par l'utilisateur (réglages). */
     fun serverPriority(): List<String> = prefs.serverOrder.value
@@ -918,11 +981,13 @@ class DetailsViewModel @Inject constructor(
      * un fichier direct ou HLS compatible avec les filtres. Les embeds restent
      * réservés à la lecture.
      */
-    private suspend fun resolveBatchLinks(episode: Episode): List<VideoLink> {
-        _uiState.value.linksByEpisode[episode.id]?.takeIf { it.isNotEmpty() }?.let { return it }
+    private suspend fun resolveBatchLinks(episode: Episode, ignoreCache: Boolean = false): List<VideoLink> {
+        if (!ignoreCache) {
+            _uiState.value.linksByEpisode[episode.id]?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
         val links = mutableListOf<VideoLink>()
         dev.endlesssea.app.withCaptchaRetry {
-            kotlinx.coroutines.withTimeout(90_000) {
+            withTimeoutOrNull(90_000) {
                 withContext(Dispatchers.IO) {
                     registry.instance(extensionId).linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
                         .collect { link -> if (links.none { it.url == link.url }) links += link }
@@ -930,28 +995,83 @@ class DetailsViewModel @Inject constructor(
             }
         }
         val resolved = links.distinctBy { Triple(it.url, it.audioLang, it.quality) }
-        if (resolved.isNotEmpty()) _uiState.value = _uiState.value.copy(
-            linksByEpisode = _uiState.value.linksByEpisode + (episode.id to resolved),
-        )
+        if (resolved.isNotEmpty()) _uiState.update {
+            it.copy(linksByEpisode = it.linksByEpisode + (episode.id to resolved))
+        }
         return resolved
+    }
+
+    /**
+     * Dès qu'un lien téléchargeable arrive, on le prend. Les serveurs encore
+     * muets ne bloquent ni cet épisode ni les autres.
+     */
+    private suspend fun resolveUntilDownloadable(
+        episode: Episode,
+        serverPriority: List<String>,
+        excludedServers: Set<String>,
+        language: dev.endlesssea.extensions.api.model.AudioLang?,
+        quality: dev.endlesssea.extensions.api.model.Quality?,
+        preferredQuality: String,
+        preferredLanguage: String,
+    ): VideoLink? {
+        val collected = _uiState.value.linksByEpisode[episode.id].orEmpty().toMutableList()
+        fun distinct() = collected.distinctBy { Triple(it.url, it.audioLang, it.quality) }
+        fun pick(links: List<VideoLink>) = selectBatchDownload(
+            links, serverPriority, excludedServers, language, quality, preferredQuality, preferredLanguage,
+        )
+        return dev.endlesssea.app.withCaptchaRetry {
+            withTimeoutOrNull(90_000) {
+                registry.instance(extensionId).linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
+                    .collect { link ->
+                        if (collected.none { it.url == link.url }) collected += link
+                        val ready = distinct()
+                        _uiState.update { it.copy(linksByEpisode = it.linksByEpisode + (episode.id to orderByLangPref(ready))) }
+                        val best = pick(ready)
+                        if (best != null) return@withTimeoutOrNull best
+                    }
+                pick(distinct())
+            }
+        } ?: pick(distinct())
     }
 
     val batchScanProgress = MutableStateFlow<String?>(null)
     private var batchScanJob: kotlinx.coroutines.Job? = null
+
     fun scanBatchServers() {
         if (batchScanJob?.isActive == true) return
+        startServerScan(ignoreCache = false)
+    }
+
+    /** Vide le cache et relance la recherche, sans attendre la fin du scan précédent. */
+    fun rescanServers() = startServerScan(ignoreCache = true)
+
+    private fun startServerScan(ignoreCache: Boolean) {
+        batchScanJob?.cancel()
+        if (ignoreCache) _uiState.update { it.copy(linksByEpisode = emptyMap(), linksLoadingEpisode = null) }
         batchScanJob = viewModelScope.launch {
-            var failed = 0
+            val failed = AtomicInteger()
             try {
                 val episodes = _uiState.value.episodes
-                episodes.forEachIndexed { index, episode ->
-                    batchScanProgress.value = "Scan des serveurs : ${index + 1}/${episodes.size}"
-                    try { resolveBatchLinks(episode) }
-                    catch (e: kotlinx.coroutines.TimeoutCancellationException) { failed++ }
-                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                    catch (e: Exception) { failed++ }
+                val done = AtomicInteger()
+                batchScanProgress.value = "Scan des serveurs : 0/${episodes.size}"
+                val gate = Semaphore(2)
+                coroutineScope {
+                    episodes.map { episode ->
+                        async(Dispatchers.IO) {
+                            gate.withPermit {
+                                ensureActive()
+                                try { resolveBatchLinks(episode, ignoreCache) }
+                                catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { failed.incrementAndGet() }
+                                val n = done.incrementAndGet()
+                                batchScanProgress.value = "Scan des serveurs : $n/${episodes.size}"
+                            }
+                        }
+                    }.forEach { job ->
+                        runCatching { job.await() }.onFailure { if (it is CancellationException) throw it }
+                    }
                 }
-                if (failed > 0) _uiState.value = _uiState.value.copy(message = "$failed épisode(s) sans réponse pendant le scan")
+                if (failed.get() > 0) _uiState.update { it.copy(message = "${failed.get()} épisode(s) sans réponse pendant le scan") }
             } finally { batchScanProgress.value = null }
         }
     }
@@ -965,36 +1085,57 @@ class DetailsViewModel @Inject constructor(
         quality: dev.endlesssea.extensions.api.model.Quality? = null,
     ) = viewModelScope.launch {
         if (_uiState.value.batchRunning || episodes.isEmpty()) return@launch
-        _uiState.value = _uiState.value.copy(batchRunning = true, message = "Résolution des liens…")
-        var added = 0; var streamOnly = 0; var failed = 0
+        batchScanJob?.cancel()
+        _uiState.update { it.copy(batchRunning = true, message = "Téléchargement des épisodes déjà prêts…") }
+        val added = AtomicInteger()
+        val streamOnly = AtomicInteger()
+        val failed = AtomicInteger()
+        val preferredQuality = prefs.preferredPlaybackQuality.value
+        val preferredLanguage = prefs.preferredAudioLang.value
         try {
-        episodes.forEachIndexed { i, episode ->
-            kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            _uiState.value = _uiState.value.copy(message = "Résolution des liens… (${i + 1}/${episodes.size})")
-            try {
-                val links = resolveBatchLinks(episode)
-                val best = selectBatchDownload(
-                    links, serverPriority, excludedServers, language, quality,
-                    preferredQuality = prefs.preferredPlaybackQuality.value,
-                    preferredLanguage = prefs.preferredAudioLang.value,
+            coroutineScope {
+                val gate = Semaphore(3)
+                episodes.map { episode ->
+                    async(Dispatchers.IO) {
+                        gate.withPermit {
+                            ensureActive()
+                            try {
+                                val cached = _uiState.value.linksByEpisode[episode.id].orEmpty()
+                                val immediate = selectBatchDownload(
+                                    cached, serverPriority, excludedServers, language, quality,
+                                    preferredQuality, preferredLanguage,
+                                )
+                                val best = immediate ?: resolveUntilDownloadable(
+                                    episode, serverPriority, excludedServers, language, quality,
+                                    preferredQuality, preferredLanguage,
+                                )
+                                if (best == null) streamOnly.incrementAndGet()
+                                else {
+                                    val name = enqueueAndWait(episode, best)
+                                    val count = added.incrementAndGet()
+                                    _uiState.update { it.copy(message = "$count téléchargement(s) lancé(s) · $name") }
+                                }
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { failed.incrementAndGet() }
+                        }
+                    }
+                }.forEach { job ->
+                    runCatching { job.await() }.onFailure { if (it is CancellationException) throw it }
+                }
+            }
+            val parts = buildList {
+                val n = added.get()
+                if (n > 0) add("$n téléchargement${if (n > 1) "s" else ""} ajouté${if (n > 1) "s" else ""}")
+                if (streamOnly.get() > 0) add("${streamOnly.get()} sans lien correspondant aux filtres")
+                if (failed.get() > 0) add("${failed.get()} sans réponse de la source")
+            }
+            _uiState.update {
+                it.copy(
+                    batchRunning = false,
+                    message = if (parts.isEmpty()) "Aucun fichier téléchargeable trouvé" else parts.joinToString(" · "),
                 )
-                if (best == null) { streamOnly++; return@forEachIndexed }
-                enqueueAndWait(episode, best)
-                added++
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) { failed++ }
-            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { failed++ }
-        }
-        val parts = buildList {
-            if (added > 0) add("$added téléchargement${if (added > 1) "s" else ""} ajouté${if (added > 1) "s" else ""}")
-            if (streamOnly > 0) add("$streamOnly sans lien correspondant aux filtres")
-            if (failed > 0) add("$failed sans réponse de la source")
-        }
-        _uiState.value = _uiState.value.copy(
-            batchRunning = false,
-            message = if (parts.isEmpty()) "Aucun fichier téléchargeable trouvé" else parts.joinToString(" · "),
-        )
-        } finally { _uiState.value = _uiState.value.copy(batchRunning = false) }
+            }
+        } finally { _uiState.update { it.copy(batchRunning = false) } }
     }
 
     private suspend fun enqueueAndWait(episode: Episode, link: VideoLink): String {
@@ -1015,7 +1156,7 @@ class DetailsViewModel @Inject constructor(
         writeOfflineMetadata(relDirs, sourceName, seriesName)
         val dir = File(context.getExternalFilesDir(null), "EndlessSea").apply { mkdirs() }
         val task = DownloadTaskEntity(
-            id = "dl-${System.currentTimeMillis()}-${(0..999).random()}",
+            id = "dl-${System.currentTimeMillis()}-${episode.id.hashCode()}-${(0..9999).random()}",
             mediaId = mediaId, episodeId = episode.id,
             url = link.url,
             headersJson = if (link.headers.isEmpty()) "{}" else

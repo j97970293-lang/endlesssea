@@ -9,11 +9,16 @@ import dev.endlesssea.data.db.MediaDao
 import dev.endlesssea.data.db.WatchHistoryDao
 import dev.endlesssea.extensions.api.model.MainPageRequest
 import dev.endlesssea.extensions.loader.ExtensionRegistry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
@@ -230,69 +235,97 @@ class HomeViewModel @Inject constructor(
     }
 
     // ---------- Contenu réel des extensions (ce qui donne vie à l'accueil)
+    /**
+     * Beaucoup d'extensions (AnimeSite compris) font du réseau et du parsing dans
+     * le thread appelant. Les lancer toutes en parallèle sur le thread principal
+     * fige l'accueil. Ici : file d'attente de 2, délai par source, et publication
+     * au fil de l'eau. Au-delà de 6 sources, une seule catégorie pour ne pas
+     * noyer le décodeur d'images.
+     */
     fun loadRemote() = safeLaunch {
         val extensions = runCatching { registry.enabledExtensions() }.getOrDefault(emptyList())
-        _uiState.value = _uiState.value.copy(extensionCount = extensions.size)
-        if (extensions.isEmpty()) return@safeLaunch
-
-        val rows = mutableListOf<HomeRowUi>()
+        _uiState.update { it.copy(extensionCount = extensions.size) }
+        if (extensions.isEmpty()) {
+            _uiState.update { it.copy(loading = false) }
+            return@safeLaunch
+        }
+        val (categories, itemCap) = homeBudget(extensions.size)
+        val gate = Semaphore(2)
         coroutineScope {
-            extensions.map { (pkg, ext) ->
-                async {
-                  runCatching {
-                    // ---- Catalogues par genre : 2 premières rangées déclarées (ou « main »)
-                    val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
-                        .filter { it.key.isNotBlank() }
-                    val catList = balancedCategories(
-                        declared.ifEmpty {
-                            listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
-                        },
-                        limit = 2,
-                    )
-                    catList.forEach { cat ->
-                        val actualKey = if (declared.isEmpty()) "main" else cat.key
-                        runCatching {
-                            dev.endlesssea.app.withCaptchaRetry {
-                                ext.getMainPage(MainPageRequest(category = actualKey, page = 1))
-                            }
-                        }
-                            .onSuccess { page ->
-                                if (page.items.isEmpty()) return@onSuccess
-                                val items = page.items.take(20).map {
-                                    SearchItemUi(
-                                        id = "${ext.info.id}:${it.url}",
-                                        title = it.title,
-                                        posterUrl = it.posterUrl,
-                                        bannerUrl = it.posterUrl,
-                                        subtitle = it.year?.toString() ?: it.type.name,
-                                        rating = it.rating,
-                                        audioLangs = it.audioLangs.map { l -> l.name },
-                                    )
-                                }
-                                val label = if (declared.isEmpty()) ext.info.name
-                                else "${ext.info.name} — ${cat.title}"
-                                synchronized(rows) {
-                                    rows += HomeRowUi(
-                                        label, items,
-                                        sourcePkg = ext.info.id,
-                                        sourceName = ext.info.name,
-                                        iconUrl = ext.info.iconUrl,
-                                        category = actualKey,
-                                    )
-                                }
-                            }
+            extensions.map { (_, ext) ->
+                async(Dispatchers.IO) {
+                    gate.withPermit {
+                        val rows = runCatching { rowsFor(ext, categories, itemCap) }.getOrDefault(emptyList())
+                        publishRemoteRows(rows)
                     }
-                  }
                 }
             }.forEach { runCatching { it.await() } }
         }
+        _uiState.update { it.copy(loading = false) }
+    }
 
-        val remote = rows.sortedBy { it.title }
-        _uiState.value = _uiState.value.copy(
-            loading = false,
-            remoteRows = remote,
-            // Bannière : les 6 premiers titres avec affiche, priorité au catalogue en ligne
+    private fun homeBudget(extensionCount: Int): Pair<Int, Int> = when {
+        extensionCount >= 12 -> 1 to 8
+        extensionCount >= 6 -> 1 to 12
+        else -> 2 to 16
+    }
+
+    private suspend fun rowsFor(
+        ext: dev.endlesssea.extensions.api.EsExtension,
+        maxCategories: Int,
+        itemCap: Int,
+    ): List<HomeRowUi> {
+        val declared = withTimeoutOrNull(6_000) {
+            runCatching { ext.categories() }.getOrDefault(emptyList())
+        }.orEmpty().filter { it.key.isNotBlank() }
+        val catList = balancedCategories(
+            if (declared.isEmpty()) {
+                listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+            } else declared,
+            limit = maxCategories,
         )
+        val rows = mutableListOf<HomeRowUi>()
+        for (cat in catList) {
+            val key = if (declared.isEmpty()) "main" else cat.key
+            val page = withTimeoutOrNull(10_000) {
+                runCatching {
+                    dev.endlesssea.app.withCaptchaRetry {
+                        ext.getMainPage(MainPageRequest(category = key, page = 1))
+                    }
+                }.getOrNull()
+            } ?: continue
+            if (page.items.isEmpty()) continue
+            val items = page.items.take(itemCap).map {
+                SearchItemUi(
+                    id = "${ext.info.id}:${it.url}",
+                    title = it.title,
+                    posterUrl = it.posterUrl,
+                    bannerUrl = it.posterUrl,
+                    subtitle = it.year?.toString() ?: it.type.name,
+                    rating = it.rating,
+                    audioLangs = it.audioLangs.map { lang -> lang.name },
+                )
+            }
+            val label = if (declared.isEmpty()) ext.info.name else "${ext.info.name} — ${cat.title}"
+            rows += HomeRowUi(
+                label, items,
+                sourcePkg = ext.info.id,
+                sourceName = ext.info.name,
+                iconUrl = ext.info.iconUrl,
+                category = key,
+            )
+        }
+        return rows
+    }
+
+    private fun publishRemoteRows(incoming: List<HomeRowUi>) {
+        if (incoming.isEmpty()) return
+        _uiState.update { state ->
+            val merged = (state.remoteRows.filterNot { old ->
+                incoming.any { it.sourcePkg == old.sourcePkg && it.category == old.category }
+            } + incoming).sortedBy { it.title }
+            state.copy(loading = false, remoteRows = merged)
+        }
     }
 
     private fun dev.endlesssea.data.db.MediaEntity.toUi() = SearchItemUi(
@@ -326,56 +359,12 @@ class HomeViewModel @Inject constructor(
         val entry = runCatching { registry.enabledExtensions() }.getOrDefault(emptyList())
             .firstOrNull { (_, ext) -> ext.info.id == id } ?: return@safeLaunch
         val ext = entry.second
-        _uiState.value = _uiState.value.copy(loading = true)
-        val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
-            .filter { it.key.isNotBlank() }
-        val cats = balancedCategories(
-            declared.ifEmpty {
-                listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
-            },
-            limit = 6,
-        )
-        val fresh = mutableListOf<HomeRowUi>()
-        coroutineScope {
-            cats.map { cat ->
-                async {
-                    val key = if (declared.isEmpty()) "main" else cat.key
-                    runCatching {
-                        dev.endlesssea.app.withCaptchaRetry {
-                            ext.getMainPage(MainPageRequest(category = key, page = 1))
-                        }
-                    }
-                        .onSuccess { page ->
-                            if (page.items.isEmpty()) return@onSuccess
-                            val items = page.items.take(20).map {
-                                SearchItemUi(
-                                    id = "${ext.info.id}:${it.url}",
-                                    title = it.title,
-                                    posterUrl = it.posterUrl,
-                                    bannerUrl = it.posterUrl,
-                                    subtitle = it.year?.toString() ?: it.type.name,
-                                    rating = it.rating,
-                                    audioLangs = it.audioLangs.map { l -> l.name },
-                                )
-                            }
-                            val label = if (declared.isEmpty()) ext.info.name
-                            else "${ext.info.name} — ${cat.title}"
-                            synchronized(fresh) {
-                                fresh += HomeRowUi(
-                                    label, items,
-                                    sourcePkg = ext.info.id,
-                                    sourceName = ext.info.name,
-                                    iconUrl = ext.info.iconUrl,
-                                    category = key,
-                                )
-                            }
-                        }
-                }
-            }.forEach { it.await() }
+        _uiState.update { it.copy(loading = true, remoteRows = it.remoteRows.filterNot { row -> row.sourcePkg == id }) }
+        val rows = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            runCatching { rowsFor(ext, maxCategories = 6, itemCap = 16) }.getOrDefault(emptyList())
         }
-        val merged = (_uiState.value.remoteRows.filterNot { it.sourcePkg == id } + fresh)
-            .sortedBy { it.title }
-        _uiState.value = _uiState.value.copy(loading = false, remoteRows = merged)
+        publishRemoteRows(rows)
+        _uiState.update { it.copy(loading = false) }
     }
 
     fun onAddToLibrary(mediaId: String) = safeLaunch {

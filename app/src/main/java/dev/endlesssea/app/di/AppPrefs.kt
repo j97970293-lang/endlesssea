@@ -649,11 +649,11 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putString("player_theme", safe).apply(); _playerTheme.value = safe
     }
 
-    /** §cadrage-video : mode mémorisé entre deux lectures (0..3). */
-    private val _playerFramingMode = MutableStateFlow(p.getInt("player_framing_mode", 0).coerceIn(0, 3))
+    /** §cadrage-video : mode mémorisé (0..8, voir VideoFraming). */
+    private val _playerFramingMode = MutableStateFlow(p.getInt("player_framing_mode", 0).coerceIn(0, 8))
     val playerFramingMode: StateFlow<Int> = _playerFramingMode
     fun setPlayerFramingMode(v: Int) {
-        val safe = v.coerceIn(0, 3)
+        val safe = v.coerceIn(0, 8)
         p.edit().putInt("player_framing_mode", safe).apply()
         _playerFramingMode.value = safe
     }

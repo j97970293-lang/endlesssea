@@ -77,7 +77,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.unit.dp
@@ -144,6 +147,8 @@ fun DetailsScreen(
     var episodeQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var offlineOnly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var synopsisExpanded by remember { mutableStateOf(false) }
+    var showMetadata by remember { mutableStateOf(false) }
+    var showTracking by remember { mutableStateOf(false) }
     var confirmAllWatched by remember { mutableStateOf(false) }
     if (confirmAllWatched) {
         AlertDialog(onDismissRequest = { confirmAllWatched = false },
@@ -359,12 +364,27 @@ fun DetailsScreen(
                             )
                         }
                         GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
-                            dev.endlesssea.app.SafeAsyncImage(
-                                url = state.details?.posterUrl,
-                                contentDescription = state.details?.title,
-                                modifier = Modifier.size(width = 118.dp, height = 176.dp),
-                                contentScale = ContentScale.Crop,
-                            )
+                            Box {
+                                dev.endlesssea.app.SafeAsyncImage(
+                                    url = state.details?.posterUrl,
+                                    contentDescription = state.details?.title,
+                                    modifier = Modifier.size(width = 118.dp, height = 176.dp),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                state.details?.trailerUrl?.let { trailer ->
+                                    Box(
+                                        Modifier.align(Alignment.Center)
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(Color.Black.copy(alpha = 0.55f))
+                                            .clickable {
+                                                context.startActivity(Intent(context, TrailerActivity::class.java).putExtra("url", trailer))
+                                            }
+                                            .padding(10.dp),
+                                    ) {
+                                        Icon(Icons.Filled.PlayArrow, "Lire la bande-annonce", tint = Color.White)
+                                    }
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.width(14.dp))
@@ -478,6 +498,12 @@ fun DetailsScreen(
                             }
                         }
                         Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { showMetadata = true }) {
+                            Icon(Icons.Filled.Info, "Métadonnées", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { showTracking = true }) {
+                            Icon(Icons.Filled.Bookmark, "Suivi", tint = MaterialTheme.colorScheme.primary)
+                        }
                         IconButton(onClick = { viewModel.toggleFavorite() }) {
                             Icon(
                                 if (state.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -523,31 +549,6 @@ fun DetailsScreen(
                                     DropdownMenuItem(
                                         text = { Text("Télécharger l'affiche") },
                                         onClick = { moreMenu = false; downloadPoster(context, title, img) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ---- Statut watchlist §29 (quand le titre est en bibliothèque)
-                if (state.inLibrary) {
-                    item {
-                        Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
-                            Text(
-                                "Statut de suivi",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Row(
-                                Modifier.horizontalScroll(rememberScrollState()).padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                listOf("WISHLIST", "WATCHING", "COMPLETED", "DROPPED").forEach { st ->
-                                    FilterChip(
-                                        selected = state.libraryStatus == st,
-                                        onClick = { viewModel.setLibraryStatus(st) },
-                                        label = { Text(dev.endlesssea.app.ui.details.watchStatusLabel(st)) },
                                     )
                                 }
                             }
@@ -646,30 +647,23 @@ fun DetailsScreen(
                     }
                 }
 
-                // ---- Studios + bande-annonce + personnages (si fournis par la source)
                 val studios = state.details?.studios?.filter { it.isNotBlank() } ?: emptyList()
-                if (studios.isNotEmpty() || state.details?.trailerUrl != null) {
+                if (studios.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (studios.isNotEmpty()) MetaPill("${studios.take(3).joinToString(", ")}")
-                            state.details?.trailerUrl?.let { trailer ->
-                                Surface(
-                                    onClick = { context.startActivity(android.content.Intent(context, TrailerActivity::class.java).putExtra("url", trailer)) },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                        Text("Bande-annonce", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                        Text("Lire dans l'application", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                    }
-                                }
-                            }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                            MetaPill(studios.take(3).joinToString(", "))
                         }
                     }
+                }
+                item {
+                    TrailerRow(
+                        url = state.details?.trailerUrl,
+                        loading = state.trailerLoading,
+                        onPlay = { trailer ->
+                            context.startActivity(Intent(context, TrailerActivity::class.java).putExtra("url", trailer))
+                        },
+                        onRetry = { viewModel.refreshTrailer() },
+                    )
                 }
                 val characters = state.details?.characters ?: emptyList()
                 if (characters.isNotEmpty()) {
@@ -689,8 +683,7 @@ fun DetailsScreen(
                 }
 
                 // ---- §suivi (conversation 11) : rattachement + progression
-                item { MetadataCard(viewModel = viewModel, onOpenAccounts = onOpenTrackers) }
-                item { TrackerCard(viewModel = viewModel, onOpenTrackers = onOpenTrackers) }
+
 
                 // ---- Saisons en pilules + épisodes
                 if (state.episodes.isNotEmpty()) {
@@ -713,6 +706,9 @@ fun DetailsScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            IconButton(onClick = { viewModel.rescanServers() }) {
+                                Icon(Icons.Filled.Refresh, "Rechercher les serveurs", tint = MaterialTheme.colorScheme.primary)
+                            }
                             TextButton(onClick = {
                                 episodeSelectionMode = !episodeSelectionMode
                                 selectedEpisodeIds = emptySet()
@@ -968,6 +964,7 @@ fun DetailsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    TextButton(onClick = { viewModel.rescanServers() }) { Text("Rechercher les serveurs") }
                     scanProgress?.let {
                         Text(it)
                         TextButton(onClick = { viewModel.cancelBatchScan() }) { Text("Arrêter le scan") }
@@ -1056,6 +1053,10 @@ fun DetailsScreen(
                     "Lire — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
                 )
+                TextButton(
+                    onClick = { viewModel.reloadLinks(episode) },
+                    enabled = state.linksLoadingEpisode != episode.id,
+                ) { Text(if (state.linksLoadingEpisode == episode.id) "Recherche…" else "Relancer la recherche") }
                 Spacer(Modifier.height(8.dp))
                 if (links.isEmpty()) {
                     val searching = state.linksLoadingEpisode == episode.id
@@ -1079,8 +1080,8 @@ fun DetailsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.height(10.dp))
-                            androidx.compose.material3.Button(onClick = { viewModel.loadLinks(episode) }) {
-                                Text("Réessayer")
+                            androidx.compose.material3.Button(onClick = { viewModel.reloadLinks(episode) }) {
+                                Text("Relancer la recherche")
                             }
                         }
                     }
@@ -1267,7 +1268,7 @@ fun DetailsScreen(
                                 Text(
                                     when {
                                         state.linksLoadingEpisode == ep.id -> "Recherche des serveurs…"
-                                        epLinks.isEmpty() -> "Serveurs non vérifiés — touchez la loupe"
+                                        epLinks.isEmpty() -> "Serveurs non vérifiés"
                                         else -> epLinks.take(4).joinToString(" · ") { l -> l.server } +
                                             if (epLinks.size > 4) " +${epLinks.size - 4}" else ""
                                     },
@@ -1277,8 +1278,8 @@ fun DetailsScreen(
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 )
                             }
-                            TextButton(onClick = { viewModel.loadLinks(ep) }) {
-                                Text("Serveurs")
+                            TextButton(onClick = { viewModel.loadLinks(ep, force = true) }) {
+                                Text(if (epLinks.isEmpty()) "Chercher" else "Relancer")
                             }
                         }
                         }
@@ -1300,6 +1301,10 @@ fun DetailsScreen(
                     "Télécharger — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
                 )
+                TextButton(
+                    onClick = { viewModel.reloadLinks(episode) },
+                    enabled = state.linksLoadingEpisode != episode.id,
+                ) { Text(if (state.linksLoadingEpisode == episode.id) "Recherche…" else "Relancer la recherche") }
                 Spacer(Modifier.height(8.dp))
                 if (links.isEmpty()) {
                     val searching = state.linksLoadingEpisode == episode.id
@@ -1323,8 +1328,8 @@ fun DetailsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.height(10.dp))
-                            androidx.compose.material3.Button(onClick = { viewModel.loadLinks(episode) }) {
-                                Text("Réessayer")
+                            androidx.compose.material3.Button(onClick = { viewModel.reloadLinks(episode) }) {
+                                Text("Relancer la recherche")
                             }
                         }
                     }
@@ -1367,6 +1372,70 @@ fun DetailsScreen(
         }
         LaunchedEffect(episode.id) {
             if (state.linksByEpisode[episode.id] == null) viewModel.loadLinks(episode)
+        }
+    }
+
+    if (showMetadata) {
+        ModalBottomSheet(onDismissRequest = { showMetadata = false }) {
+            Text("Métadonnées", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+            MetadataCard(viewModel = viewModel, onOpenAccounts = onOpenTrackers)
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+    if (showTracking) {
+        ModalBottomSheet(onDismissRequest = { showTracking = false }) {
+            Text("Suivi", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+            if (state.inLibrary) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("WISHLIST", "WATCHING", "COMPLETED", "DROPPED").forEach { st ->
+                        FilterChip(
+                            selected = state.libraryStatus == st,
+                            onClick = { viewModel.setLibraryStatus(st) },
+                            label = { Text(watchStatusLabel(st)) },
+                        )
+                    }
+                }
+            }
+            TrackerCard(viewModel = viewModel, onOpenTrackers = onOpenTrackers)
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun TrailerRow(url: String?, loading: Boolean, onPlay: (String) -> Unit, onRetry: () -> Unit) {
+    val thumb = url?.let { TrailerUrls.thumbnail(it) }
+    Surface(
+        onClick = { if (url != null) onPlay(url) else if (!loading) onRetry() },
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(width = 128.dp, height = 72.dp).background(Color.Black), contentAlignment = Alignment.Center) {
+                if (thumb != null) {
+                    dev.endlesssea.app.SafeAsyncImage(url = thumb, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                when {
+                    url != null -> Icon(Icons.Filled.PlayArrow, "Lire la bande-annonce", tint = Color.White)
+                    loading -> dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                }
+            }
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text("Bande-annonce", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    when {
+                        url != null -> "Lire dans l'application"
+                        loading -> "Recherche en cours…"
+                        else -> "Aucune trouvée — touchez pour rechercher"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

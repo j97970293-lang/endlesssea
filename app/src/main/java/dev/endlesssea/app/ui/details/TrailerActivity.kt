@@ -78,12 +78,19 @@ class TrailerActivity : ComponentActivity() {
                                     webView = this
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
-                                    settings.mediaPlaybackRequiresUserGesture = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
                                     settings.allowFileAccess = false
                                     settings.allowContentAccess = false
+                                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                                    android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+                                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                    setBackgroundColor(android.graphics.Color.BLACK)
                                     webViewClient = object : WebViewClient() {
                                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                                            request.isForMainFrame && request.url.toString() != embed
+                                            request.isForMainFrame && !request.url.toString().startsWith(TrailerUrls.embedBase(embed))
+                                        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                                            if (request.isForMainFrame) failure = "Lecture indisponible : ${error.description}"
+                                        }
                                     }
                                     webChromeClient = object : WebChromeClient() {
                                         override fun onShowCustomView(view: View, callback: CustomViewCallback) {
@@ -97,7 +104,7 @@ class TrailerActivity : ComponentActivity() {
                                         }
                                         override fun onHideCustomView() = exitCustomView()
                                     }
-                                    loadUrl(embed)
+                                    loadDataWithBaseURL(TrailerUrls.embedBase(embed), TrailerUrls.embedDocument(embed), "text/html", "utf-8", null)
                                 }
                             }, modifier = Modifier.fillMaxWidth().weight(1f))
                             TrailerUrls.isDirect(url) -> AndroidView(factory = { context ->
@@ -118,8 +125,15 @@ class TrailerActivity : ComponentActivity() {
                             }, modifier = Modifier.fillMaxWidth().weight(1f))
                             else -> Text("Cette source de bande-annonce n'est pas prise en charge.", modifier = Modifier.padding(16.dp))
                         }
-                        failure?.let { Text(it, modifier = Modifier.padding(12.dp)) }
-                        if (embed != null && !fullScreen) Text("La lecture dépend de l'autorisation d'intégration de l'hébergeur.", modifier = Modifier.padding(12.dp))
+                        failure?.let {
+                            Text(it, modifier = Modifier.padding(12.dp))
+                            TextButton(onClick = {
+                                val page = embed ?: return@TextButton
+                                failure = null
+                                webView?.loadDataWithBaseURL(TrailerUrls.embedBase(page), TrailerUrls.embedDocument(page), "text/html", "utf-8", null)
+                            }) { Text("Réessayer la bande-annonce") }
+                        }
+                        if (embed != null && !fullScreen) Text("Lecture dans l'application. Si l'hébergeur bloque l'intégration, réessayez.", modifier = Modifier.padding(12.dp))
                     }
                 }
             }
@@ -156,11 +170,33 @@ internal object TrailerUrls {
         } ?: return null
         return when (host) {
             "youtu.be", "youtube.com", "www.youtube.com", "m.youtube.com" ->
-                id.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }?.let { "https://www.youtube.com/embed/$it?playsinline=1&rel=0" }
+                id.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }?.let { "https://www.youtube-nocookie.com/embed/$it?autoplay=1&playsinline=1&rel=0&modestbranding=1" }
             "vimeo.com", "www.vimeo.com", "player.vimeo.com" -> "https://player.vimeo.com/video/$id"
             else -> id.takeIf { it.matches(Regex("[A-Za-z0-9]+")) }?.let { "https://www.dailymotion.com/embed/video/$it" }
         }
     }
+    fun youtubeId(url: String): String? {
+        val embed = embed(url) ?: return null
+        if (!embed.contains("youtube")) return null
+        return embed.substringAfter("/embed/", "").substringBefore('?')
+            .takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
+    }
+
+    fun thumbnail(url: String): String? = youtubeId(url)?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
+
+    fun embedDocument(embedUrl: String): String {
+        val src = embedUrl.replace("&", "&amp;").replace("\"", "")
+        return "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+            "<style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%}</style></head>" +
+            "<body><iframe src=\"$src\" allow=\"autoplay; encrypted-media; fullscreen; picture-in-picture\" allowfullscreen></iframe></body></html>"
+    }
+
+    fun embedBase(embedUrl: String): String = when {
+        embedUrl.contains("youtube") -> "https://www.youtube-nocookie.com"
+        embedUrl.contains("vimeo") -> "https://player.vimeo.com"
+        else -> "https://www.dailymotion.com"
+    }
+
     fun isDirect(url: String): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         return uri.scheme == "https" && uri.host != null &&
