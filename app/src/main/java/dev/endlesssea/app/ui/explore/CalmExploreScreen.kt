@@ -19,6 +19,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import dev.endlesssea.app.ui.components.*
 
+private const val EXPLORE_PROGRAMS_KEY = "__endlesssea_programs__"
+private const val EXPLORE_NEWS_KEY = "__endlesssea_news__"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(onMediaClick: (String) -> Unit, onSearch: (String,String) -> Unit = {_,_->},
@@ -37,9 +40,21 @@ fun ExploreScreen(onMediaClick: (String) -> Unit, onSearch: (String,String) -> U
     var type by rememberSaveable { mutableStateOf<String?>(null) }
     val visible = state.rows.filter { source == "ALL" || it.pkg == source }
     val selected = visible.firstOrNull { "${it.pkg}:${it.category}" == category }
-    val rows = if(suggested) listOf(ExploreRowUi("Suggestions", suggestions.filter { source == "ALL" || it.id.startsWith("$source:") },source))
-        else if(selected==null) visible else listOf(selected)
+    val isPrograms = category == EXPLORE_PROGRAMS_KEY
+    val isNews = category == EXPLORE_NEWS_KEY
+    val rows = when {
+        suggested -> listOf(ExploreRowUi("Suggestions", suggestions.filter { source == "ALL" || it.id.startsWith("$source:") }, source))
+        isPrograms -> visible.filter { row ->
+            exploreSpecialKind(row.category, row.title.substringAfter(" — ", "")) == ExploreSpecialKind.PROGRAMS
+        }
+        isNews -> visible.filter { row ->
+            exploreSpecialKind(row.category, row.title.substringAfter(" — ", "")) == ExploreSpecialKind.NEWS
+        }
+        selected != null -> listOf(selected)
+        else -> visible
+    }
     val cards = filterExploreRows(rows,genre,year,type).flatMap { it.items }.distinctBy { it.id }
+    val seeAllRow = selected ?: rows.singleOrNull()?.takeIf { isPrograms || isNews }
     Column(Modifier.fillMaxSize()) {
         EndlessSeaTopBar("Explorer",icon=Icons.Default.Explore)
         // Filters and search scroll away with the catalogue; only the section bar stays fixed.
@@ -62,22 +77,57 @@ fun ExploreScreen(onMediaClick: (String) -> Unit, onSearch: (String,String) -> U
             IconButton(onClick={viewModel.refresh()},enabled=!state.loading) {Icon(Icons.Default.Refresh,"Actualiser les catalogues")}
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            FilterChip(!suggested&&category==null,{suggested=false;category=null},label={Text("À découvrir")})
-            FilterChip(suggested,{suggested=true;category=null},label={Text("Pour vous")})
-            visible.forEach { row -> FilterChip(!suggested&&category=="${row.pkg}:${row.category}",
-                {suggested=false;category="${row.pkg}:${row.category}"},label={Text(row.title.substringAfter(" — "),maxLines=1)}) }
+            FilterChip(!suggested && category == null, { suggested = false; category = null }, label = { Text("À découvrir") })
+            FilterChip(suggested, { suggested = true; category = null }, label = { Text("Pour vous") })
+            FilterChip(isPrograms, { suggested = false; category = EXPLORE_PROGRAMS_KEY }, label = { Text("Programmes") })
+            FilterChip(isNews, { suggested = false; category = EXPLORE_NEWS_KEY }, label = { Text("Actualités") })
+            visible.forEach { row ->
+                FilterChip(
+                    !suggested && category == "${row.pkg}:${row.category}",
+                    { suggested = false; category = "${row.pkg}:${row.category}" },
+                    label = { Text(row.title.substringAfter(" — "), maxLines = 1) },
+                )
+            }
         }
         if(state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if(state.errors.isNotEmpty()) TextButton(onClick={errors=true},modifier=Modifier.padding(horizontal=16.dp)) {Text("${state.errors.size} source(s) indisponible(s) · Détails")}
         Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
-            Text(if(suggested) "Selon votre activité" else selected?.title?.substringAfter(" — ") ?: "À découvrir",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
-            if(selected!=null&&!suggested) TextButton(onClick={onSeeAll(selected.pkg,selected.category)}) {Text("Tout voir")}
+            Text(
+                when {
+                    suggested -> "Selon votre activité"
+                    isPrograms -> "Programmes & plannings"
+                    isNews -> "Actualités"
+                    else -> selected?.title?.substringAfter(" — ") ?: "À découvrir"
+                },
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (seeAllRow != null && !suggested) {
+                TextButton(onClick = { onSeeAll(seeAllRow.pkg, seeAllRow.category) }) { Text("Tout voir") }
+            }
         }
-        if(cards.isEmpty()&&!state.loading) Column(Modifier.fillMaxWidth().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-            Text(if(state.extensionCount==0) "Ajoutez votre première extension" else "Aucun titre pour cette sélection",style=MaterialTheme.typography.titleMedium)
-            Text(if(suggested) "Les suggestions dépendent des catalogues et de votre historique." else "Essayez une autre source ou ajustez les filtres.",Modifier.padding(top=8.dp))
-            val menu=LocalSectionMenu.current
-            if(state.extensionCount==0) TextButton(onClick=menu.extensions) {Text("Ouvrir les extensions")}
+        if (cards.isEmpty() && !state.loading) Column(
+            Modifier.fillMaxWidth().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                if (state.extensionCount == 0) "Ajoutez votre première extension"
+                else if (isPrograms) "Aucun programme ou planning fourni"
+                else if (isNews) "Aucune actualité fournie"
+                else "Aucun titre pour cette sélection",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                when {
+                    state.extensionCount == 0 -> "Les rubriques disponibles dépendent des extensions activées."
+                    isPrograms || isNews -> "Cette section s'affiche lorsqu'une extension activée déclare une rubrique correspondante."
+                    suggested -> "Les suggestions dépendent des catalogues et de votre historique."
+                    else -> "Essayez une autre source ou ajustez les filtres."
+                },
+                Modifier.padding(top = 8.dp),
+            )
+            val menu = LocalSectionMenu.current
+            if (state.extensionCount == 0) TextButton(onClick = menu.extensions) { Text("Ouvrir les extensions") }
         }
            }
           }
