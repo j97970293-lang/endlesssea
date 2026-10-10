@@ -98,6 +98,25 @@ fun DownloadsScreen(
     }
 
     var collapsedSeries by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(setOf<String>()) }
+    var languageFilter by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var serverFilter by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    fun languageOf(row: DownloadRowUi): String {
+        val name = row.title.uppercase()
+        return when {
+            "VOSTFR" in name -> "VOSTFR"
+            "VF" in name -> "VF"
+            "MULTI" in name -> "MULTI"
+            "VO" in name -> "VO"
+            else -> "Autre"
+        }
+    }
+    fun serverOf(row: DownloadRowUi) = row.detail.substringBefore(" ·").ifBlank { "Source" }
+    val visibleRows = state.rows.filter { row ->
+        (languageFilter == null || languageOf(row) == languageFilter) &&
+            (serverFilter == null || serverOf(row) == serverFilter)
+    }
+    val languages = state.rows.map { languageOf(it) }.distinct().sorted()
+    val servers = state.rows.map { serverOf(it) }.distinct().sorted()
     Column(Modifier.fillMaxSize()) {
         // §barre-haut (conversation 4) : verre liquide — nombre de téléchargements.
         dev.endlesssea.app.ui.components.EndlessSeaTopBar(
@@ -167,13 +186,31 @@ fun DownloadsScreen(
                 label = { Text("Nettoyer maintenant", maxLines = 1, softWrap = false) },
             )
         }
+        if (languages.isNotEmpty()) {
+            Text("Langue", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = languageFilter == null, onClick = { languageFilter = null }, label = { Text("Toutes") })
+                languages.forEach { lang ->
+                    FilterChip(selected = languageFilter == lang, onClick = { languageFilter = lang }, label = { Text(lang) })
+                }
+            }
+        }
+        if (servers.isNotEmpty()) {
+            Text("Serveurs", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = serverFilter == null, onClick = { serverFilter = null }, label = { Text("Tous") })
+                servers.take(12).forEach { server ->
+                    FilterChip(selected = serverFilter == server, onClick = { serverFilter = server }, label = { Text(server, maxLines = 1, softWrap = false) })
+                }
+            }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (state.rows.isEmpty()) {
+            if (visibleRows.isEmpty()) {
                 item {
                     Column(
                         Modifier.fillMaxWidth().padding(24.dp),
@@ -191,7 +228,7 @@ fun DownloadsScreen(
                     }
                 }
             }
-            state.rows.groupBy { it.seriesKey }.forEach { (seriesKey, episodes) ->
+            visibleRows.groupBy { it.seriesKey }.forEach { (seriesKey, episodes) ->
                 item(key = "series:$seriesKey") {
                     androidx.compose.material3.TextButton(onClick = {
                         collapsedSeries = if (seriesKey in collapsedSeries) collapsedSeries - seriesKey else collapsedSeries + seriesKey

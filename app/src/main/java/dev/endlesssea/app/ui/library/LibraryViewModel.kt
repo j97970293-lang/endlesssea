@@ -302,14 +302,27 @@ class LibraryViewModel @Inject constructor(
             } else 0f
             if (fraction >= 0.95f) return@mapNotNull null   // quasi terminé
             val media = mediaDao.byId(entry.mediaId)
+            val episode = episodeDao.byId(entry.episodeId)
+            val episodeLabel = episode?.let { ep ->
+                buildString {
+                    ep.season?.let { append("S$it ") }
+                    if (ep.number.isFinite() && ep.number > 0f) append("E${ep.number.toString().removeSuffix(".0")} ")
+                    append(ep.title?.takeIf { it.isNotBlank() } ?: "")
+                }.trim()
+            }.orEmpty()
             val remainingMs = (entry.durationMs - entry.positionMs).coerceAtLeast(0)
             ContinueCardUi(
                 episodeId = entry.episodeId,
                 mediaId = entry.mediaId,
-                title = media?.customTitle ?: media?.title ?: if (entry.mediaId.startsWith("local:")) {
-                    dev.endlesssea.app.local.LocalVideos.seriesMeta[entry.mediaId.removePrefix("local:")]?.title
-                        ?: dev.endlesssea.app.local.LocalNames.pretty(entry.mediaId.removePrefix("local:"))
-                } else entry.episodeId,
+                title = listOfNotNull(
+                    media?.customTitle ?: media?.title,
+                    episodeLabel.takeIf { it.isNotBlank() },
+                ).joinToString(" · ").ifBlank {
+                    if (entry.mediaId.startsWith("local:")) {
+                        dev.endlesssea.app.local.LocalVideos.seriesMeta[entry.mediaId.removePrefix("local:")]?.title
+                            ?: dev.endlesssea.app.local.LocalNames.pretty(entry.mediaId.removePrefix("local:"))
+                    } else entry.episodeId
+                },
                 thumbUrl = media?.customCoverUri ?: media?.bannerUrl ?: media?.posterUrl
                     ?: entry.episodeId.takeIf { it.startsWith("content://") },
                 progress = fraction.coerceIn(0f, 1f),
@@ -598,7 +611,8 @@ class LibraryViewModel @Inject constructor(
         )
         val known = _uiState.value.localFiles.associate { it.uri to it.durationMs }
         val metadataByUri = prefs.localFileMetadataSnapshot()
-        val files = dirs
+        val published = dev.endlesssea.app.local.LocalVideos.scanPublishedDownloads(context)
+        val files = (dirs
             .flatMap {
                 dev.endlesssea.app.local.LocalVideos.scanAsync(
                     context, it, includeHidden = prefs.showHiddenFiles.value,
@@ -609,7 +623,7 @@ class LibraryViewModel @Inject constructor(
                             if (current.isNotBlank()) " · $current" else "",
                     )
                 }
-            }
+            } + published)
             .distinctBy { it.uri }
             .sortedBy { it.displayName.lowercase() }
             .map { f ->

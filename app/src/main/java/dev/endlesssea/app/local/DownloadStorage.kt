@@ -29,6 +29,7 @@ object DownloadStorage {
 
     const val DOWNLOADS_DIR = "downloads"
     const val LOCAL_DIR = "localanime"
+    const val PUBLIC_ROOT = "EndlessSea"
 
     fun sanitize(name: String): String =
         name.replace(Regex("""[\\/:*?"<>|\u0000]"""), "_").trim().take(120).ifBlank { "sans-titre" }

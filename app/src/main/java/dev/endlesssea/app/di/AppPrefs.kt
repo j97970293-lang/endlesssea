@@ -838,6 +838,14 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     val storageRoot: StateFlow<String?> get() = storageUri
     fun setStorageRoot(uri: String?) = setStorageUri(uri)
 
+    /** L'utilisateur a fermé la demande d'emplacement sans en choisir un. */
+    private val _storagePromptDismissed = MutableStateFlow(p.getBoolean("storage_prompt_dismissed", false))
+    val storagePromptDismissed: StateFlow<Boolean> = _storagePromptDismissed
+    fun setStoragePromptDismissed(v: Boolean) {
+        p.edit().putBoolean("storage_prompt_dismissed", v).apply()
+        _storagePromptDismissed.value = v
+    }
+
     private fun loadJsonStringList(key: String): List<String> = runCatching {
         val values = org.json.JSONArray(p.getString(key, "[]") ?: "[]")
         (0 until values.length()).map { values.getString(it) }

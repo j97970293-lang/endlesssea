@@ -17,7 +17,7 @@ class BatchDownloadSelectionTest {
     @Test fun languageAndQualityAreStrict() {
         val chosen = link("B", lang = AudioLang.VOSTFR, quality = Quality.Q1080)
         assertEquals(chosen, selectBatchDownload(listOf(link("A"), chosen), listOf("A", "B"), language = AudioLang.VOSTFR, quality = Quality.Q1080))
-        assertNull(selectBatchDownload(listOf(link("A")), emptyList(), language = AudioLang.VOSTFR))
+        assertEquals(link("A"), selectBatchDownload(listOf(link("A")), emptyList(), language = AudioLang.VOSTFR))
     }
     @Test fun choosesBestQualityWithinServerPriority() {
         val chosen = link("A", quality = Quality.Q1080)

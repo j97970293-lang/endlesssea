@@ -75,6 +75,9 @@ interface WatchHistoryDao {
     @Query("SELECT COUNT(*) FROM watch_history WHERE mediaId = :mediaId AND watched = 1")
     suspend fun watchedCount(mediaId: String): Int
 
+    @Query("SELECT * FROM watch_history WHERE mediaId = :mediaId")
+    fun observeForMedia(mediaId: String): Flow<List<WatchHistoryEntity>>
+
     /**
      * §bibliotheque-statuts (conversation 6) : état de visionnage de TOUTES les
      * fiches en une requête (évite N requêtes pour afficher les onglets

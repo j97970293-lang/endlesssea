@@ -92,6 +92,68 @@ object LocalVideos {
      * dossier qui ramène id + nom + type + taille d'un coup, et les sous-dossiers
      * sont parcourus en parallèle (8 à la fois).
      */
+    /**
+     * Vidéos déjà publiées sans dossier SAF choisi : Movies/EndlessSea et MediaStore.
+     * Sans ça, un téléchargement fait avant le choix d'emplacement disparaît de la bibliothèque.
+     */
+    fun scanPublishedDownloads(context: Context): List<LocalVideoFile> {
+        val found = linkedMapOf<String, LocalVideoFile>()
+        val root = java.io.File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES),
+            DownloadStorage.PUBLIC_ROOT,
+        )
+        if (root.isDirectory) {
+            root.walkTopDown().maxDepth(6).forEach { file ->
+                if (!file.isFile || !isVideoName(file.name)) return@forEach
+                val uri = android.net.Uri.fromFile(file).toString()
+                found[uri] = LocalVideoFile(
+                    uri = uri,
+                    displayName = file.name,
+                    sizeBytes = file.length(),
+                    parentUri = android.net.Uri.fromFile(file.parentFile ?: root).toString(),
+                )
+            }
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val projection = arrayOf(
+                android.provider.MediaStore.Video.Media._ID,
+                android.provider.MediaStore.Video.Media.DISPLAY_NAME,
+                android.provider.MediaStore.Video.Media.SIZE,
+                android.provider.MediaStore.Video.Media.RELATIVE_PATH,
+            )
+            val selection = "${android.provider.MediaStore.Video.Media.RELATIVE_PATH} LIKE ?"
+            val args = arrayOf("%${DownloadStorage.PUBLIC_ROOT}%")
+            runCatching {
+                context.contentResolver.query(
+                    android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    projection, selection, args, null,
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Video.Media._ID)
+                    val nameCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Video.Media.DISPLAY_NAME)
+                    val sizeCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Video.Media.SIZE)
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(idCol)
+                        val uri = android.content.ContentUris.withAppendedId(
+                            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id,
+                        ).toString()
+                        val name = cursor.getString(nameCol) ?: "video.mp4"
+                        if (!isVideoName(name)) continue
+                        found.putIfAbsent(
+                            uri,
+                            LocalVideoFile(uri, name, cursor.getLong(sizeCol), "mediastore:EndlessSea"),
+                        )
+                    }
+                }
+            }
+        }
+        return found.values.toList()
+    }
+
+    private fun isVideoName(name: String): Boolean {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return ext in setOf("mp4", "mkv", "ts", "avi", "webm", "mov", "m4v", "mpg", "mpeg", "3gp")
+    }
+
     fun scan(context: Context, treeUriString: String): List<LocalVideoFile> = runCatching {
         kotlinx.coroutines.runBlocking { scanAsync(context, treeUriString) }
     }.getOrDefault(emptyList())

@@ -12,17 +12,20 @@ import dev.endlesssea.extensions.api.model.Quality
 
 @Composable
 internal fun BatchDownloadFilters(language: AudioLang?, quality: Quality?, onLanguage: (AudioLang?) -> Unit, onQuality: (Quality?) -> Unit) {
-    Text("Langue audio (choix strict)")
+    Text("Langue", style = MaterialTheme.typography.titleSmall)
+    Text("VF, VOSTFR ou une autre piste. Si elle n'existe pas, une autre langue téléchargeable est prise.", style = MaterialTheme.typography.bodySmall)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(selected = language == null, onClick = { onLanguage(null) }, label = { Text("Toutes") })
-        AudioLang.entries.forEach { lang ->
-            FilterChip(selected = language == lang, onClick = { onLanguage(lang) }, label = { Text(lang.name) })
+        FilterChip(selected = language == null, onClick = { onLanguage(null) }, label = { Text("Auto") })
+        listOf(AudioLang.VF to "VF", AudioLang.VOSTFR to "VOSTFR", AudioLang.VO to "VO", AudioLang.MULTI to "MULTI", AudioLang.OTHER to "Autre").forEach { (lang, label) ->
+            FilterChip(selected = language == lang, onClick = { onLanguage(lang) }, label = { Text(label) })
         }
     }
-    Text("Qualité (choix strict)")
+    Spacer(Modifier.height(8.dp))
+    Text("Qualité", style = MaterialTheme.typography.titleSmall)
+    Text("Si la qualité choisie n'existe pas, la meilleure disponible est utilisée.", style = MaterialTheme.typography.bodySmall)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(selected = quality == null, onClick = { onQuality(null) }, label = { Text("Meilleure") })
-        Quality.entries.filter { it != Quality.UNKNOWN }.forEach { value ->
+        listOf(Quality.Q1080, Quality.Q720, Quality.Q480, Quality.Q360).forEach { value ->
             FilterChip(selected = quality == value, onClick = { onQuality(value) }, label = { Text(value.label) })
         }
     }

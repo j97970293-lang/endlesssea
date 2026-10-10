@@ -391,10 +391,16 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             detectTapGestures(
                                 onTap = { offset ->
                                     if (!state.locked) {
-                                        val side = if (offset.x < size.width / 2f) -1 else 1
-                                        val seek = taps.tap(android.os.SystemClock.uptimeMillis(), side)
+                                        val fraction = offset.x / size.width.toFloat()
+                                        val side = when {
+                                            fraction < 0.34f -> -1
+                                            fraction > 0.66f -> 1
+                                            else -> 0
+                                        }
+                                        val burst = taps.tap(android.os.SystemClock.uptimeMillis(), side)
                                         singleTap?.cancel()
-                                        if (seek) viewModel.jumpBy(side * state.skipSeconds)
+                                        if (burst && side == 0) viewModel.togglePlayPause()
+                                        else if (burst) viewModel.jumpBy(side * state.skipSeconds)
                                         else singleTap = launch {
                                             kotlinx.coroutines.delay(viewConfiguration.doubleTapTimeoutMillis)
                                             taps.reset()
@@ -949,7 +955,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     listOf(
-                        "none" to "Aucun", "anime" to "Anime", "anime_fort" to "Anime fort",
+                        "none" to "Aucun", "propre" to "Plus net", "anime" to "Anime", "anime_fort" to "Anime fort",
                         "net" to "Netteté", "eclat" to "Éclat", "doux" to "Anti-grain",
                         "cinema" to "Cinéma", "nuit" to "Nuit",
                     ).forEach { (key, label) ->
@@ -1276,7 +1282,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         listOf(
-                            "none" to "Aucun", "anime" to "Anime",
+                            "none" to "Aucun", "propre" to "Plus net", "anime" to "Anime",
                             "anime_fort" to "Anime fort", "net" to "Netteté douce",
                             "eclat" to "Éclat", "doux" to "Anti-grain",
                             "cinema" to "Cinéma", "nuit" to "Nuit",
@@ -1324,8 +1330,10 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     3 to "Remplir sans rogner — fond flou + image entière",
                 ).forEach { (mode, label) ->
                     TextButton(onClick = {
+                        val anchor = viewModel.engine.player.currentPosition
                         viewModel.setPlayerFramingMode(mode)
                         pinchScale = 1f; panX = 0f; panY = 0f; viewModel.setVideoScale(1f)
+                        viewModel.restoreIfRestarted(anchor)
                     }) {
                         Text((if (zoomMode == mode && pinchScale == 1f) "✓ " else "") + label)
                     }

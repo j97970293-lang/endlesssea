@@ -1072,7 +1072,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         listOf(
-                            "none" to "Aucun", "anime" to "Anime",
+                            "none" to "Aucun", "propre" to "Plus net", "anime" to "Anime",
                             "anime_fort" to "Anime fort", "net" to "Netteté douce",
                             "eclat" to "Éclat", "doux" to "Anti-grain",
                             "cinema" to "Cinéma", "nuit" to "Nuit",

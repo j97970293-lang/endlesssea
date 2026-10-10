@@ -282,6 +282,7 @@ class PlayerViewModel @Inject constructor(
                 )
                 // §megaskip : détection du segment courant + saut automatique
                 handleSkipAt(engine.player.currentPosition.coerceAtLeast(0))
+                if (engine.player.playbackState == androidx.media3.common.Player.STATE_ENDED) persistPosition()
                 delay(500)
             }
         }
@@ -470,6 +471,7 @@ class PlayerViewModel @Inject constructor(
             "anime" -> dev.endlesssea.player.LiveVideoSettings(saturation = .08f, sharpness = .55f)
             "anime_fort" -> dev.endlesssea.player.LiveVideoSettings(saturation = .12f, contrast = 1.08f, sharpness = .95f)
             "net" -> dev.endlesssea.player.LiveVideoSettings(saturation = .04f, sharpness = .35f)
+            "propre" -> dev.endlesssea.player.LiveVideoSettings(contrast = 1.06f, sharpness = .72f, saturation = .03f)
             "eclat" -> dev.endlesssea.player.LiveVideoSettings(saturation = .18f, contrast = 1.22f)
             "doux" -> dev.endlesssea.player.LiveVideoSettings(brightness = .02f, saturation = -.06f, contrast = .92f)
             "cinema" -> dev.endlesssea.player.LiveVideoSettings(contrast = 1.1f, temperature = .4f)
@@ -851,6 +853,20 @@ class PlayerViewModel @Inject constructor(
     val progressRounded: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.progressRounded
     val playerFramingMode: kotlinx.coroutines.flow.StateFlow<Int> get() = prefs.playerFramingMode
     fun setPlayerFramingMode(v: Int) = prefs.setPlayerFramingMode(v)
+
+    /** Un changement de surface ne doit pas renvoyer la lecture au début. */
+    fun restoreIfRestarted(anchorMs: Long) {
+        if (anchorMs < 3_000) return
+        viewModelScope.launch {
+            delay(120)
+            val now = engine.player.currentPosition
+            if (now + 1_500 < anchorMs) engine.seekTo(anchorMs)
+        }
+    }
+
+    fun togglePlayPause() {
+        if (engine.player.isPlaying) engine.pause() else engine.play()
+    }
     fun setMegaSkipSide(v: String) = prefs.setMegaSkipSide(v)
     fun setProgressThickness(v: Int) = prefs.setProgressThickness(v)
     fun setProgressRounded(v: Boolean) = prefs.setProgressRounded(v)
@@ -913,9 +929,11 @@ class PlayerViewModel @Inject constructor(
         val ep = episodeId ?: return
         val pos = engine.positionMs.value
         val dur = engine.durationMs.value
-        if (pos <= 0 || dur <= 0) return
+        val ended = engine.player.playbackState == androidx.media3.common.Player.STATE_ENDED
+        if (!ended && (pos <= 0 || dur <= 0)) return
         recoveryStore.updatePosition(mediaId, ep, pos)
-        val watched = pos.toFloat() / dur >= 0.9f   // ≥ 90 % → marqué « vu » (spec §24)
+        val nearEnd = dur > 0 && (dur - pos) <= 15_000L
+        val watched = ended || nearEnd || (dur > 0 && pos.toFloat() / dur >= 0.9f)
         if (prefs.recordHistory.value) historyDao.upsert(
             WatchHistoryEntity(
                 episodeId = ep,

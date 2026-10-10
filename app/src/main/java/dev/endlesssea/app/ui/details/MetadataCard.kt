@@ -17,15 +17,21 @@ import dev.endlesssea.app.ui.components.GlassCard
 internal fun MetadataCard(viewModel: DetailsViewModel, onOpenAccounts: () -> Unit) {
     val services by viewModel.metadataServices.collectAsState()
     val search by viewModel.metadataSearch.collectAsState()
+    var expanded by rememberSaveable { mutableStateOf(false) }
     var open by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var selection by remember { mutableStateOf<Pair<String, TrackerSearchHit>?>(null) }
     GlassCard(Modifier.fillMaxWidth().padding(horizontal=16.dp), contentPadding=PaddingValues(14.dp)) {
         Column {
-            Text("Métadonnées", style=MaterialTheme.typography.titleMedium)
-            Text("Choisir ou corriger le titre, l’affiche et le résumé, sans changer le suivi.", style=MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Métadonnées", style=MaterialTheme.typography.titleSmall)
+                TextButton(onClick={ expanded = !expanded }) { Text(if (expanded) "Réduire" else "Ouvrir") }
+            }
+            if (expanded) {
+            Text("Titre, affiche et résumé, sans changer le suivi.", style=MaterialTheme.typography.bodySmall)
             TextButton(onClick={ if(services.isEmpty()) onOpenAccounts() else open=true }) {
                 Text(if(services.isEmpty()) "Connecter TMDB ou AniList" else "Choisir la source et le titre")
+            }
             }
         }
     }

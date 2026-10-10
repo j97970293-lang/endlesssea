@@ -176,6 +176,43 @@ class MainActivity : ComponentActivity() {
                     ) { showSplash = false }
                     return@EndlessSeaTheme
                 }
+                val storageRoot by prefs.storageRoot.collectAsState()
+                val storagePromptDismissed by prefs.storagePromptDismissed.collectAsState()
+                val storagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+                ) { uri ->
+                    uri?.let { picked ->
+                        context.contentResolver.takePersistableUriPermission(
+                            picked,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                        prefs.setStorageRoot(picked.toString())
+                    }
+                    prefs.setStoragePromptDismissed(true)
+                }
+                if (storageRoot.isNullOrBlank() && !storagePromptDismissed) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { prefs.setStoragePromptDismissed(true) },
+                        title = { Text("Où enregistrer les vidéos ?") },
+                        text = {
+                            Text(
+                                "Choisis un dossier maintenant. Sinon les téléchargements partent dans Movies/EndlessSea " +
+                                    "et peuvent disparaître de la bibliothèque hors ligne. Tu pourras changer ce dossier dans les paramètres.",
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.Button(onClick = { storagePicker.launch(null) }) {
+                                Text("Choisir un dossier")
+                            }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { prefs.setStoragePromptDismissed(true) }) {
+                                Text("Plus tard")
+                            }
+                        },
+                    )
+                }
                 // Boîte « nouvelle version »
                 pendingUpdate.value?.let { update ->
                     androidx.compose.material3.AlertDialog(

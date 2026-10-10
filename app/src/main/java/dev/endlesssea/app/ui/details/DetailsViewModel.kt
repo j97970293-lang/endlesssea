@@ -110,6 +110,7 @@ class DetailsViewModel @Inject constructor(
     /** §progression-immersive : épisodes terminés / total (carte « Watching progress »). */
     val watchedCount = MutableStateFlow(0)
     val resumeEpisodeId = MutableStateFlow<String?>(null)
+    val watchedEpisodeIds = MutableStateFlow<Set<String>>(emptySet())
 
     /** §use-poster-color : teinte émotionnelle extraite de l'affiche (Réglages → Thème). */
     val usePosterColor = prefs.usePosterColor
@@ -128,6 +129,12 @@ class DetailsViewModel @Inject constructor(
     init {
         load()
         viewModelScope.launch { trackers.links.collect { list -> _trackerLink.value = list.firstOrNull { it.mediaId == mediaId } } }
+        viewModelScope.launch {
+            historyDao.observeForMedia(mediaId).collect { rows ->
+                watchedEpisodeIds.value = rows.filter { it.watched }.map { it.episodeId }.toSet()
+                watchedCount.value = watchedEpisodeIds.value.size
+            }
+        }
     }
 
     fun load(): kotlinx.coroutines.Job {

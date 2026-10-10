@@ -117,6 +117,7 @@ fun DetailsScreen(
     autoResume: Boolean = false,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val watchedIds by viewModel.watchedEpisodeIds.collectAsState()
     val context = LocalContext.current
     var localTool by remember { mutableStateOf<String?>(null) }
     if (viewModel.isLocal) localTool?.let { mode ->
@@ -658,15 +659,14 @@ fun DetailsScreen(
                             state.details?.trailerUrl?.let { trailer ->
                                 Surface(
                                     onClick = { context.startActivity(android.content.Intent(context, TrailerActivity::class.java).putExtra("url", trailer)) },
-                                    shape = RoundedCornerShape(28.dp),
-                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.weight(1f),
                                 ) {
-                                    Text(
-                                        "▶ Bande-annonce",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    )
+                                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                        Text("Bande-annonce", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        Text("Lire dans l'application", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                    }
                                 }
                             }
                         }
@@ -804,6 +804,7 @@ fun DetailsScreen(
                                 loading = state.linksLoadingEpisode == episode.id,
                                 onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
                                 downloaded = viewModel.downloadedFor(episode.id) != null,
+                                watched = episode.id in watchedIds,
                                 localVideo = viewModel.isLocal,
                                 localVideoBytes = viewModel.downloadedFor(episode.id)?.sizeBytes ?: 0L,
                                 onEdit = if (viewModel.isLocal) ({ localTool = "episode:${episode.id}" }) else null,
@@ -835,6 +836,7 @@ fun DetailsScreen(
                             loading = state.linksLoadingEpisode == episode.id,
                             onPlay = { viewModel.openEpisode(episode, launchPlayer()) { playSheetEpisode = episode } },
                                 downloaded = viewModel.downloadedFor(episode.id) != null,
+                                watched = episode.id in watchedIds,
                                 localVideo = viewModel.isLocal,
                                 localVideoBytes = viewModel.downloadedFor(episode.id)?.sizeBytes ?: 0L,
                                 onEdit = if (viewModel.isLocal) ({ localTool = "episode:${episode.id}" }) else null,
@@ -960,9 +962,10 @@ fun DetailsScreen(
             title = { Text("Serveurs & priorité") },
             text = {
                 Column(Modifier.heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.65f).verticalScroll(rememberScrollState())) {
+                    Text("Serveurs de cette fiche", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Maintiens la poignée ≡ et glisse pour classer : le serveur le plus haut " +
-                            "est essayé en premier pour chaque épisode. Désactive ceux à ignorer.",
+                        "Active seulement les serveurs à utiliser. Le plus haut est essayé en premier. " +
+                            "L'ancien classement reste disponible : maintiens ≡ pour le déplacer.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1584,7 +1587,15 @@ private fun TrackerCard(
         contentPadding = PaddingValues(14.dp),
     ) {
         Column {
-            Text("Suivi", style = MaterialTheme.typography.titleMedium)
+            var suiviOpen by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Suivi", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { suiviOpen = !suiviOpen }) { Text(if (suiviOpen) "Réduire" else "Ouvrir") }
+            }
+            if (!suiviOpen && link != null) {
+                Text("${link!!.progress} ép." + (link!!.totalEpisodes.takeIf { it > 0 }?.let { " / $it" } ?: ""), style = MaterialTheme.typography.bodySmall)
+            }
+            if (suiviOpen) {
             if (changeTracker) TextButton(onClick = { changeTracker = false }) { Text("Annuler le changement") }
             Spacer(Modifier.height(4.dp))
 
@@ -1706,6 +1717,7 @@ private fun TrackerCard(
                     }
                 }
             }
+            }
         }
     }
 }
@@ -1822,6 +1834,7 @@ private fun EpisodeRowAnymex(
     isMovie: Boolean = false,
     mediaTitle: String? = null,
     downloaded: Boolean = false,
+    watched: Boolean = false,
     localVideo: Boolean = false,
     localVideoBytes: Long = 0L,
     selectionMode: Boolean = false,
@@ -1891,8 +1904,10 @@ private fun EpisodeRowAnymex(
                     dialogTitle = "Titre de l'épisode",
                 )
                 val meta = buildList {
+                    if (watched) add("Vu")
                     if (downloaded) add("Hors ligne")
                     if (isMovie) add("Film") else episode.season?.let { add("Saison $it") }
+                    if (!isMovie && episode.number.isFinite()) add("Épisode ${episode.number.toString().removeSuffix(".0")}")
                     episode.durationMs?.let { add("${it / 60_000} min") }
                 }.joinToString(" · ")
                 if (meta.isNotBlank()) {
