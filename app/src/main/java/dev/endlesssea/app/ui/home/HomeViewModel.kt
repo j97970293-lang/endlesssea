@@ -32,6 +32,8 @@ data class ContinueItemUi(
     val remainingLabel: String,
     val watchedLabel: String,
     val isLocal: Boolean = false,
+    /** A local file to frame-extract when no user-selected cover exists. */
+    val localVideoUri: String? = null,
 )
 
 data class HomeRowUi(
@@ -148,9 +150,9 @@ class HomeViewModel @Inject constructor(
                             ContinueItemUi(
                                 id = "local:" + h.episodeId,
                                 title = meta?.title ?: prettyLocalName(h.episodeId),
-                                // la vignette, c'est la vidéo elle-même (Coil + coil-video)
                                 subtitle = "Fichier local",
-                                thumbUrl = meta?.coverUri ?: h.episodeId,
+                                thumbUrl = meta?.coverUri,
+                                localVideoUri = h.episodeId.takeIf { meta?.coverUri.isNullOrBlank() },
                                 progress = progress,
                                 remainingLabel = remaining,
                                 watchedLabel = watched,
@@ -159,7 +161,7 @@ class HomeViewModel @Inject constructor(
                         }
                         else -> null
                     }
-                }
+                }.distinctBy { it.id }.take(12)
                 _uiState.value = _uiState.value.copy(continueWatching = items)
             }
         }

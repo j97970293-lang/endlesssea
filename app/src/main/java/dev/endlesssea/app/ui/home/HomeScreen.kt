@@ -557,12 +557,19 @@ private fun ContinueWatchingCard(item: ContinueItemUi, onClick: () -> Unit) {
                 .height(130.dp)
                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
         ) {
-            AsyncImage(
-                model = item.thumbUrl,
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            when {
+                item.localVideoUri != null -> dev.endlesssea.app.ui.local.LocalVideoThumbnail(
+                    uri = item.localVideoUri,
+                    bytes = 0L,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                item.thumbUrl != null -> AsyncImage(
+                    model = item.thumbUrl,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             // Voile de lisibilité + pastille « lecture »
             Box(
                 Modifier
