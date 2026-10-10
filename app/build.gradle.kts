@@ -15,8 +15,8 @@ android {
         applicationId = "dev.endlesssea.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 31
-        versionName = "0.31.0"
+        versionCode = 32
+        versionName = "0.32.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
