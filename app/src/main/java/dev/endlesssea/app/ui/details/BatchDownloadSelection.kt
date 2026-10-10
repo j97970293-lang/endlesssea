@@ -12,7 +12,7 @@ internal fun selectBatchDownload(
     preferredQuality: String = "auto", preferredLanguage: String = "auto",
 ): VideoLink? {
     fun pool(strict: Boolean) = links.filter { link ->
-        (link.streamType == StreamType.DIRECT_FILE || link.streamType == StreamType.HLS) &&
+        (link.streamType == StreamType.DIRECT_FILE || link.streamType == StreamType.HLS || link.streamType == StreamType.DASH) &&
             excluded.none { it.equals(link.server, true) } &&
             (!strict || language == null || link.audioLang == language) &&
             (!strict || quality == null || link.quality == quality)

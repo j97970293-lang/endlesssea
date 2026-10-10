@@ -245,7 +245,8 @@ class DownloadsViewModel @Inject constructor(
                 episodeNumber = episode?.number, season = episode?.season, downloaded = true,
                 links = listOf(dev.endlesssea.extensions.api.model.VideoLink(url = uri,
                     streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargé")),
+                    quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargé",
+                    subtitles = localSubtitles(download.subtitlesJson))),
             )
         }.sortedWith(compareBy({ it.season ?: 0 }, { it.episodeNumber ?: Float.MAX_VALUE }, { it.title }))
         dev.endlesssea.app.ui.player.PlayerLaunchStore.resolver = null
@@ -264,6 +265,7 @@ class DownloadsViewModel @Inject constructor(
                     streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
                     quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
                     server = "Téléchargé",
+                    subtitles = localSubtitles(task.subtitlesJson),
                 ),
             ),
             startIndex = 0,
@@ -308,6 +310,20 @@ class DownloadsViewModel @Inject constructor(
         }
         _uiState.value = _uiState.value.copy(notice = result.getOrElse { "Déplacement impossible : ${it.message}" })
     }
+
+    private fun localSubtitles(json: String) =
+        dev.endlesssea.core.subtitle.decodeSidecars(json)
+            .filter { !it.url.startsWith("http") && it.format != "AUDIO" && it.format != "M4A" }
+            .map {
+                dev.endlesssea.extensions.api.model.SubtitleTrack(
+                    url = it.url,
+                    lang = it.lang.ifBlank { "und" },
+                    label = it.label.ifBlank { it.lang },
+                    format = runCatching {
+                        dev.endlesssea.extensions.api.model.SubtitleFormat.valueOf(it.format)
+                    }.getOrDefault(dev.endlesssea.extensions.api.model.SubtitleFormat.UNKNOWN),
+                )
+            }
 
     fun pause(id: String) = viewModelScope.launch { engine.pause(id) }
     fun resume(id: String) = viewModelScope.launch { engine.resume(id) }

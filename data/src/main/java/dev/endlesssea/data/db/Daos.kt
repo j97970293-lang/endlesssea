@@ -191,6 +191,7 @@ interface GenreDao {
 interface RepoDao {
     @Upsert suspend fun upsert(repo: RepoEntity)
     @Query("SELECT * FROM repos ORDER BY addedAt") fun observeAll(): Flow<List<RepoEntity>>
+    @Query("SELECT * FROM repos ORDER BY addedAt") suspend fun all(): List<RepoEntity>
     @Query("SELECT * FROM repos WHERE enabled = 1") suspend fun enabled(): List<RepoEntity>
     @Query("UPDATE repos SET enabled = :enabled WHERE url = :url") suspend fun setEnabled(url: String, enabled: Boolean)
     @Query("DELETE FROM repos WHERE url = :url") suspend fun delete(url: String)

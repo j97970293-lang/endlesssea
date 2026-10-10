@@ -93,6 +93,7 @@ class DetailsViewModel @Inject constructor(
     /** §suivi (conversation 11) : comptes AniList / MAL / Shikimori / TMDB. */
     private val trackers: dev.endlesssea.app.tracking.TrackerRepository,
     private val prefs: dev.endlesssea.app.di.AppPrefs,
+    private val http: okhttp3.OkHttpClient,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -204,6 +205,7 @@ class DetailsViewModel @Inject constructor(
             refreshLibraryFlags()
             refreshResume()
             refreshDeviceFiles()
+            fillMissingEpisodeCatalog(details, episodes)
             // §bandes-annonces (conversation 11) : la source ne fournit pas
             // toujours d'affiche ni de bande-annonce — TMDB complète SI une clé
             // est enregistrée (jamais d'appel réseau sans compte connecté).
@@ -1001,6 +1003,11 @@ class DetailsViewModel @Inject constructor(
             targetUri = File(dir, fileName).toURI().toString(),
             fileName = fileName,
             displayPath = (relDirs + fileName).joinToString("/"),
+            subtitlesJson = dev.endlesssea.core.subtitle.encodeSidecars(
+                link.subtitles.map {
+                    dev.endlesssea.core.subtitle.SidecarTrack(it.url, it.lang, it.label, it.format.name)
+                },
+            ),
             status = "QUEUED",
         )
         downloads.enqueue(task)
@@ -1034,6 +1041,67 @@ class DetailsViewModel @Inject constructor(
         val s = episode.season?.let { "S$it:" } ?: ""
         return "$base $s$e"
     }
+
+    /** One AniZip or Jikan call, and at most one TMDB season, only when titles or stills are missing. */
+    private fun fillMissingEpisodeCatalog(
+        details: dev.endlesssea.extensions.api.model.MediaDetails,
+        episodes: List<dev.endlesssea.extensions.api.model.Episode>,
+    ) {
+        if (episodes.isEmpty() || episodes.all { !it.title.isNullOrBlank() && !it.thumbnailUrl.isNullOrBlank() }) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ids = details.externalIds
+            fun safeId(raw: String?) = raw?.trim()?.takeIf { it.matches(Regex("[A-Za-z0-9:_-]{1,40}")) }
+            val anilist = safeId(ids["anilist"] ?: ids["anilist_id"])
+            val mal = safeId(ids["mal"] ?: ids["mal_id"])
+            val catalog = when {
+                !anilist.isNullOrBlank() -> getJson("https://api.ani.zip/mappings?anilist_id=$anilist")?.let {
+                    dev.endlesssea.app.tracking.parseAniZipEpisodes(it)
+                }
+                !mal.isNullOrBlank() -> getJson("https://api.ani.zip/mappings?mal_id=$mal")?.let {
+                    dev.endlesssea.app.tracking.parseAniZipEpisodes(it)
+                } ?: getJson("https://api.jikan.moe/v4/anime/$mal/episodes?page=1")?.let {
+                    dev.endlesssea.app.tracking.parseJikanEpisodes(it)
+                }
+                else -> null
+            }.orEmpty()
+            var merged = dev.endlesssea.app.tracking.mergeCatalog(episodes, catalog)
+            val tmdb = ids["tmdb"] ?: ids["tmdb_id"]
+            val needsStill = merged.any { it.thumbnailUrl.isNullOrBlank() }
+            if (needsStill && !tmdb.isNullOrBlank()) {
+                val account = runCatching { trackers.accounts.first() }.getOrNull()
+                    ?.firstOrNull { it.service == "TMDB" && it.enabled && !it.apiKey.isNullOrBlank() }
+                val key = account?.apiKey
+                val season = (merged.firstOrNull { it.thumbnailUrl.isNullOrBlank() }?.season ?: 1).coerceIn(1, 20)
+                val tmdbId = safeId(tmdb)
+                if (!key.isNullOrBlank() && tmdbId != null && details.type != dev.endlesssea.extensions.api.model.MediaType.MOVIE) {
+                    val encoded = java.net.URLEncoder.encode(key, "UTF-8")
+                    getJson(
+                        "https://api.themoviedb.org/3/tv/$tmdbId/season/$season?api_key=$encoded&language=${prefs.metadataLanguage.value}",
+                    )?.let { dev.endlesssea.app.tracking.parseTmdbSeason(it) }?.let {
+                        merged = dev.endlesssea.app.tracking.mergeCatalog(merged, it)
+                    }
+                }
+            }
+            if (merged != episodes) {
+                _uiState.value = _uiState.value.copy(episodes = merged)
+            }
+        }
+    }
+
+    private fun getJson(url: String): String? = runCatching {
+        http.newCall(
+            okhttp3.Request.Builder().url(url).header("Accept", "application/json")
+                .header("User-Agent", "EndlessSea").build(),
+        ).execute().use { response ->
+            if (!response.isSuccessful) {
+                dev.endlesssea.core.diag.EsLog.e("Metadata", "EpisodeCatalog", "HTTP ${response.code}", url.substringBefore('?'))
+                return null
+            }
+            response.body?.string()
+        }
+    }.onFailure {
+        dev.endlesssea.core.diag.EsLog.e("Metadata", "EpisodeCatalog", "Catalogue indisponible", it.javaClass.simpleName)
+    }.getOrNull()
 
     private fun extensionFor(link: VideoLink): String = when (link.streamType) {
         dev.endlesssea.extensions.api.model.StreamType.HLS -> ".ts"   // segments MPEG-TS assemblés

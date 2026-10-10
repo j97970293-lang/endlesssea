@@ -32,4 +32,5 @@ dependencies {
     // exécutés par la CI (`:player:testDebugUnitTest`).
     testImplementation(libs.test.junit)
     testImplementation(libs.test.truth)
+    androidTestImplementation(libs.androidx.test.junit)
 }

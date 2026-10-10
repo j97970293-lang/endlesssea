@@ -29,6 +29,8 @@
 
 Tools: JUnit4 + Truth + kotlinx-coroutines-test + Turbine (Flow assertions) + **MockWebServer** for all HTTP.
 
+Instrumented coverage that does not need a video network (`Media3` buffer profiles, download-service commands, a Compose click) runs in `.github/workflows/android-instrumented.yml` on an API 29 emulator. It is intentionally not a step of the release workflow: a 30-minute emulator must not delay an APK. Full navigation through the Hilt graph is not automated; launching the whole app in a headless emulator is brittle and was left out.
+
 ## 3. FakeProvider (test doubles, no network)
 
 `:data` test fixture `FakeProvider : EsExtension` serving a canned 2-anime/1-movie catalog from in-memory lists + `MockWebServer` streams. It drives every integration/UI test — the design rule "the app must work with zero real sources" (spec §21) doubles as a testability guarantee.

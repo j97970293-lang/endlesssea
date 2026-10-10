@@ -21,8 +21,7 @@ import javax.crypto.spec.SecretKeySpec
  * support du chiffrement AES-128-CBC, puis assemblage dans un fichier unique
  * (`.ts` MPEG-TS, ou `.mp4` si fMP4/`EXT-X-MAP`).
  *
- * DASH (.mpd) n'est pas géré par ce moteur — la tâche échoue alors avec un
- * message explicite côté appelant.
+ * DASH is handled by DashEngine, not by this class.
  */
 class HlsEngine(private val client: OkHttpClient) {
 
@@ -48,6 +47,16 @@ class HlsEngine(private val client: OkHttpClient) {
         if (res.code !in 200..299) throw SegmentEngine.SourceError("HTTP ${res.code}")
         return res
     }
+
+    /** Subtitle playlists from a master manifest. A media playlist returns none. */
+    suspend fun listSubtitles(url: String, headers: Map<String, String> = emptyMap()): List<HlsSubtitleTrack> =
+        withContext(Dispatchers.IO) {
+            get(url, headers).use { response ->
+                val body = response.body?.string()?.take(512 * 1024).orEmpty()
+                if (!body.contains("#EXT-X-STREAM-INF:")) return@withContext emptyList()
+                hlsSubtitleTracks(body, response.request.url.toString())
+            }
+        }
 
     /** Resolve the requested rendition; UNKNOWN retains automatic highest-bandwidth selection. */
     suspend fun resolve(url: String, headers: Map<String, String> = emptyMap(), requestedHeight: Int = 0): Plan =

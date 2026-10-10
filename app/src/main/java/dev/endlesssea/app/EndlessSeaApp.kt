@@ -21,6 +21,10 @@ class EndlessSeaApp : Application() {
 
     @Inject lateinit var prefs: dev.endlesssea.app.di.AppPrefs
 
+    @Inject lateinit var repoDao: dev.endlesssea.data.db.RepoDao
+
+    @Inject lateinit var repoManager: dev.endlesssea.extensions.loader.RepoManager
+
     @Inject lateinit var appLogoManager: dev.endlesssea.app.branding.AppLogoManager
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,6 +45,20 @@ class EndlessSeaApp : Application() {
             runCatching {
                 dev.endlesssea.app.ui.components.DownloadedRegistry.set(
                     database.downloadsDao().completedMediaIds(),
+                )
+            }
+        }
+        appScope.launch {
+            runCatching {
+                dev.endlesssea.app.extensions.RepoBootstrap.ensure(repoDao, prefs)
+                val now = System.currentTimeMillis()
+                repoDao.enabled().filter { now - it.lastSyncAt > 6 * 60 * 60 * 1000L }.forEach { repo ->
+                    repoManager.sync(repo.url)
+                }
+            }.onFailure { e ->
+                dev.endlesssea.core.diag.EsLog.e(
+                    "Extension", "RepoBootstrap", "Dépôt d'extensions indisponible",
+                    e.message ?: e.javaClass.simpleName,
                 )
             }
         }

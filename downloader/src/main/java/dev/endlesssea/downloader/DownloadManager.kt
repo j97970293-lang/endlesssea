@@ -16,8 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.ensureActive
 import okhttp3.OkHttpClient
 import java.io.File
 import java.security.MessageDigest
@@ -70,6 +69,10 @@ class DownloadManager(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val maxParallel: Int = 2,
     private val partsPerTask: Int = 4,
+    /** Re-read on every task so data-saver and low memory apply without restarting the process. */
+    private val parallelism: () -> DownloadParallelism = { DownloadParallelism(maxParallel, partsPerTask) },
+    /** Audio and subtitle files. Null keeps them beside the temporary video only. */
+    private val sidecarPublisher: ((DownloadTaskEntity, File, String) -> String?)? = null,
     /** §debit (conversation 10) : plafond de bande passante en octets/s (0 = illimité). */
     private val throttleBytesPerSec: () -> Long = { 0L },
     /** §espace-disque : octets libres sur le volume de travail (contrôle avant départ). */
@@ -78,8 +81,10 @@ class DownloadManager(
 
     private val engine = SegmentEngine(http)
     private val hlsEngine = dev.endlesssea.downloader.hls.HlsEngine(http)
+    private val dashEngine = dev.endlesssea.downloader.dash.DashEngine(http)
     private val jobs = mutableMapOf<String, Job>()
-    private val semaphore = Semaphore(maxParallel)
+    private val slotLock = Any()
+    private var activeSlots = 0
     private val _runningCount = MutableStateFlow(0)
     override val runningCount: Flow<Int> = _runningCount
     private val progressFlow = MutableStateFlow(DownloadProgress("", DownloadStatus.QUEUED, 0, 0, 0, 0))
@@ -162,7 +167,12 @@ class DownloadManager(
         if (jobs.containsKey(taskId)) return
         jobs[taskId] = scope.launch {
             try {
-                semaphore.withPermit { runTask(taskId) }
+                acquireSlot()
+                try {
+                    runTask(taskId)
+                } finally {
+                    releaseSlot()
+                }
             } finally {
                 // §service : la tâche quitte la file — le service au premier plan
                 // s'arrêtera une fois la dernière terminée.
@@ -180,11 +190,7 @@ class DownloadManager(
         val isHls = kind == dev.endlesssea.core.download.DownloadSourceKind.HLS
         val isDash = kind == dev.endlesssea.core.download.DownloadSourceKind.DASH
         if (isDash) {
-            dao.updateStatus(
-                taskId, DownloadStatus.FAILED.name,
-                "Ce lien est un flux DASH : lecture en ligne uniquement pour l'instant.",
-            )
-            notices.trySend(DownloadNotice(taskId, task.fileName, "Flux DASH — non téléchargeable", ok = false))
+            runDashTask(taskId, task)
             return
         }
         if (isHls) {
@@ -212,7 +218,7 @@ class DownloadManager(
             val part = File(parts, "${task.fileName}.part")
 
             val table = dao.segments(taskId).ifEmpty {
-                engine.plan(expected, probe.acceptRanges, partsPerTask).map {
+                engine.plan(expected, probe.acceptRanges, parallelism().parts).map {
                     DownloadSegmentEntity(taskId, it.idx, it.start, it.end)
                 }.also { dao.upsertSegments(it) }
             }
@@ -287,6 +293,7 @@ class DownloadManager(
             val hash = runCatching { sha256(finalFile) }.getOrNull()
             if (hash != null) dao.setHash(taskId, hash)
             publishFinal(taskId, task, finalFile)
+            downloadDeclaredSubtitles(dao.byId(taskId) ?: task)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             notices.trySend(DownloadNotice(taskId, finalName, "Téléchargement terminé", ok = true))
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -358,6 +365,8 @@ class DownloadManager(
                 ),
             )
             publishFinal(taskId, dao.byId(taskId) ?: task, finalFile)
+            downloadHlsSubtitles(task, hlsEngine)
+            downloadDeclaredSubtitles(dao.byId(taskId) ?: task)
             dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
             marker.delete()
             notices.trySend(
@@ -367,10 +376,69 @@ class DownloadManager(
             dao.updateStatus(taskId, DownloadStatus.PAUSED.name)
             throw e
         } catch (e: Exception) {
+            dev.endlesssea.core.diag.EsLog.e("Download", "HlsEngine", "Échec HLS de ${task.fileName}", e.message ?: e.javaClass.simpleName)
             dao.updateStatus(taskId, DownloadStatus.FAILED.name, e.message)
             notices.trySend(
                 DownloadNotice(taskId, task.fileName, "Téléchargement interrompu : ${e.message}", ok = false),
             )
+        } finally {
+            jobs.remove(taskId)
+        }
+    }
+
+    /** Static DASH: one video file, optional separate audio, text sidecars. DRM and live manifests fail clearly. */
+    private suspend fun runDashTask(taskId: String, task: DownloadTaskEntity) {
+        try {
+            dao.updateStatus(taskId, DownloadStatus.PROBING.name)
+            val requestedHeight = Regex("(\\d{3,4})").find(task.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val plan = dashEngine.resolve(task.url, task.headersMap(), requestedHeight)
+            val partsDir = tempDirProvider().resolve(".tmp").apply { mkdirs() }
+            val part = File(partsDir, "${task.fileName}.part")
+            val existing = dao.segments(taskId)
+            if (existing.isNotEmpty() && existing.size != plan.video.segments.size) {
+                throw java.io.IOException("Le manifeste DASH a changé. Annule cette tâche et relance le téléchargement.")
+            }
+            if (existing.isEmpty()) dao.upsertSegments(plan.video.segments.map { DownloadSegmentEntity(taskId, it.idx, 0, 0) })
+            val fromIdx = existing.count { it.done }
+            dao.updateStatus(taskId, DownloadStatus.DOWNLOADING.name)
+            var doneCount = fromIdx
+            dashEngine.download(plan.video, task.headersMap(), part, fromIdx) { idx ->
+                dao.checkpoint(taskId, idx, part.length(), true)
+                doneCount++
+                publishProgress(
+                    DownloadProgress(
+                        taskId, DownloadStatus.DOWNLOADING, 0, part.length(), 0, -1,
+                        completedSegments = doneCount, totalSegments = plan.video.segments.size,
+                    ),
+                )
+            }
+            val finalName = task.fileName.removeSuffix(".part")
+            val finalFile = part.parentFile?.resolve(finalName) ?: File(finalName)
+            part.renameTo(finalFile)
+            val hash = runCatching { sha256(finalFile) }.getOrNull()
+            dao.upsert(task.copy(totalBytes = finalFile.length(), sha256 = hash, updatedAt = System.currentTimeMillis()))
+            publishFinal(taskId, dao.byId(taskId) ?: task, finalFile)
+            plan.audio?.let { audio ->
+                val audioFile = File(partsDir, sidecarName(finalName, "audio", "m4a"))
+                dashEngine.download(audio, task.headersMap(), audioFile, 0) {}
+                publishExtra(task, audioFile, audioFile.name)
+            }
+            plan.subtitles.forEach { text ->
+                val ext = if (text.mime.contains("ttml")) "ttml" else "vtt"
+                val file = File(partsDir, sidecarName(finalName, text.language ?: "sub", ext))
+                dashEngine.download(text, task.headersMap(), file, 0) {}
+                publishExtra(task, file, file.name)
+            }
+            downloadDeclaredSubtitles(dao.byId(taskId) ?: task)
+            dao.updateStatus(taskId, DownloadStatus.COMPLETED.name)
+            notices.trySend(DownloadNotice(taskId, finalName, "Téléchargement DASH terminé", ok = true))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            dao.updateStatus(taskId, DownloadStatus.PAUSED.name)
+            throw e
+        } catch (e: Exception) {
+            dev.endlesssea.core.diag.EsLog.e("Download", "DashEngine", "Échec DASH de ${task.fileName}", e.message ?: e.javaClass.simpleName)
+            dao.updateStatus(taskId, DownloadStatus.FAILED.name, e.message)
+            notices.trySend(DownloadNotice(taskId, task.fileName, "Téléchargement interrompu : ${e.message}", ok = false))
         } finally {
             jobs.remove(taskId)
         }
@@ -381,6 +449,109 @@ class DownloadManager(
      * sans ça, la vidéo restait dans le dossier privé de l'app et ne se lisait
      * pas (bug « les vidéos téléchargées ne marchent pas »).
      */
+    private suspend fun acquireSlot() {
+        while (true) {
+            val max = parallelism().tasks.coerceIn(1, 4)
+            val acquired = synchronized(slotLock) {
+                if (activeSlots < max) {
+                    activeSlots++
+                    true
+                } else false
+            }
+            if (acquired) return
+            kotlinx.coroutines.delay(250)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        }
+    }
+
+    private fun releaseSlot() {
+        synchronized(slotLock) { if (activeSlots > 0) activeSlots-- }
+    }
+
+    private suspend fun publishExtra(task: DownloadTaskEntity, file: File, fileName: String): String? {
+        if (!file.isFile || file.length() <= 0) return null
+        val published = sidecarPublisher?.invoke(task, file, fileName)
+            ?: if (sidecarPublisher == null) file.toURI().toString() else null
+        if (published != null && !fileName.endsWith(".m4a")) {
+            val current = dao.byId(task.id) ?: task
+            val tracks = dev.endlesssea.core.subtitle.decodeSidecars(current.subtitlesJson) +
+                dev.endlesssea.core.subtitle.SidecarTrack(
+                    url = published,
+                    lang = fileName.substringBeforeLast('.').substringAfterLast('.', "und"),
+                    label = fileName,
+                    format = fileName.substringAfterLast('.').uppercase(),
+                )
+            dao.upsert(current.copy(subtitlesJson = dev.endlesssea.core.subtitle.encodeSidecars(tracks.distinctBy { it.url })))
+        }
+        return published
+    }
+
+    private suspend fun downloadDeclaredSubtitles(task: DownloadTaskEntity) {
+        val tracks = dev.endlesssea.core.subtitle.decodeSidecars(task.subtitlesJson)
+        tracks.filter { it.format != "AUDIO" }.take(8).forEach { track ->
+            runCatching { saveRemoteText(task, track.url, track.lang.ifBlank { "sub" }, track.format, task.headersMap()) }
+                .onFailure {
+                    dev.endlesssea.core.diag.EsLog.e("Download", "subtitles", "Sous-titre non enregistré", it.message ?: it.javaClass.simpleName)
+                }
+        }
+    }
+
+    private suspend fun downloadHlsSubtitles(task: DownloadTaskEntity, engine: dev.endlesssea.downloader.hls.HlsEngine) {
+        val tracks = runCatching { engine.listSubtitles(task.url, task.headersMap()) }.getOrDefault(emptyList())
+        tracks.take(6).forEach { track ->
+            runCatching { saveRemoteText(task, track.url, track.language.ifBlank { "sub" }, "VTT", task.headersMap()) }
+                .onFailure {
+                    dev.endlesssea.core.diag.EsLog.e("Download", "HlsSubtitles", "Piste HLS non enregistrée", it.message ?: it.javaClass.simpleName)
+                }
+        }
+    }
+
+    private suspend fun saveRemoteText(
+        task: DownloadTaskEntity,
+        url: String,
+        role: String,
+        format: String,
+        headers: Map<String, String>,
+    ) {
+        val ext = when (format.uppercase()) {
+            "SRT" -> "srt"
+            "ASS" -> "ass"
+            "SSA" -> "ssa"
+            "TTML" -> "ttml"
+            else -> "vtt"
+        }
+        val name = dev.endlesssea.core.subtitle.sidecarFileName(task.fileName, role, ext)
+        val file = tempDirProvider().resolve(".tmp").apply { mkdirs() }.resolve(name)
+        val request = okhttp3.Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return
+            val bytes = response.body?.bytes() ?: return
+            if (bytes.isEmpty() || bytes.size > 8 * 1024 * 1024) return
+            var text = bytes.toString(Charsets.UTF_8)
+            if (text.trimStart().startsWith("#EXTM3U")) {
+                text = joinHlsTextPlaylist(text, response.request.url.toString(), headers)
+            }
+            val srt = if (ext == "ass" || ext == "ssa") dev.endlesssea.core.subtitle.AssDialogue.toSrt(text) else null
+            file.writeText(srt ?: text)
+            val writtenName = if (srt != null) name.removeSuffix(".$ext") + ".srt" else name
+            val written = if (srt != null) file.resolveSibling(writtenName).also { it.writeText(srt); file.delete() } else file
+            publishExtra(task, written, written.name)
+        }
+    }
+
+    private fun joinHlsTextPlaylist(playlist: String, playlistUrl: String, headers: Map<String, String>): String {
+        val chunks = playlist.lineSequence().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        val body = chunks.take(400).joinToString("\n") { line ->
+            val absolute = dev.endlesssea.downloader.hls.resolveHlsUrl(playlistUrl, line)
+            val request = okhttp3.Request.Builder().url(absolute).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+            http.newCall(request).execute().use { it.body?.string().orEmpty() }
+        }
+        return if (body.contains("WEBVTT")) body else "WEBVTT\n\n$body"
+    }
+
+    private fun sidecarName(videoName: String, role: String, extension: String) =
+        dev.endlesssea.core.subtitle.sidecarFileName(videoName, role, extension)
+
     private suspend fun publishFinal(taskId: String, task: DownloadTaskEntity, file: File) {
         val pub = publisher ?: return
         val size = file.length()

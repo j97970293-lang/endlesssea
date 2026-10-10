@@ -65,6 +65,16 @@ class ExtensionsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            runCatching { dev.endlesssea.app.extensions.RepoBootstrap.ensure(repoDao, prefs) }
+            repoDao.all().forEach { repo ->
+                repoManager.cachedIndex(repo.url)?.let { cachedIndexes[repo.url] = it }
+            }
+            if (cachedIndexes.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(repoEntries = buildEntries(_uiState.value.extensions.toEntities()))
+            }
+            syncAllNow()
+        }
+        viewModelScope.launch {
             repoDao.observeAll().collect { repos ->
                 _uiState.value = _uiState.value.copy(
                     // §4 — l'icône du dépôt vient de son index (disponible après sync)
@@ -140,11 +150,13 @@ class ExtensionsViewModel @Inject constructor(
         )
     }
 
-    fun syncAll() = viewModelScope.launch {
+    fun syncAll() = viewModelScope.launch { syncAllNow() }
+
+    private suspend fun syncAllNow() {
         val repos = repoDao.enabled()
         if (repos.isEmpty()) {
             _uiState.value = _uiState.value.copy(message = "Aucun dépôt activé à synchroniser")
-            return@launch
+            return
         }
         _uiState.value = _uiState.value.copy(busy = true)
         var ok = 0
@@ -170,6 +182,7 @@ class ExtensionsViewModel @Inject constructor(
 
     fun removeRepo(url: String) = viewModelScope.launch {
         repoManager.removeRepository(url)
+        prefs.forgetExtensionRepo(url)
         cachedIndexes.remove(url)
         _uiState.value = _uiState.value.copy(message = "Dépôt supprimé")
     }

@@ -4,6 +4,8 @@
 
 The API is a published artifact: `dev.endlesssea:extensions-api:1.0.0` (GPL-3.0). Extensions compile against it as `compileOnly`.
 
+A walkthrough with a Gradle template and a JSON example is in [extension-dev-guide.md](extension-dev-guide.md).
+
 ---
 
 ## 1. Contract overview

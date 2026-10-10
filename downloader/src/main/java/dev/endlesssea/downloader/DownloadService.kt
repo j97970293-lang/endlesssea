@@ -158,10 +158,10 @@ class DownloadService : Service() {
         const val CHANNEL_RESULTS = "downloads_results"
         const val ONGOING_ID = 4201
         const val EXTRA_TASK_ID = "taskId"
-        const val ACTION_RESUME_ALL = "dev.endlesssea.action.RESUME_ALL"
-        const val ACTION_PAUSE = "dev.endlesssea.action.PAUSE"
-        const val ACTION_RESUME = "dev.endlesssea.action.RESUME"
-        const val ACTION_CANCEL = "dev.endlesssea.action.CANCEL"
+        const val ACTION_RESUME_ALL = DownloadServiceCommands.RESUME_ALL
+        const val ACTION_PAUSE = DownloadServiceCommands.PAUSE
+        const val ACTION_RESUME = DownloadServiceCommands.RESUME
+        const val ACTION_CANCEL = DownloadServiceCommands.CANCEL
         /** §service : délai sans aucune tâche avant d'arrêter le service. */
         const val IDLE_STOP_MS = 45_000L
 

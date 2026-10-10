@@ -646,6 +646,14 @@ fun SettingsScreen(
                 )
             }
             item {
+                SettingSwitch(
+                    title = "Économie de données",
+                    subtitle = "Une seule connexion. Sur un appareil à faible mémoire, ce plafond s'applique même si l'option est coupée.",
+                    checked = state.dataSaver,
+                    onChange = viewModel::setDataSaver,
+                )
+            }
+            item {
                 SettingRow(
                     title = "Connexions",
                     subtitle = "${state.partsPerTask} segments par fichier · ${state.parallelTasks} tâche(s) simultanée(s)",

@@ -10,6 +10,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -34,4 +35,5 @@ dependencies {
     testImplementation(libs.test.truth)
     testImplementation(libs.test.kotlinx.coroutines)
     testImplementation(libs.squareup.mockwebserver)
+    androidTestImplementation(libs.androidx.test.junit)
 }

@@ -1333,7 +1333,8 @@ fun DetailsScreen(
                     val grouped = links.groupBy { it.audioLang }.toList()
                         .sortedBy { AudioLang.entries.indexOf(it.first) }
                     val downloadable = links.count {
-                        it.streamType == StreamType.DIRECT_FILE || it.streamType == StreamType.HLS
+                        it.streamType == StreamType.DIRECT_FILE || it.streamType == StreamType.HLS ||
+                            it.streamType == StreamType.DASH
                     }
                     if (downloadable == 0) {
                         Text(
@@ -1769,7 +1770,9 @@ private fun SeasonPill(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
     val kind = dev.endlesssea.core.download.downloadSourceKind(link.streamType.name, link.url)
-    val direct = kind == dev.endlesssea.core.download.DownloadSourceKind.DIRECT || kind == dev.endlesssea.core.download.DownloadSourceKind.HLS
+    val direct = kind == dev.endlesssea.core.download.DownloadSourceKind.DIRECT ||
+        kind == dev.endlesssea.core.download.DownloadSourceKind.HLS ||
+        kind == dev.endlesssea.core.download.DownloadSourceKind.DASH
     var sizeLabel by androidx.compose.runtime.remember(link) {
         androidx.compose.runtime.mutableStateOf(
             if (kind == dev.endlesssea.core.download.DownloadSourceKind.HLS) "Estimation de la taille…"
@@ -1777,7 +1780,7 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
         )
     }
     androidx.compose.runtime.LaunchedEffect(link) {
-        if (!direct) return@LaunchedEffect
+        if (!direct || kind == dev.endlesssea.core.download.DownloadSourceKind.DASH) return@LaunchedEffect
         sizeLabel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             probeSize(link) ?: if (kind == dev.endlesssea.core.download.DownloadSourceKind.HLS)
                 "Estimation indisponible (données insuffisantes ou flux non compatible)"
@@ -1805,7 +1808,7 @@ private fun DownloadRow(link: VideoLink, onEnqueue: () -> Unit) {
                     when (kind) {
                         dev.endlesssea.core.download.DownloadSourceKind.DIRECT -> "Fichier direct"
                         dev.endlesssea.core.download.DownloadSourceKind.HLS -> "Flux HLS — assemblé par segments"
-                        dev.endlesssea.core.download.DownloadSourceKind.DASH -> "Flux DASH — lecture seule"
+                        dev.endlesssea.core.download.DownloadSourceKind.DASH -> "Flux DASH — segments assemblés"
                         dev.endlesssea.core.download.DownloadSourceKind.UNSUPPORTED -> "Source non téléchargeable"
                     },
                 )

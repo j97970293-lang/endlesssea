@@ -151,7 +151,15 @@ class EsPlayer(
                     _playbackEnded.tryEmit(playbackGeneration)
                 }
             }
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { publishPlaybackIntent() }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                publishPlaybackIntent()
+                dev.endlesssea.core.diag.EsLog.e(
+                    "Player", "EsPlayer", error.errorCodeName,
+                    (error.message ?: error.cause?.javaClass?.simpleName ?: "")
+                        .replace(Regex("https?://\\S+"), "[url]").take(300),
+                    recoverable = true,
+                )
+            }
             override fun onIsPlayingChanged(playing: Boolean) { _isPlaying.value = playing }
             override fun onTracksChanged(tracks: Tracks) {
                 publishTracks(tracks)
@@ -253,9 +261,59 @@ class EsPlayer(
             )
             .setSubtitleConfigurations(link.subtitles.map { it.toConfiguration() })
             .build()
-        _availableSubtitles.value = link.subtitles
-        player.setMediaItem(item, positionMs.coerceAtLeast(0L))
+        val sidecars = if (link.url.startsWith("http://") || link.url.startsWith("https://")) emptyList()
+            else discoverLocalSidecars(appContext, link.url)
+        val subtitleTracks = link.subtitles + sidecars.filter { it.role == "subtitle" }.map { sidecar ->
+            SubtitleTrack(
+                url = sidecar.uri,
+                lang = "und",
+                label = sidecar.name.substringBeforeLast('.').substringAfterLast('.').ifBlank { "Sous-titres" },
+                format = subtitleFormat(sidecar.name),
+            )
+        }
+        val playable = item.buildUpon()
+            .setSubtitleConfigurations(subtitleTracks.map { readableSubtitle(it).toConfiguration() })
+            .build()
+        _availableSubtitles.value = subtitleTracks
+        val audioUri = sidecars.firstOrNull { it.role == "audio" }?.uri
+        if (audioUri != null && link.streamType != StreamType.HLS && link.streamType != StreamType.DASH) {
+            val factory = DefaultMediaSourceFactory(appContext).setDataSourceFactory(dataSourceFactory)
+            val audioItem = MediaItem.Builder().setUri(audioUri).setMimeType(MimeTypes.AUDIO_MP4).build()
+            player.setMediaSource(
+                androidx.media3.exoplayer.source.MergingMediaSource(
+                    factory.createMediaSource(playable),
+                    factory.createMediaSource(audioItem),
+                ),
+                positionMs.coerceAtLeast(0L),
+            )
+        } else {
+            player.setMediaItem(playable, positionMs.coerceAtLeast(0L))
+        }
         player.prepare()
+    }
+
+    /** ASS effects are dropped; the dialogue becomes SRT so playback stays light. */
+    private fun readableSubtitle(track: SubtitleTrack): SubtitleTrack {
+        if (track.format != dev.endlesssea.extensions.api.model.SubtitleFormat.ASS &&
+            track.format != dev.endlesssea.extensions.api.model.SubtitleFormat.SSA
+        ) return track
+        val text = runCatching {
+            appContext.contentResolver.openInputStream(android.net.Uri.parse(track.url))?.use { it.readBytes().toString(Charsets.UTF_8) }
+        }.getOrNull() ?: return track
+        val srt = dev.endlesssea.core.subtitle.AssDialogue.toSrt(text) ?: return track
+        val out = java.io.File(appContext.cacheDir, "subs").apply { mkdirs() }
+            .resolve(Integer.toHexString(track.url.hashCode()) + ".srt")
+        return runCatching {
+            out.writeText(srt)
+            track.copy(url = android.net.Uri.fromFile(out).toString(), format = dev.endlesssea.extensions.api.model.SubtitleFormat.SRT)
+        }.getOrDefault(track)
+    }
+
+    private fun subtitleFormat(name: String) = when (name.substringAfterLast('.').lowercase()) {
+        "srt" -> dev.endlesssea.extensions.api.model.SubtitleFormat.SRT
+        "ass" -> dev.endlesssea.extensions.api.model.SubtitleFormat.ASS
+        "ssa" -> dev.endlesssea.extensions.api.model.SubtitleFormat.SSA
+        else -> dev.endlesssea.extensions.api.model.SubtitleFormat.VTT
     }
 
     /**

@@ -305,7 +305,7 @@ fun ExtensionsScreen(
                     GlassCard(contentPadding = PaddingValues(16.dp)) {
                         Column {
                             Text(
-                                "Aucun dépôt configuré. Un dépôt est simplement une URL qui sert un index JSON listant des extensions.",
+                                "Le dépôt Extensions FR est ajouté tout seul. S'il n'apparaît pas encore, attends la synchronisation ou ajoute une autre adresse.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -360,7 +360,7 @@ fun ExtensionsScreen(
                 item {
                     Text(
                         if (availableList.isEmpty()) {
-                            "Aucune extension disponible : ajoutez et synchronisez un dépôt (onglet « Dépôts »)."
+                            "Aucune extension visible pour l'instant. Le dépôt Extensions FR est ajouté automatiquement ; touche Synchroniser si la liste reste vide."
                         } else {
                             "Aucun résultat avec ces filtres."
                         },

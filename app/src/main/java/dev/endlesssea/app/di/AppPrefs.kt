@@ -1044,6 +1044,32 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         p.edit().putInt("dl_speed_limit_kb", c).apply(); _downloadSpeedLimitKb.value = c
     }
 
+    /** One task and one connection. Low available memory applies the same cap even when this is off. */
+    private val _dataSaver = MutableStateFlow(p.getBoolean("dl_data_saver", false))
+    val dataSaver: StateFlow<Boolean> = _dataSaver
+    fun setDataSaver(v: Boolean) {
+        p.edit().putBoolean("dl_data_saver", v).apply(); _dataSaver.value = v
+    }
+
+    private val _extensionRepos = MutableStateFlow(loadJsonStringList("extension_repos"))
+    val extensionRepos: StateFlow<List<String>> = _extensionRepos
+    private val _extensionRepoSeeded = MutableStateFlow(p.getBoolean("extension_repo_seeded", false))
+    val extensionRepoSeeded: StateFlow<Boolean> = _extensionRepoSeeded
+    fun setExtensionRepos(urls: List<String>) {
+        val next = urls.map { it.trim() }.filter { it.startsWith("http") }.distinct()
+        p.edit().putString("extension_repos", org.json.JSONArray(next).toString()).apply()
+        _extensionRepos.value = next
+    }
+    fun rememberExtensionRepo(url: String) = setExtensionRepos(_extensionRepos.value + url)
+    fun forgetExtensionRepo(url: String) {
+        setExtensionRepos(_extensionRepos.value.filterNot { it == url })
+        setExtensionRepoSeeded(true)
+    }
+    fun setExtensionRepoSeeded(v: Boolean) {
+        p.edit().putBoolean("extension_repo_seeded", v).apply()
+        _extensionRepoSeeded.value = v
+    }
+
     /** §nettoyage (conversation 10) : supprime les téléchargements terminés après N jours (0 = jamais). */
     private val _downloadAutoCleanDays = MutableStateFlow(p.getInt("dl_auto_clean_days", 0))
     val downloadAutoCleanDays: StateFlow<Int> = _downloadAutoCleanDays

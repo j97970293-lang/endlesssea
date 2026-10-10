@@ -57,7 +57,7 @@ Key decisions:
 2. An explicit quality selects a matching `RESOLUTION` height; if unavailable/unidentifiable, the task fails rather than silently upgrading. Only UNKNOWN/automatic quality selects the highest advertised `BANDWIDTH`. Redirected and nested playlists are resolved with a four-manifest limit and a 2 MiB bound per manifest.
 3. Segments are fetched sequentially and assembled into a `.ts` or fMP4 output (`EXT-X-MAP`). New HLS checkpoints store the cumulative committed file offset; a matching plan fingerprint is required for resume. Byte-range playlists/maps are explicitly rejected instead of repeatedly downloading whole resources. See [size and resume limitations](../maintenance/download-sizes.md).
 4. AES-128-CBC is supported. SAMPLE-AES and unsupported encryption methods are rejected; this is not a DRM-download implementation.
-5. DASH playback is supported by Media3, but `DownloadManager.runTask` explicitly rejects DASH tasks with “lecture en ligne uniquement pour l'instant”. Direct `BaseURL` extraction/muxing is **not implemented**.
+5. Static DASH is downloaded by `DashEngine`: a progressive `BaseURL`, or init + media segments from `SegmentTemplate` / `SegmentList`. Separate audio is saved as `name.audio.m4a` and merged at playback. DRM (`ContentProtection`) and live (`type=dynamic` without a duration) are refused. This is not a DRM-removal implementation.
 
 These implementation notes supersede the earlier “DASH best-effort” design. Playback/download compatibility still requires real-source and device testing.
 

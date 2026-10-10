@@ -52,14 +52,15 @@ class ExtensionLoader(
         pinnedCertSha256: String?,
         locale: String,
     ): InstallResult = withContext(Dispatchers.IO) {
-        val bytes = http.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { res ->
-            if (!res.isSuccessful) return@withContext InstallResult.Rejected("http ${res.code}")
-            res.body?.bytes()
-                ?: return@withContext InstallResult.Rejected("http ${res.code} : corps vide")
-        }
+        val bytes = runCatching {
+            http.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { res ->
+                if (!res.isSuccessful) return@withContext reject("http ${res.code}")
+                res.body?.bytes() ?: return@withContext reject("http ${res.code} : corps vide")
+            }
+        }.getOrElse { return@withContext reject("téléchargement impossible : ${it.javaClass.simpleName}") }
         val digest = sha256(bytes)
         if (!digest.equals(expectedSha256, ignoreCase = true)) {
-            return@withContext InstallResult.Rejected("checksum mismatch")
+            return@withContext reject("checksum mismatch")
         }
 
         val tmp = File(storeDir, "download-${digest.take(12)}.esx").apply {
@@ -67,13 +68,13 @@ class ExtensionLoader(
         }
 
         val (manifest, cert) = inspectPackage(tmp)
-            ?: return@withContext InstallResult.Rejected("invalid .esx package")
+            ?: return@withContext reject("invalid .esx package")
 
         if (manifest.apiVersion != API_VERSION) {
-            tmp.delete(); return@withContext InstallResult.Rejected("apiVersion ${manifest.apiVersion} != $API_VERSION")
+            tmp.delete(); return@withContext reject("apiVersion ${manifest.apiVersion} != $API_VERSION")
         }
         if (pinnedCertSha256 != null && cert != null && !pinnedCertSha256.equals(cert, true)) {
-            tmp.delete(); return@withContext InstallResult.Rejected("signer changed (reinstall intentionally)")
+            tmp.delete(); return@withContext reject("signer changed (reinstall intentionally)")
         }
 
         val destDir = File(storeDir, "${manifest.id}/${manifest.version}").apply { mkdirs() }
@@ -82,7 +83,7 @@ class ExtensionLoader(
 
         runCatching { instantiate(dest, manifest, locale) }.fold(
             onSuccess = { InstallResult.Success(it, manifest) },
-            onFailure = { InstallResult.Rejected("load failed: ${it.message}") },
+            onFailure = { reject("load failed: ${it.javaClass.simpleName}") },
         )
     }
 
@@ -93,21 +94,26 @@ class ExtensionLoader(
      */
     suspend fun installLocal(src: File, locale: String): InstallResult = withContext(Dispatchers.IO) {
         val (manifest, _) = inspectPackage(src)
-            ?: return@withContext InstallResult.Rejected("paquet .esx invalide (assets/extension.json absent ou illisible)")
+            ?: return@withContext reject("paquet .esx invalide (assets/extension.json absent ou illisible)")
 
         if (manifest.apiVersion != API_VERSION) {
-            return@withContext InstallResult.Rejected("apiVersion ${manifest.apiVersion} ≠ $API_VERSION (extension incompatible avec cette version de l'app)")
+            return@withContext reject("apiVersion ${manifest.apiVersion} ≠ $API_VERSION (extension incompatible avec cette version de l'app)")
         }
 
         val destDir = File(storeDir, "${manifest.id}/${manifest.version}").apply { mkdirs() }
         val dest = File(destDir, "${manifest.id}.esx")
         runCatching { src.copyTo(dest, overwrite = true) }
-            .getOrElse { return@withContext InstallResult.Rejected("copie impossible : ${it.message}") }
+            .getOrElse { return@withContext reject("copie impossible : ${it.javaClass.simpleName}") }
 
         runCatching { instantiate(dest, manifest, locale) }.fold(
             onSuccess = { InstallResult.Success(it, manifest) },
-            onFailure = { InstallResult.Rejected("chargement échoué : ${it.message}") },
+            onFailure = { reject("chargement échoué : ${it.javaClass.simpleName}") },
         )
+    }
+
+    private fun reject(reason: String): InstallResult.Rejected {
+        dev.endlesssea.core.diag.EsLog.e("Extension", "ExtensionLoader", "Installation refusée", reason.take(300))
+        return InstallResult.Rejected(reason)
     }
 
     /** Re-instantiates a previously installed extension (fast path, no network). */
@@ -136,6 +142,8 @@ class ExtensionLoader(
             val text = zip.getInputStream(entry).bufferedReader().readText()
             ManifestParser.parseManifest(text) to signerDigest(pkg)
         }
+    }.onFailure {
+        dev.endlesssea.core.diag.EsLog.e("Extension", "ExtensionLoader", "Paquet .esx illisible", it.javaClass.simpleName)
     }.getOrNull()
 
     @Suppress("DEPRECATION")
@@ -164,13 +172,21 @@ class ExtensionLoader(
                 .method(request.method.name, body)
                 .apply { request.headers.forEach { (k, v) -> header(k, v) } }
                 .build()
-            client.newCall(req).execute().use { res ->
-                EsResponse(
-                    code = res.code,
-                    body = res.body?.string().orEmpty(),
-                    headers = res.headers.toMultimap().mapValues { it.value.firstOrNull().orEmpty() },
-                    finalUrl = res.request.url.toString(),
-                )
+            try {
+                client.newCall(req).execute().use { res ->
+                    if (res.code >= 500) {
+                        dev.endlesssea.core.diag.EsLog.e("Extension", "HttpFacade", "HTTP ${res.code}", recoverable = true)
+                    }
+                    EsResponse(
+                        code = res.code,
+                        body = res.body?.string().orEmpty(),
+                        headers = res.headers.toMultimap().mapValues { it.value.firstOrNull().orEmpty() },
+                        finalUrl = res.request.url.toString(),
+                    )
+                }
+            } catch (e: Exception) {
+                dev.endlesssea.core.diag.EsLog.e("Extension", "HttpFacade", "Requête extension échouée", e.javaClass.simpleName, recoverable = true)
+                throw e
             }
         }
 

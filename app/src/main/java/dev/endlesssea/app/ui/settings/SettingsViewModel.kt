@@ -38,6 +38,7 @@ data class SettingsUiState(
     val wifiOnly: Boolean = true,
     val partsPerTask: Int = 4,
     val parallelTasks: Int = 2,
+    val dataSaver: Boolean = false,
     val defaultSpeed: Float = 1f,
     val autoResume: Boolean = true,
     val skipSeconds: Int = 10,
@@ -143,6 +144,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.storageUri.collect { v -> set { copy(storageUri = v) } } }
         viewModelScope.launch { prefs.wifiOnly.collect { v -> set { copy(wifiOnly = v) } } }
         viewModelScope.launch { prefs.partsPerTask.collect { v -> set { copy(partsPerTask = v) } } }
+        viewModelScope.launch { prefs.dataSaver.collect { v -> set { copy(dataSaver = v) } } }
         viewModelScope.launch { prefs.parallelTasks.collect { v -> set { copy(parallelTasks = v) } } }
         viewModelScope.launch { prefs.defaultSpeed.collect { v -> set { copy(defaultSpeed = v) } } }
         viewModelScope.launch { prefs.autoResume.collect { v -> set { copy(autoResume = v) } } }
@@ -193,6 +195,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setWifiOnly(v: Boolean) { prefs.setWifiOnly(v); toastState(if (v) "Wi-Fi uniquement activé" else "Téléchargement sur données mobiles autorisé") }
+    fun setDataSaver(v: Boolean) {
+        prefs.setDataSaver(v)
+        toastState(if (v) "Économie de données : une seule connexion" else "Connexions normales rétablies")
+    }
     fun setPartsPerTask(v: Int) { prefs.setPartsPerTask(v); toastState("$v segments par fichier") }
     fun setParallelTasks(v: Int) { prefs.setParallelTasks(v); toastState("$v tâche(s) simultanée(s)") }
     fun setDefaultSpeed(v: Float) { prefs.setDefaultSpeed(v); toastState("Vitesse par défaut : ${v}×") }

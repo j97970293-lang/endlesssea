@@ -18,6 +18,7 @@ android {
         versionCode = 31
         versionName = "0.31.0"
         vectorDrawables { useSupportLibrary = true }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Signature debug FIXE (keystore public dédié au debug — aucun secret de production)

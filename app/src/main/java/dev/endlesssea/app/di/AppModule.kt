@@ -143,6 +143,25 @@ object AppModule {
             dao = dao, http = http, tempDirProvider = { context.filesDir },
             // §debit (conversation 10) : plafond de débit réglable (0 = illimité).
             throttleBytesPerSec = { prefs.downloadSpeedLimitKb.value.toLong() * 1024L },
+            parallelism = {
+                val memory = android.app.ActivityManager.MemoryInfo().also {
+                    context.getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(it)
+                }
+                dev.endlesssea.downloader.effectiveDownloadParallelism(
+                    requestedTasks = prefs.parallelTasks.value,
+                    requestedParts = prefs.partsPerTask.value,
+                    dataSaver = prefs.dataSaver.value,
+                    availableMemoryBytes = memory.availMem,
+                )
+            },
+            sidecarPublisher = { task, file, fileName ->
+                val dirs = task.displayPath.substringBeforeLast('/', "")
+                    .split('/').filter { it.isNotBlank() }
+                    .ifEmpty { listOf(dev.endlesssea.app.local.DownloadStorage.DOWNLOADS_DIR) }
+                dev.endlesssea.app.local.DownloadStorage.publishSidecar(
+                    context, prefs.storageRoot.value, dirs, fileName, file,
+                )
+            },
             // §espace-disque : refuser un téléchargement qui ne tiendra pas.
             freeSpaceProvider = { context.filesDir.usableSpace },
             // §stockage-public : arborescence Aniyomi dans le dossier choisi

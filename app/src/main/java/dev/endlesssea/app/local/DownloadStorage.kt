@@ -190,10 +190,75 @@ object DownloadStorage {
         }
     }
 
+    /**
+     * Publie un fichier compagnon (audio séparé, sous-titre) dans le même dossier que la vidéo.
+     * Ne passe pas par la collection Vidéo : un .vtt ou .m4a n'est pas une vidéo.
+     */
+    fun publishSidecar(
+        context: Context,
+        rootUri: String?,
+        relativeDirs: List<String>,
+        fileName: String,
+        source: File,
+    ): String? {
+        val safe = sanitize(fileName)
+        val mime = mimeFor(safe)
+        val tree = root(context, rootUri)
+        if (tree != null) {
+            val viaTree = runCatching {
+                val dir = mkdirs(tree, relativeDirs) ?: return@runCatching null
+                dir.findFile(safe)?.delete()
+                val doc = dir.createFile(mime, safe) ?: return@runCatching null
+                context.contentResolver.openOutputStream(doc.uri)?.use { out ->
+                    source.inputStream().use { it.copyTo(out) }
+                } ?: return@runCatching null
+                doc.uri.toString()
+            }.getOrNull()
+            if (viaTree != null) {
+                source.delete()
+                return viaTree
+            }
+        }
+        return runCatching {
+            if (Build.VERSION.SDK_INT <= 28 || Environment.isExternalStorageLegacy()) {
+                val out = File(publicDir(relativeDirs), safe)
+                source.copyTo(out, overwrite = true)
+                source.delete()
+                Uri.fromFile(out).toString()
+            } else {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, safe)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+                    put(
+                        android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                        (listOf(Environment.DIRECTORY_MOVIES, PUBLIC_ROOT) + relativeDirs.map { sanitize(it) })
+                            .joinToString("/"),
+                    )
+                }
+                val collection = android.provider.MediaStore.Files.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val uri = context.contentResolver.insert(collection, values) ?: return null
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    source.inputStream().use { it.copyTo(out) }
+                } ?: return null
+                val ready = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                context.contentResolver.update(uri, ready, null, null)
+                source.delete()
+                uri.toString()
+            }
+        }.getOrNull()
+    }
+
     private fun mimeFor(name: String) = when (name.substringAfterLast('.', "").lowercase()) {
         "mkv" -> "video/x-matroska"
         "webm" -> "video/webm"
         "ts" -> "video/mp2t"
+        "m4a", "aac" -> "audio/mp4"
+        "srt" -> "application/x-subrip"
+        "vtt" -> "text/vtt"
+        "ass", "ssa" -> "text/x-ssa"
         "jpg", "jpeg" -> "image/jpeg"
         "json" -> "application/json"
         else -> "video/mp4"
