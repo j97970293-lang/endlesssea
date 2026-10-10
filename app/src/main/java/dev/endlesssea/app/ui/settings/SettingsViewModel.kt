@@ -262,13 +262,10 @@ class SettingsViewModel @Inject constructor(
     }
     fun setPlayerOrientation(v: String) { prefs.setPlayerOrientation(v) }
 
-    // §placements-lecteur / §barre-progression / §theme-lecteur
-    val progressPosition: StateFlow<String> = prefs.progressPosition
-    val toolsPosition: StateFlow<String> = prefs.toolsPosition
+    // §barre-progression / §mégaskip
     val megaSkipSide: StateFlow<String> = prefs.megaSkipSide
     val progressThickness: StateFlow<Int> = prefs.progressThickness
     val progressRounded: StateFlow<Boolean> = prefs.progressRounded
-    val playerTheme: StateFlow<String> = prefs.playerTheme
     val videoEnhance: StateFlow<String> = prefs.videoEnhance
     val videoScale: StateFlow<Float> = prefs.videoScale
     val videoSharpen: StateFlow<Float> = prefs.videoSharpen
@@ -296,12 +293,9 @@ class SettingsViewModel @Inject constructor(
     fun setVideoAdvanced(contrast: Float, gamma: Float, sharp: Float, temp: Float) =
         prefs.setVideoAdvanced(contrast, gamma, sharp, temp)
     val borderStrength: StateFlow<Int> = prefs.borderStrength
-    fun setProgressPosition(v: String) = prefs.setProgressPosition(v)
-    fun setToolsPosition(v: String) = prefs.setToolsPosition(v)
     fun setMegaSkipSide(v: String) = prefs.setMegaSkipSide(v)
     fun setProgressThickness(v: Int) = prefs.setProgressThickness(v)
     fun setProgressRounded(v: Boolean) = prefs.setProgressRounded(v)
-    fun setPlayerTheme(v: String) = prefs.setPlayerTheme(v)
     fun setVideoEnhance(v: String) = prefs.setVideoEnhance(v)
     fun setBorderStrength(v: Int) = prefs.setBorderStrength(v)
 

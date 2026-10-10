@@ -235,9 +235,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         showFramingDialog = true
     }
 
-    // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
-    val progressPos by viewModel.progressPosition.collectAsState()
-    val toolsPos by viewModel.toolsPosition.collectAsState()
     val screenBrightness by viewModel.screenBrightness.collectAsState()
     LaunchedEffect(screenBrightness) {
         (context as? android.app.Activity)?.window?.let { window ->
@@ -247,7 +244,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val megaSide by viewModel.megaSkipSide.collectAsState()
     val progressThickness by viewModel.progressThickness.collectAsState()
     val progressRounded by viewModel.progressRounded.collectAsState()
-    val playerThemeName by viewModel.playerTheme.collectAsState()
     // §megaskip : segments en ligne + boutons personnalisés + stats
     val pinchZoomOn by viewModel.pinchZoomEnabled.collectAsState()
     val swapVB by viewModel.swapVolumeBrightness.collectAsState()
@@ -675,10 +671,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             )
         }
 
-        // ---- §theme-lecteur (conversations 1 & 2) : les commandes viennent du
-        // thème choisi — 8 skins complets (mise en page, formes, accents),
-        // pas un simple changement de couleur.
-        val activeTheme = ThemeProvider.of(playerThemeName)
+        // ---- §theme-lecteur : interface Essentiel unique ; les anciennes skins sont retirées.
+        val activeTheme = ThemeProvider.of(null)
         if (state.controlsVisible || state.locked) {
             val controlsState = PlayerControlsState(
                 title = state.title,
@@ -704,8 +698,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 activeSkip = state.activeSkip,
                 skipCountdown = state.skipCountdown,
                 customSkips = state.skipButtons,
-                progressOnTop = progressPos == "top",
-                toolsOnTop = toolsPos == "top",
                 progressThickness = progressThickness,
                 bufferedPositionMs = state.bufferedPositionMs,
                 thumbSize = thumbSize,
@@ -765,14 +757,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             } else Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
                 activeTheme.TopControls(controlsState, controlsActions)
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                    if (activeTheme.id == "cinema") {
-                        dev.endlesssea.app.ui.player.themes.CinemaTheme.Sections(controlsState, controlsActions, top = true)
-                    } else {
-                        dev.endlesssea.app.ui.player.themes.PlayerBarContent(
-                            controlsState, controlsActions,
-                            activeTheme.accent ?: MaterialTheme.colorScheme.primary, top = true,
-                        )
-                    }
+                    dev.endlesssea.app.ui.player.themes.CinemaTheme.Sections(controlsState, controlsActions, top = true)
                 }
             }
             if (!state.locked) {
@@ -875,15 +860,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
                 TextButton(onClick = { showMoreSheet=false; openFraming() }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
                 TextButton(onClick = { showMoreSheet = false; showSkipDialog = true }) { Text("Configurer les sauts") }
-                if (playerThemeName == "cinema") {
-                    Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = megaSide != "left", onClick = { viewModel.setMegaSkipSide("right") }, label = { Text("À droite") })
-                        FilterChip(selected = megaSide == "left", onClick = { viewModel.setMegaSkipSide("left") }, label = { Text("À gauche") })
-                    }
-                    Text("Essentiel conserve la progression et les raccourcis en bas, comme la disposition de référence.",
-                        style = MaterialTheme.typography.bodySmall)
+                Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = megaSide != "left", onClick = { viewModel.setMegaSkipSide("right") }, label = { Text("À droite") })
+                    FilterChip(selected = megaSide == "left", onClick = { viewModel.setMegaSkipSide("left") }, label = { Text("À gauche") })
                 }
+                Text("Essentiel conserve la progression et les raccourcis en bas, comme la disposition de référence.",
+                    style = MaterialTheme.typography.bodySmall)
                 Text("Épaisseur de la barre : $progressThickness dp",
                     style = MaterialTheme.typography.labelMedium)
                 Slider(
@@ -899,19 +882,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Text("Épaisseur du buffer : $bufferThickness dp")
                 Slider(value = bufferThickness.toFloat(), onValueChange = { viewModel.setSeekBuffer(it.toInt()) }, valueRange = 2f..8f)
                 TextButton(onClick = { viewModel.setSeekHideThumb(!hideThumb) }) { Text(if (hideThumb) "Afficher le curseur au repos" else "Masquer le curseur au repos") }
-                Text("Thème du lecteur", style = MaterialTheme.typography.labelMedium)
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES.forEach { (key, v) ->
-                        FilterChip(
-                            selected = playerThemeName == key,
-                            onClick = { viewModel.setPlayerTheme(key) },
-                            label = { Text(v.second, maxLines = 1, softWrap = false) },
-                        )
-                    }
-                }
                 Text(
                     "Renforcement des contours : %d %%".format((state.videoSharpen * 100).toInt()),
                     style = MaterialTheme.typography.labelMedium,

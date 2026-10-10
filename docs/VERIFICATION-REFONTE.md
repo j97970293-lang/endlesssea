@@ -12,7 +12,7 @@ Les tests JVM ne remplacent pas ces vérifications de Compose, SAF, WebView et R
 
 ## Lecteur et playlist
 
-- Vérifier Défaut et les six interfaces originales en paysage et en portrait.
+- Vérifier l'interface Essentiel en paysage et en portrait ; vérifier que les identifiants historiques migrent vers Essentiel.
 - Ouvrir paramètres, informations et playlist ; attendre plus de trois secondes. Les panneaux restent accessibles.
 - Tester verrouillage, déverrouillage, glissement de progression et changement d'épisode.
 - Ouvrir une fiche téléchargée, puis passer au mode avion : la lecture locale ne dépend pas de l'extension.

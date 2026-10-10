@@ -157,27 +157,16 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         )
         const val DEFAULT_ACCENT = "anymex"
 
-        /**
-         * §theme-lecteur : habillages prêts à l'emploi (nom → accent, fond de barre).
-         * "app" = suit le thème de l'application.
-         */
-        /**
-         * §theme-lecteur (conversations 1 & 2) — les 7 thèmes du lecteur.
-         * Un thème n'est pas une couleur : chaque skin fournit sa propre mise en
-         * page des commandes (voir `ui/player/themes/`). Le couple (argb, libellé)
-         * sert uniquement à l'aperçu du sélecteur ; 0 = couleur de l'application.
-         */
+        /** Unique habillage actif du lecteur. Les anciens identifiants restent reconnus pour migrer les sauvegardes. */
         val PLAYER_THEMES = linkedMapOf(
             "cinema" to Pair(0xFF73B7FFL, "Essentiel"),
-            "default" to Pair(0xFF00BCD4L, "Défaut"),
-            "zen" to Pair(0xFFFFFFFFL, "Zen"),
-            "orbit" to Pair(0xFF00BCD4L, "Orbit"),
-            "compactbar" to Pair(0xFF00BCD4L, "Compact Bar"),
-            "neonframe" to Pair(0xFF00E5FFL, "Neon Frame"),
-            "split" to Pair(0xFF00BCD4L, "Split Controls"),
-            "floating" to Pair(0xFF00BCD4L, "Floating Cards"),
         )
-        fun migratePlayerTheme(old: String?): String = old?.takeIf { it in PLAYER_THEMES } ?: "default"
+        private val LEGACY_PLAYER_THEME_IDS = setOf(
+            "default", "zen", "orbit", "compactbar", "neonframe", "split", "floating",
+        )
+        fun isKnownPlayerTheme(id: String): Boolean = id == "cinema" || id in LEGACY_PLAYER_THEME_IDS
+        @Suppress("UNUSED_PARAMETER")
+        fun migratePlayerTheme(old: String?): String = "cinema"
 
         /** §anymex-ui : styles de carte média (capture « Card Style »). */
         val CARD_STYLES = listOf("saikou", "exotic", "minimal_exotic", "modern")
@@ -630,8 +619,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     }
 
     /**
-     * §theme-lecteur : habillage du lecteur. Les couleurs viennent de [PLAYER_THEMES] ;
-     * Les anciennes valeurs inconnues sont migrées vers "default".
+     * §theme-lecteur : unique habillage Essentiel. Les anciens identifiants sont
+     * migrés vers "cinema", y compris lors de la restauration d'une sauvegarde.
      */
     private val _playerTheme = MutableStateFlow(run {
         // Make the requested visual rebuild visible once; keep the old choice recoverable.
@@ -643,7 +632,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     })
     val playerTheme: StateFlow<String> = _playerTheme
     fun setPlayerTheme(v: String) {
-        p.edit().putString("player_theme", v).apply(); _playerTheme.value = v
+        val safe = migratePlayerTheme(v)
+        p.edit().putString("player_theme", safe).apply(); _playerTheme.value = safe
     }
 
     /** §cadrage-video : mode mémorisé entre deux lectures (0..3). */

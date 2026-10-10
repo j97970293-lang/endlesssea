@@ -24,7 +24,7 @@ Aucune release, aucun tag et aucune migration de schéma Room ne sont nécessair
 | Genres | Noms, visibilité et ordre |
 | Catégories personnelles | Noms et listes de médias/URI associés |
 | Annotations locales | Titre, référence de couverture, début/fin d'intro, début d'outro |
-| Réglages sélectionnés | Thème clair/sombre/AMOLED/système, vitesse par défaut, reprise automatique, pas de saut, thème du lecteur, positions des barres/Megaskip et enregistrement de l'historique |
+| Réglages sélectionnés | Thème clair/sombre/AMOLED/système, vitesse par défaut, reprise automatique, pas de saut, interface Essentiel (anciens IDs migrés), positions de commandes historiques conservées pour compatibilité, côté Megaskip et enregistrement de l'historique |
 
 **Non inclus :** fichiers vidéo, fichiers image, sous-titres, extensions installées et leurs réglages, dépôts d'extensions, comptes/jetons/cookies, liens et synchronisations de trackers, tâches/segments de téléchargement, cache et boutons Megaskip, historique des dossiers/autorisations SAF, autres réglages (dont logo, police, fond d'écran et filtres).
 

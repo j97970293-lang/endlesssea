@@ -1001,50 +1001,12 @@ fun SettingsScreen(
             }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    // §placements-lecteur : l'utilisateur décide où vont les contrôles
-                    Text("Disposition des contrôles", style = MaterialTheme.typography.bodyLarge)
+                    Text("Disposition Essentiel", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Barre de progression, rangée d'outils et pastille de grand saut : " +
-                            "chacun en haut ou en bas, à votre main.",
+                        "La progression et les outils restent en bas. Choisissez le côté de la pastille de grand saut.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
-                    val progPos = viewModel.progressPosition.collectAsState().value
-                    Text("Barre de progression (anciens thèmes)", style = MaterialTheme.typography.labelLarge)
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FilterChip(
-                            selected = progPos != "top",
-                            onClick = { viewModel.setProgressPosition("bottom") },
-                            label = { Text("En bas", maxLines = 1, softWrap = false) },
-                        )
-                        FilterChip(
-                            selected = progPos == "top",
-                            onClick = { viewModel.setProgressPosition("top") },
-                            label = { Text("En haut", maxLines = 1, softWrap = false) },
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    val toolsPos = viewModel.toolsPosition.collectAsState().value
-                    Text("Outils en haut / bas (anciens thèmes)", style = MaterialTheme.typography.labelLarge)
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FilterChip(
-                            selected = toolsPos == "top",
-                            onClick = { viewModel.setToolsPosition("top") },
-                            label = { Text("En haut", maxLines = 1, softWrap = false) },
-                        )
-                        FilterChip(
-                            selected = toolsPos != "top",
-                            onClick = { viewModel.setToolsPosition("bottom") },
-                            label = { Text("En bas", maxLines = 1, softWrap = false) },
-                        )
-                    }
                     Spacer(Modifier.height(6.dp))
                     val megaSide = viewModel.megaSkipSide.collectAsState().value
                     Text("Pastille de grand saut", style = MaterialTheme.typography.labelLarge)
@@ -1083,32 +1045,6 @@ fun SettingsScreen(
                         Switch(checked = rounded, onCheckedChange = { viewModel.setProgressRounded(it) })
                         Spacer(Modifier.width(10.dp))
                         Text("Bouts arrondis")
-                    }
-                }
-            }
-            item {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    // §theme-lecteur : habillages type Netflix / Crunchyroll / …
-                    Text("Thème du lecteur", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Chaque thème est une mise en page complète des commandes du lecteur " +
-                            "(barres, formes, disposition, accents) — pas seulement une couleur.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    val cur = viewModel.playerTheme.collectAsState().value
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES.forEach { (key, v) ->
-                            FilterChip(
-                                selected = cur == key,
-                                onClick = { viewModel.setPlayerTheme(key) },
-                                label = { Text(v.second, maxLines = 1, softWrap = false) },
-                            )
-                        }
                     }
                 }
             }

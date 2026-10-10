@@ -41,7 +41,7 @@ Structure cible :
 - panneaux dédiés pour épisodes, pistes audio, sous-titres, qualité et options avancées ;
 - sauvegarde de progression, accès externe et restauration après mort du processus conçus explicitement.
 
-Les anciens thèmes restent accessibles **pendant la transition**. Aucun n'est supprimé dans le lot 1. La migration des préférences et les contrôles de parité précéderont leur remplacement.
+Les anciens identifiants de thème sont migrés vers l'interface **Essentiel**. Les variantes obsolètes et leurs sélecteurs ont été supprimés ; les anciennes valeurs de placement restent tolérées uniquement pour la compatibilité des sauvegardes, sans effet dans le lecteur actuel.
 
 ## Lot 1 intégré
 
