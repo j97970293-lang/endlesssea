@@ -1,5 +1,6 @@
 package dev.endlesssea.app.ui.details
 
+import dev.endlesssea.app.di.MediaPlaybackPreference
 import dev.endlesssea.extensions.api.model.Quality
 import dev.endlesssea.extensions.api.model.VideoLink
 
@@ -18,8 +19,19 @@ internal fun playbackQualityRank(quality: Quality, preference: String): Int {
     }
 }
 
-internal fun preferredPlaybackLink(links: List<VideoLink>, preference: String): VideoLink? =
-    links.minWithOrNull(
-        compareBy<VideoLink> { playbackQualityRank(it.quality, preference) }
-            .thenByDescending { it.quality.pixels },
+internal fun preferredPlaybackLink(
+    links: List<VideoLink>,
+    preference: String,
+    rememberedPreference: MediaPlaybackPreference? = null,
+): VideoLink? {
+    val activePreference = availableMediaPlaybackPreference(links, rememberedPreference)
+    return links.minWithOrNull(
+        compareBy<VideoLink> { link ->
+            val savedQuality = activePreference
+                ?.takeIf { it.server.equals(link.server, ignoreCase = true) &&
+                    it.audioLanguage.equals(link.audioLang.iso, ignoreCase = true) }
+                ?.qualityPixels
+            playbackQualityRank(link.quality, savedQuality?.toString() ?: preference)
+        }.thenByDescending { it.quality.pixels },
     )
+}

@@ -1042,6 +1042,7 @@ fun DetailsScreen(
         val links = state.linksByEpisode[episode.id] ?: emptyList()
         val preferredAudioLanguage by viewModel.preferredAudioLanguage.collectAsState()
         val preferredQuality by viewModel.preferredPlaybackQuality.collectAsState()
+        val rememberedPreference by viewModel.mediaPlaybackPreference.collectAsState()
         var selectedAudioLang by remember(episode.id) { mutableStateOf<AudioLang?>(null) }
         // §serveurs-visibles : la recherche démarre à l'ouverture de la feuille,
         // et la liste se remplit au fil de l'eau (serveur par serveur).
@@ -1084,7 +1085,9 @@ fun DetailsScreen(
                     }
                 } else {
                     // VOSTFR/VF sont accessibles sans parcourir une longue liste de serveurs.
-                    val languageGroups = playbackLanguageGroups(links, preferredAudioLanguage)
+                    val activeMediaPreference = availableMediaPlaybackPreference(links, rememberedPreference)
+                    val languagePreference = activeMediaPreference?.audioLanguage ?: preferredAudioLanguage
+                    val languageGroups = playbackLanguageGroups(links, languagePreference)
                     val availableLanguages = languageGroups.map { it.first }
                     val selectedLanguage = selectedAudioLang
                     LaunchedEffect(availableLanguages, selectedLanguage) {
@@ -1093,7 +1096,11 @@ fun DetailsScreen(
                         }
                     }
                     val priority = viewModel.serverPriority()
-                    fun serverRank(name: String): Int {
+                    fun serverRank(name: String, language: AudioLang): Int {
+                        val savedForLanguage = activeMediaPreference?.takeIf {
+                            it.audioLanguage.equals(language.iso, ignoreCase = true)
+                        }
+                        if (savedForLanguage?.server?.equals(name, ignoreCase = true) == true) return -1
                         val i = priority.indexOfFirst { it.equals(name, true) }
                         return if (i >= 0) i else Int.MAX_VALUE
                     }
@@ -1105,6 +1112,21 @@ fun DetailsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    val savedPreference = rememberedPreference
+                    if (!stillLoading && savedPreference != null) {
+                        val savedChoice = listOfNotNull(
+                            savedPreference.server,
+                            savedPreference.qualityPixels?.let { "${it}p" },
+                            savedPreference.audioLanguage.uppercase(),
+                        ).joinToString(" · ")
+                        Text(
+                            if (activeMediaPreference != null) "Choix mémorisé : $savedChoice"
+                            else "Choix mémorisé indisponible — préférences globales appliquées",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 3.dp),
+                        )
+                    }
                     if (availableLanguages.size > 1) {
                         Spacer(Modifier.height(6.dp))
                         Row(
@@ -1144,10 +1166,10 @@ fun DetailsScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             val grouped = languageLinks.groupBy { it.server.ifBlank { "Source" } }.toList()
-                                .sortedWith(compareBy<Pair<String, List<VideoLink>>> { serverRank(it.first) }
+                                .sortedWith(compareBy<Pair<String, List<VideoLink>>> { serverRank(it.first, lang) }
                                     .thenBy { it.first.lowercase() })
                             grouped.forEach { (server, srvLinks) ->
-                                val best = preferredPlaybackLink(srvLinks, preferredQuality) ?: srvLinks.first()
+                                val best = preferredPlaybackLink(srvLinks, preferredQuality, rememberedPreference) ?: srvLinks.first()
                                 GlassCard(
                                     cornerRadius = 14.dp,
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
@@ -1156,7 +1178,12 @@ fun DetailsScreen(
                                         Modifier.fillMaxWidth().clickable {
                                             val startIndex = links.indexOf(best).coerceAtLeast(0)
                                             playSheetEpisode = null
-                                            viewModel.playEpisode(episode, startIndex = startIndex, onReady = launchPlayer())
+                                            viewModel.playEpisode(
+                                                episode,
+                                                startIndex = startIndex,
+                                                selectedLink = best,
+                                                onReady = launchPlayer(),
+                                            )
                                         },
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
