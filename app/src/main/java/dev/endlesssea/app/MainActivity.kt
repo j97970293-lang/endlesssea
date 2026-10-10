@@ -1,10 +1,14 @@
 package dev.endlesssea.app
 
+import android.content.ClipData
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -57,12 +61,15 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private val pendingExternalIntent = MutableStateFlow<Intent?>(null)
+
     @Inject lateinit var prefs: AppPrefs
     @Inject lateinit var updateChecker: UpdateChecker
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingExternalIntent.value = intent
         enableEdgeToEdge()
         setContent {
             val themeMode by prefs.themeMode.collectAsState()
@@ -206,6 +213,27 @@ class MainActivity : ComponentActivity() {
                 )
 
                 val nav = rememberNavController()
+                val incomingIntent by pendingExternalIntent.collectAsState()
+                androidx.compose.runtime.LaunchedEffect(incomingIntent) {
+                    val incoming = incomingIntent ?: return@LaunchedEffect
+                    pendingExternalIntent.value = null
+
+                    val videoUri = externalVideoUri(incoming)
+                    val mimeType = videoUri?.let { incoming.type ?: contentResolver.getType(it) }
+                    if (videoUri != null && mimeType != null && mimeType.startsWith("video/")) {
+                        openExternalVideo(videoUri, mimeType)
+                        return@LaunchedEffect
+                    }
+
+                    val deepLink = incoming.data
+                    if (incoming.action == Intent.ACTION_VIEW &&
+                        deepLink?.scheme == "endlesssea" && deepLink.host == "media"
+                    ) {
+                        deepLink.lastPathSegment?.takeIf { it.isNotBlank() }?.let { mediaId ->
+                            nav.navigate("details/${Uri.encode(mediaId)}") { launchSingleTop = true }
+                        }
+                    }
+                }
                 val backStack by nav.currentBackStackEntryAsState()
                 val route = backStack?.destination?.route
                 val amoled = themeMode == AppPrefs.THEME_AMOLED
@@ -304,6 +332,47 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingExternalIntent.value = intent
+    }
+
+    @Suppress("DEPRECATION")
+    private fun externalVideoUri(intent: Intent): Uri? = when (intent.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND -> (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)
+            ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+        else -> null
+    }
+
+    private fun openExternalVideo(uri: Uri, mimeType: String) {
+        val displayName = runCatching {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: "Vidéo externe"
+        val link = dev.endlesssea.extensions.api.model.VideoLink(
+            url = uri.toString(),
+            streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+            quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN,
+            server = "Fichier externe",
+        )
+        dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
+            title = displayName,
+            mediaId = null,
+            episodeId = uri.toString(),
+            links = listOf(link),
+            startIndex = 0,
+        )
+        val playerIntent = Intent(this, dev.endlesssea.app.ui.player.PlayerActivity::class.java).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newRawUri(displayName, uri)
+        }
+        startActivity(playerIntent)
     }
 }
 

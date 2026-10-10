@@ -853,6 +853,16 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Text("Luminosité au démarrage : $screenBrightness %")
                 Slider(value = screenBrightness.toFloat(), onValueChange = { viewModel.setScreenBrightness(it.toInt()) }, valueRange = 10f..100f)
                 TextButton(onClick = { showMoreSheet = false; showPlaylist = true }) { Text("Playlist") }
+                state.links.getOrNull(state.currentLinkIndex)
+                    ?.takeIf { it.streamType != dev.endlesssea.extensions.api.model.StreamType.EMBED &&
+                        it.streamType != dev.endlesssea.extensions.api.model.StreamType.TORRENT }
+                    ?.let { currentLink ->
+                        TextButton(onClick = {
+                            showMoreSheet = false
+                            viewModel.engine.pause()
+                            openWithExternalPlayer(context, currentLink)
+                        }) { Text("Lire avec une autre application") }
+                    }
                 Row {
                     TextButton(onClick = { showMoreSheet = false; showQualityDialog = true }) { Text("Qualité") }
                     TextButton(onClick = { showMoreSheet = false; showAudioDialog = true }) { Text("Audio") }
@@ -1385,6 +1395,52 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
             },
         )
+    }
+}
+
+private fun openWithExternalPlayer(
+    context: android.content.Context,
+    link: dev.endlesssea.extensions.api.model.VideoLink,
+) {
+    val sourceUri = runCatching { android.net.Uri.parse(link.url) }.getOrNull()
+    if (sourceUri == null || sourceUri.scheme?.let { it in setOf("content", "file", "http", "https") } != true) {
+        android.widget.Toast.makeText(context, "Cette source ne peut pas être transmise à un lecteur externe.", android.widget.Toast.LENGTH_LONG).show()
+        return
+    }
+    val targetUri = if (sourceUri.scheme == "file") {
+        runCatching {
+            androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "dev.endlesssea.fileprovider",
+                java.io.File(sourceUri.path.orEmpty()),
+            )
+        }.getOrElse {
+            android.widget.Toast.makeText(context, "Ce fichier n'est pas partageable avec les autres applications.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+    } else sourceUri
+    val extension = targetUri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()
+    val mimeType = context.contentResolver.getType(targetUri) ?: when (extension) {
+        "m3u8" -> "application/vnd.apple.mpegurl"
+        "mpd" -> "application/dash+xml"
+        else -> "video/*"
+    }
+    val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+        setDataAndType(targetUri, mimeType)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        clipData = android.content.ClipData.newRawUri("Vidéo", targetUri)
+    }
+    if (link.headers.isNotEmpty()) {
+        android.widget.Toast.makeText(
+            context,
+            "Attention : certains lecteurs externes ne reprennent pas les en-têtes du serveur. La lecture EndlessSea reste disponible.",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
+    runCatching {
+        context.startActivity(android.content.Intent.createChooser(viewIntent, "Choisir un lecteur vidéo"))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "Aucun lecteur externe compatible trouvé.", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 

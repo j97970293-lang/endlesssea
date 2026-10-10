@@ -295,10 +295,10 @@ fun DetailsScreen(
                         Icon(Icons.Filled.ArrowBack, "Retour", tint = Color.White)
                     }
                     Spacer(Modifier.weight(1f))
-                    (state.details?.posterUrl ?: state.details?.bannerUrl)?.let { img ->
+                    if (!viewModel.isLocal && mediaId.isNotBlank()) {
                         val title = state.details?.title ?: "EndlessSea"
-                        ImmersiveCircleButton(onClick = { sharePoster(context, title, img) }) {
-                            Icon(Icons.Filled.Share, "Partager l'affiche", tint = Color.White)
+                        ImmersiveCircleButton(onClick = { shareMediaLink(context, title, mediaId) }) {
+                            Icon(Icons.Filled.Share, "Partager la fiche", tint = Color.White)
                         }
                         Spacer(Modifier.width(8.dp))
                     }
@@ -465,6 +465,15 @@ fun DetailsScreen(
                                 Icon(Icons.Filled.MoreVert, "Plus d'actions")
                             }
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                                if (!viewModel.isLocal && mediaId.isNotBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text("Partager la fiche") },
+                                        onClick = {
+                                            moreMenu = false
+                                            shareMediaLink(context, state.details?.title ?: "EndlessSea", mediaId)
+                                        },
+                                    )
+                                }
                                 if (viewModel.isLocal) {
                                     DropdownMenuItem(text = { Text("Modifier les métadonnées / l'affiche") },
                                         onClick = { moreMenu = false; localTool = "metadata" })
@@ -1353,6 +1362,16 @@ private suspend fun extractPosterColor(
 }
 
 /** Ouvre un lien externe (bande-annonce → lecteur/navigateur par défaut). */
+/** Partage un lien EndlessSea qui ouvre directement cette fiche sur Android. */
+private fun shareMediaLink(context: android.content.Context, title: String, mediaId: String) {
+    val link = mediaShareLink(mediaId)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, "$title\n$link\n\nOuvre ce lien dans EndlessSea.")
+    }
+    context.startActivity(Intent.createChooser(intent, "Partager la fiche"))
+}
+
 /** Partage le lien de l'affiche (apps de la fiche de partage Android). */
 private fun sharePoster(context: android.content.Context, title: String, url: String) {
     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
