@@ -4,6 +4,15 @@ import dev.endlesssea.data.db.WatchHistoryEntity
 
 private const val MAX_HOME_CONTINUE_ITEMS = 12
 
+/** Local card identity carries the episode URI so playback can never mistake its folder for a file. */
+internal fun localContinueTarget(episodeId: String): String? =
+    if (episodeId.startsWith("content://") || episodeId.startsWith("file://") || episodeId.startsWith("/")) {
+        "local:$episodeId"
+    } else null
+
+internal fun continueClickTarget(mediaId: String, episodeId: String): String =
+    localContinueTarget(episodeId) ?: mediaId
+
 /**
  * Home shows at most one resume card per title, using the newest unfinished
  * episode. Standalone local files have no series ID, so they remain separate

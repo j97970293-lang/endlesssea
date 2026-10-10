@@ -17,6 +17,20 @@ class ContinueWatchingTest {
     }
     @Test fun emptyHistoryIsSupported() { assertEquals(emptyList<WatchHistoryEntity>(), latestContinueEntries(emptyList())) }
 
+    @Test fun localContinueTargetUsesEpisodeUriInsteadOfItsSeriesFolder() {
+        assertEquals(
+            "local:content://media/episode.mp4",
+            continueClickTarget("local:content://media/season-1", "content://media/episode.mp4"),
+        )
+    }
+
+    @Test fun remoteContinueTargetStaysOnItsMediaDetails() {
+        assertEquals(
+            "provider:series-42",
+            continueClickTarget("provider:series-42", "provider:series-42:S01:E02"),
+        )
+    }
+
     @Test fun standaloneLocalFilesDoNotCollapseUnderBlankMediaId() {
         val result = latestContinueEntries(listOf(entry("", "content://file-a", 2), entry("", "content://file-b", 1)))
         assertEquals(listOf("content://file-a", "content://file-b"), result.map { it.episodeId })
