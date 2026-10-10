@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.endlesssea.app.di.MediaPlaybackPreference
 import dev.endlesssea.core.util.FileNames
 import dev.endlesssea.data.db.DownloadTaskEntity
 import dev.endlesssea.data.db.EpisodeDao
@@ -117,6 +118,8 @@ class DetailsViewModel @Inject constructor(
     val serverOrder = prefs.serverOrder
     val preferredAudioLanguage = prefs.preferredAudioLang
     val preferredPlaybackQuality = prefs.preferredPlaybackQuality
+    private val _mediaPlaybackPreference = MutableStateFlow(prefs.mediaPlaybackPreference(mediaId))
+    val mediaPlaybackPreference: StateFlow<MediaPlaybackPreference?> = _mediaPlaybackPreference
     fun saveServerOrder(order: List<String>) = prefs.setServerOrder(order)
     val uiState: StateFlow<DetailsUiState> = _uiState
 
@@ -702,21 +705,34 @@ class DetailsViewModel @Inject constructor(
     /** §fiche-serveurs : priorité des serveurs configurée par l'utilisateur (réglages). */
     fun serverPriority(): List<String> = prefs.serverOrder.value
 
-    /** Priorise la langue préférée, le serveur mémorisé puis la qualité visée. */
-    private fun orderByLangPref(links: List<VideoLink>): List<VideoLink> {
-        if (links.size < 2) return links
-        val language = prefs.preferredAudioLang.value
-        val quality = prefs.preferredPlaybackQuality.value
-        val servers = prefs.serverOrder.value
-        fun serverRank(name: String): Int =
-            servers.indexOfFirst { it.equals(name, ignoreCase = true) }.let { if (it < 0) Int.MAX_VALUE else it }
-        return links.sortedWith(
-            compareBy<VideoLink> { if (language == "auto" || it.audioLang.iso == language) 0 else 1 }
-                .thenBy { serverRank(it.server) }
-                .thenBy { playbackQualityRank(it.quality, quality) }
-                .thenBy { if (it.streamType == dev.endlesssea.extensions.api.model.StreamType.EMBED) 1 else 0 },
+    /** Apply this media's last explicit choice when the exact combination still exists. */
+    private fun orderByLangPref(links: List<VideoLink>): List<VideoLink> = orderPlaybackLinks(
+        links = links,
+        preferredAudioLanguage = prefs.preferredAudioLang.value,
+        serverPriority = prefs.serverOrder.value,
+        preferredQuality = prefs.preferredPlaybackQuality.value,
+        rememberedPreference = _mediaPlaybackPreference.value,
+    )
+
+    private fun rememberPlaybackPreference(link: VideoLink) {
+        val server = link.server.trim()
+        if (server.isBlank()) return
+        val preference = MediaPlaybackPreference(
+            server = server,
+            qualityPixels = link.quality.pixels.takeIf { it > 0 },
+            audioLanguage = link.audioLang.iso,
+        )
+        prefs.setMediaPlaybackPreference(mediaId, preference)
+        _mediaPlaybackPreference.value = prefs.mediaPlaybackPreference(mediaId) ?: preference
+        // Any links resolved earlier for this media must also reflect the new choice.
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            linksByEpisode = current.linksByEpisode.mapValues { (_, links) -> orderByLangPref(links) },
         )
     }
+
+    private fun includeSelectedLink(links: List<VideoLink>, selectedLink: VideoLink?): List<VideoLink> =
+        if (selectedLink == null || links.any { it == selectedLink }) links else links + selectedLink
 
     /** Lecture : met les liens dans le canal mémoire, puis [onReady] lance PlayerActivity. */
     /** §hors-ligne-prioritaire : fichier téléchargé correspondant à un épisode. */
@@ -804,21 +820,34 @@ class DetailsViewModel @Inject constructor(
             quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Hors ligne")) }.orEmpty()
     }
 
-    fun playEpisode(episode: Episode, startIndex: Int = 0, onReady: () -> Unit = {}) = viewModelScope.launch {
+    fun playEpisode(
+        episode: Episode,
+        startIndex: Int = 0,
+        selectedLink: VideoLink? = null,
+        onReady: () -> Unit = {},
+    ) = viewModelScope.launch {
         refreshEpisodeAvailability(episode.id)
+        if (selectedLink != null && downloadedFor(episode.id) == null) {
+            rememberPlaybackPreference(selectedLink)
+        }
         // §épisode-suivant : la file = tous les épisodes de la fiche, dans l'ordre ;
         // les liens des voisins sont résolus à la demande par ce résolveur.
         val all = _uiState.value.episodes
         dev.endlesssea.app.ui.player.PlayerLaunchStore.setQueue(
             all.map { ep ->
+                val offline = downloadedFor(ep.id)
+                val existingLinks = offline?.let { local ->
+                    listOf(VideoLink(url = local.targetUri, streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
+                        quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargement"))
+                } ?: _uiState.value.linksByEpisode[ep.id].orEmpty()
+                val queuedLinks = if (ep.id == episode.id && offline == null) {
+                    includeSelectedLink(existingLinks, selectedLink)
+                } else existingLinks
                 dev.endlesssea.app.ui.player.PlayerLaunchStore.QueueItem(
                     title = buildEpisodeTitle(ep),
                     episodeId = ep.id,
-                    links = downloadedFor(ep.id)?.let { local ->
-                        listOf(VideoLink(url = local.targetUri, streamType = dev.endlesssea.extensions.api.model.StreamType.DIRECT_FILE,
-                            quality = dev.endlesssea.extensions.api.model.Quality.UNKNOWN, server = "Téléchargement"))
-                    } ?: _uiState.value.linksByEpisode[ep.id].orEmpty(),
-                    downloaded = downloadedFor(ep.id) != null,
+                    links = queuedLinks,
+                    downloaded = offline != null,
                     thumbnailUrl = ep.thumbnailUrl, season = ep.season, episodeNumber = ep.number,
                     durationMs = ep.durationMs ?: 0L, mediaId = mediaId,
                     markers = markersForEpisode(ep.id),
@@ -860,17 +889,21 @@ class DetailsViewModel @Inject constructor(
         }
         val existing = _uiState.value.linksByEpisode[episode.id]
         if (existing != null) {
+            val launchLinks = includeSelectedLink(existing, selectedLink)
+            val launchIndex = selectedLink?.let(launchLinks::indexOf)?.takeIf { it >= 0 } ?: startIndex
             dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
                 title = buildEpisodeTitle(episode), mediaId = mediaId, episodeId = episode.id,
-                links = existing, startIndex = startIndex,
+                links = launchLinks, startIndex = launchIndex,
             )
             onReady()
             return@launch
         }
         loadLinks(episode) { links ->
+            val launchLinks = includeSelectedLink(links, selectedLink)
+            val launchIndex = selectedLink?.let(launchLinks::indexOf)?.takeIf { it >= 0 } ?: startIndex
             dev.endlesssea.app.ui.player.PlayerLaunchStore.set(
                 title = buildEpisodeTitle(episode), mediaId = mediaId, episodeId = episode.id,
-                links = links, startIndex = startIndex,
+                links = launchLinks, startIndex = launchIndex,
             )
             onReady()
         }

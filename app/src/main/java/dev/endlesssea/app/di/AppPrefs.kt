@@ -4,8 +4,16 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Server, normalized quality and audio language last chosen explicitly for one media item. */
+data class MediaPlaybackPreference(
+    val server: String,
+    val qualityPixels: Int?,
+    val audioLanguage: String,
+)
 
 /**
  * Préférences UI/téléchargement/lecteur (SharedPreferences léger, aucun DataStore requis).
@@ -439,6 +447,48 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val safe = v.takeIf { it in PLAYBACK_QUALITY_OPTIONS } ?: "auto"
         p.edit().putString("playback_quality", safe).apply()
         _preferredPlaybackQuality.value = safe
+    }
+
+    /** Per-media overrides live in SharedPreferences; no Room schema or new dependency is needed. */
+    fun mediaPlaybackPreference(mediaId: String): MediaPlaybackPreference? {
+        if (mediaId.isBlank()) return null
+        val raw = p.getString(mediaPlaybackPreferenceKey(mediaId), null) ?: return null
+        return runCatching {
+            val json = org.json.JSONObject(raw)
+            val server = json.optString("server").trim()
+            val language = json.optString("audio_language").trim().lowercase()
+            if (server.isBlank() || language.isBlank()) return@runCatching null
+            MediaPlaybackPreference(
+                server = server,
+                qualityPixels = json.optInt("quality_pixels", 0).takeIf { it > 0 },
+                audioLanguage = language,
+            )
+        }.getOrNull()
+    }
+
+    fun setMediaPlaybackPreference(mediaId: String, preference: MediaPlaybackPreference) {
+        val server = preference.server.trim().take(256)
+        val language = preference.audioLanguage.trim().lowercase().take(16)
+        if (mediaId.isBlank() || server.isBlank() || language.isBlank()) return
+        val value = org.json.JSONObject()
+            .put("server", server)
+            .put("quality_pixels", preference.qualityPixels?.takeIf { it > 0 } ?: 0)
+            .put("audio_language", language)
+            .toString()
+        p.edit().putString(mediaPlaybackPreferenceKey(mediaId), value).apply()
+    }
+
+    private fun mediaPlaybackPreferenceKey(mediaId: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(mediaId.toByteArray(Charsets.UTF_8))
+        val hex = "0123456789abcdef"
+        val suffix = buildString(digest.size * 2) {
+            digest.forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hex[value ushr 4])
+                append(hex[value and 0x0f])
+            }
+        }
+        return "media_playback_$suffix"
     }
 
     // ---------------------------------------------------------------- apparence avancée
