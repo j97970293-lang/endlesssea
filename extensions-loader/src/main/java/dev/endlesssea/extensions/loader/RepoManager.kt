@@ -104,12 +104,10 @@ class RepoManager(
             when {
                 res.code == 304 -> FetchResult.NotModified
                 !res.isSuccessful -> error("HTTP ${res.code}")
-                else -> FetchResult.Fresh(
-                    ManifestParser.parseRepoIndex(
-                        res.body?.string() ?: error("HTTP ${res.code} : corps de réponse vide"),
-                    ),
-                    res.header("ETag"),
-                )
+                else -> {
+                    val raw = res.body?.string() ?: error("HTTP ${res.code} : corps de réponse vide")
+                    FetchResult.Fresh(ManifestParser.parseRepoIndex(raw), res.header("ETag"), raw)
+                }
             }
         }
     }

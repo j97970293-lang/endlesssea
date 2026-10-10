@@ -26,7 +26,7 @@ fun hlsSubtitleTracks(master: String, masterUrl: String): List<HlsSubtitleTrack>
             language = values["LANGUAGE"].orEmpty().ifBlank { "und" },
             name = values["NAME"].orEmpty().ifBlank { values["LANGUAGE"].orEmpty().ifBlank { "Sous-titres" } },
         )
-    }.distinctBy { it.url }
+    }.distinctBy { it.url }.toList()
 }
 
 internal fun resolveHlsUrl(base: String, child: String): String =

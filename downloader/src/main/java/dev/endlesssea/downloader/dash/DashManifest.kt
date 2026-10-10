@@ -150,7 +150,7 @@ private fun segmentTemplate(template: XmlNode, rep: XmlNode, base: String, perio
 
 private fun substitute(pattern: String, rep: XmlNode, number: Int, time: Long): String {
     var out = pattern
-    out = Regex("""\$Number(?:%0(\d+)d)?\$""").replace(out) { match ->
+    out = Regex("""\${'$'}Number(?:%0(\d+)d)?\${'$'}""").replace(out) { match ->
         val width = match.groupValues[1].toIntOrNull()
         if (width == null) number.toString() else number.toString().padStart(width, '0')
     }
