@@ -28,7 +28,7 @@ fun SectionMenuButton(icon: ImageVector? = null, home: Boolean = false) {
     Box {
         Box(Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
             .clickable { expanded = true }, contentAlignment = Alignment.Center) {
-            if (home) Image(painterResource(actions.logo), "Menu de l'accueil : paramètres, extensions et comptes", Modifier.size(36.dp))
+            if (home) Image(painterResource(actions.logo), "Menu de l'accueil : paramètres, extensions et comptes", Modifier.size(40.dp))
             else Icon(icon ?: Icons.Default.Menu, "Menu de la section : paramètres, extensions et comptes", tint = MaterialTheme.colorScheme.onPrimaryContainer)
         }
         DropdownMenu(expanded, { expanded = false }) {

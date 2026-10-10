@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Label
@@ -243,13 +242,20 @@ fun SettingsScreen(
                     "Synchroniser les épisodes vus, récupérer affiches et bandes-annonces",
                     expanded = false) { onOpenTrackers() }
             }
-            if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis, halos, logo, icône")) item {
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Interface", "Styles de cartes, carrousel, barre, arrondis, halos")) item {
                 SettingCategory(Icons.Filled.Dashboard, "Interface et thème",
                     "Couleurs, luminosité, cartes, carrousel, barre, arrondis, police, fond",
                     expanded = "ui" in openCategories) { toggleCategory("ui") }
             }
+            if (openCategoryFull == null && matchesQuery(settingsQuery, "Logos", "Logo de l'application, icône du téléphone, aperçu")) item {
+                SettingCategory(Icons.Filled.Label, "Logos",
+                    "Parcourir les logos disponibles et choisir l'icône de l'application",
+                    expanded = "logos" in openCategories) { toggleCategory("logos") }
+            }
             if ("ui" in openCategories) {
                 item { UiSettingsSection(viewModel, state) }
+            }
+            if ("logos" in openCategories) {
                 item { LogoSettingsSection(viewModel.appLogo.collectAsState().value, viewModel::setAppLogo) }
             }
             // §fusion-reglages : « Thème » n'est plus une page séparée — tout
