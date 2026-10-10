@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.Flow
 interface MediaDao {
     @Upsert suspend fun upsertAll(items: List<MediaEntity>)
     @Query("SELECT * FROM media WHERE id = :id") suspend fun byId(id: String): MediaEntity?
+    /** Batch title resolution for large history lists; callers should keep `ids` below SQLite's bind limit. */
+    @Query("SELECT * FROM media WHERE id IN (:ids)") suspend fun byIds(ids: List<String>): List<MediaEntity>
     @Query("SELECT * FROM media WHERE titleKey LIKE '%' || :key || '%' LIMIT :limit")
     fun searchLocal(key: String, limit: Int = 50): Flow<List<MediaEntity>>
     @Query("SELECT * FROM media ORDER BY cachedAt DESC LIMIT :limit")
