@@ -161,9 +161,13 @@ class ExtensionLoader(
         sha256(cert.encoded)
     }.getOrNull()
 
-    /** Per-extension HTTP facade: shared pool, isolated cookies, journal hook (docs/en/04 §6). */
+    /**
+     * HTTP facade des extensions. Le client partage le pont de cookies WebView
+     * avec le reste de l'app : une vérification anti-bot résolue une fois vaut
+     * aussi pour les retries d'extension et pour Coil.
+     */
     private class HttpFacade(private val context: Context) : ExtensionHttpClient {
-        private val client = dev.endlesssea.core.net.HttpClients.debug()
+        private val client = dev.endlesssea.core.net.HttpClients.baseBuilder().build()
         override val userAgent: String = dev.endlesssea.core.net.HttpClients.USER_AGENT
 
         override suspend fun execute(request: EsRequest): EsResponse = withContext(Dispatchers.IO) {
@@ -190,7 +194,8 @@ class ExtensionLoader(
             }
         }
 
-        override fun dumpCookies(host: String): Map<String, String> = emptyMap()
+        override fun dumpCookies(host: String): Map<String, String> =
+            dev.endlesssea.core.net.HttpClients.WebViewCookieJar.dump(host)
     }
 
     companion object {

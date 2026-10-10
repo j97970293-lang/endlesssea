@@ -213,6 +213,7 @@ fun SafeAsyncImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderModifier: Modifier = modifier,
+    contentScale: androidx.compose.ui.layout.ContentScale = androidx.compose.ui.layout.ContentScale.Fit,
 ) {
     val context = LocalContextOfImages.current
     val safeUrl = EsImages.safeImageUrl(url)
@@ -226,6 +227,7 @@ fun SafeAsyncImage(
             contentDescription = contentDescription,
             imageLoader = loader,
             modifier = Modifier.matchParentSize(),
+            contentScale = contentScale,
         ) {
             when (painter.state) {
                 is coil.compose.AsyncImagePainter.State.Error ->

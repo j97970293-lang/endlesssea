@@ -183,8 +183,10 @@ class DetailsViewModel @Inject constructor(
             resumeEpisodeId.value = runCatching { historyDao.resumeForMedia(mediaId)?.episodeId }.getOrNull()
         }
         val remote = runCatching {
-            val ext = registry.instance(extensionId)
-            ext.load(mediaKey)
+            dev.endlesssea.app.withCaptchaRetry {
+                val ext = registry.instance(extensionId)
+                ext.load(mediaKey)
+            }
         }
         remote.onSuccess { details ->
             cacheLocally(details)
@@ -194,13 +196,23 @@ class DetailsViewModel @Inject constructor(
                 .distinctBy { it.id }.sortedWith(compareBy({ it.season ?: 0 }, { it.number }))
             val stored = mediaDao.byId(mediaId)
             val metadataPinned = stored?.externalIdsJson?.let { org.json.JSONObject(it).has("metadata_provider") } == true
+            // Les champs additifs (note, personnages, bande-annonce) sont des
+            // `var` hors constructeur : data-class.copy() ne les recopie pas.
+            val displayed = details.copy(
+                title = stored?.customTitle ?: details.title,
+                posterUrl = stored?.customCoverUri ?: details.posterUrl,
+                bannerUrl = if (metadataPinned) stored?.bannerUrl else details.bannerUrl,
+                synopsis = if (metadataPinned) stored?.synopsis else details.synopsis,
+                genres = if (metadataPinned) stored?.toDetails()?.genres.orEmpty() else details.genres,
+                year = if (metadataPinned) stored?.year else details.year,
+            ).also { copy ->
+                copy.rating = details.rating
+                copy.ratingCount = details.ratingCount
+                copy.trailerUrl = details.trailerUrl
+                copy.characters = details.characters
+            }
             _uiState.value = _uiState.value.copy(
-                loading = false, details = details.copy(title = stored?.customTitle ?: details.title,
-                    posterUrl = stored?.customCoverUri ?: details.posterUrl,
-                    bannerUrl = if (metadataPinned) stored?.bannerUrl else details.bannerUrl,
-                    synopsis = if (metadataPinned) stored?.synopsis else details.synopsis,
-                    genres = if (metadataPinned) stored?.toDetails()?.genres.orEmpty() else details.genres,
-                    year = if (metadataPinned) stored?.year else details.year), episodes = episodes,
+                loading = false, details = displayed, episodes = episodes,
             )
             refreshLibraryFlags()
             refreshResume()
@@ -236,8 +248,16 @@ class DetailsViewModel @Inject constructor(
         val previous = mediaDao.byId(mediaId)
         val pinned = previous?.externalIdsJson?.let { org.json.JSONObject(it).has("metadata_provider") } == true
         val incoming = details.toEntity()
+        val mergedExternalIds = org.json.JSONObject(incoming.externalIdsJson).apply {
+            previous?.externalIdsJson?.let { oldJson ->
+                runCatching {
+                    val old = org.json.JSONObject(oldJson)
+                    old.keys().forEach { key -> put(key, old.get(key)) }
+                }
+            }
+        }.toString()
         mediaDao.upsertAll(listOf(incoming.copy(customTitle = previous?.customTitle,
-            customCoverUri = previous?.customCoverUri, externalIdsJson = previous?.externalIdsJson ?: "{}",
+            customCoverUri = previous?.customCoverUri, externalIdsJson = mergedExternalIds,
             bannerUrl = if (pinned) previous?.bannerUrl else incoming.bannerUrl,
             synopsis = if (pinned) previous?.synopsis else incoming.synopsis,
             genresJson = if (pinned) previous!!.genresJson else incoming.genresJson,
@@ -671,19 +691,21 @@ class DetailsViewModel @Inject constructor(
         // « serveurs » tourner à l'infini. Plafond dur à 90 s, et on garde ce qui
         // est déjà arrivé. L'erreur éventuelle est remontée à l'écran.
         val failure = runCatching {
-            withContext(Dispatchers.IO) {
-                kotlinx.coroutines.withTimeoutOrNull(90_000) {
-                    registry.instance(extensionId)
-                        .linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
-                        .collect { link ->
-                            collected += link
-                            // Publication immédiate : la feuille serveurs se remplit en direct.
-                            // Préférence VF/VOSTFR appliquée au fur et à mesure.
-                            val partial = orderByLangPref(collected.toList())
-                            _uiState.value = _uiState.value.copy(
-                                linksByEpisode = _uiState.value.linksByEpisode + (episode.id to partial),
-                            )
-                        }
+            dev.endlesssea.app.withCaptchaRetry {
+                withContext(Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeoutOrNull(90_000) {
+                        registry.instance(extensionId)
+                            .linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
+                            .collect { link ->
+                                if (collected.none { it.url == link.url }) collected += link
+                                // Publication immédiate : la feuille serveurs se remplit en direct.
+                                // Préférence VF/VOSTFR appliquée au fur et à mesure.
+                                val partial = orderByLangPref(collected.toList())
+                                _uiState.value = _uiState.value.copy(
+                                    linksByEpisode = _uiState.value.linksByEpisode + (episode.id to partial),
+                                )
+                            }
+                    }
                 }
             }
         }.exceptionOrNull()
@@ -899,10 +921,12 @@ class DetailsViewModel @Inject constructor(
     private suspend fun resolveBatchLinks(episode: Episode): List<VideoLink> {
         _uiState.value.linksByEpisode[episode.id]?.takeIf { it.isNotEmpty() }?.let { return it }
         val links = mutableListOf<VideoLink>()
-        kotlinx.coroutines.withTimeout(90_000) {
-            withContext(Dispatchers.IO) {
-                registry.instance(extensionId).linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
-                    .collect { links += it }
+        dev.endlesssea.app.withCaptchaRetry {
+            kotlinx.coroutines.withTimeout(90_000) {
+                withContext(Dispatchers.IO) {
+                    registry.instance(extensionId).linksFlowCompat(LinkRequest(episode = episode, mediaId = mediaId))
+                        .collect { link -> if (links.none { it.url == link.url }) links += link }
+                }
             }
         }
         val resolved = links.distinctBy { Triple(it.url, it.audioLang, it.quality) }
@@ -1115,10 +1139,13 @@ class DetailsViewModel @Inject constructor(
         id = mediaId, extensionId = extensionId, type = type.name,
         title = title, titleKey = FileNames.normalizedKey(title),
         synopsis = synopsis, posterUrl = posterUrl, bannerUrl = bannerUrl,
-        year = year, status = status.name, episodeCount = episodeCount, durationMin = durationMin,
+        year = year, status = status.name, rating = rating,
+        episodeCount = episodeCount, durationMin = durationMin,
         genresJson = genres.joinToString(",", "[", "]") { "\"${it.replace("\"", "'")}\"" },
         altTitlesJson = altTitles.joinToString(",", "[", "]") { "\"${it.replace("\"", "'")}\"" },
         studiosJson = studios.joinToString(",", "[", "]") { "\"${it.replace("\"", "'")}\"" },
+        languagesJson = languages.joinToString(",", "[", "]") { "\"${it.name}\"" },
+        externalIdsJson = org.json.JSONObject(externalIds).toString(),
     )
 
     private fun Episode.toEntity(parentMediaId: String) = EpisodeEntity(
@@ -1133,13 +1160,31 @@ class DetailsViewModel @Inject constructor(
     )
 
     private fun MediaEntity.toDetails() = MediaDetails(
-        id = mediaId, url = mediaKey, title = customTitle ?: title, synopsis = synopsis,
+        id = mediaId, url = mediaKey, title = customTitle ?: title,
+        altTitles = runCatching { val a = org.json.JSONArray(altTitlesJson); (0 until a.length()).map { a.getString(it) } }
+            .getOrDefault(emptyList()),
+        synopsis = synopsis,
         posterUrl = customCoverUri ?: posterUrl, bannerUrl = bannerUrl,
         type = runCatching { dev.endlesssea.extensions.api.model.MediaType.valueOf(type) }
             .getOrDefault(dev.endlesssea.extensions.api.model.MediaType.ANIME),
-        year = year, episodeCount = episodeCount, durationMin = durationMin,
+        year = year,
+        status = runCatching { dev.endlesssea.extensions.api.model.MediaStatus.valueOf(status ?: "UNKNOWN") }
+            .getOrDefault(dev.endlesssea.extensions.api.model.MediaStatus.UNKNOWN),
+        episodeCount = episodeCount, durationMin = durationMin,
         studios = runCatching { val a = org.json.JSONArray(studiosJson); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList()),
         genres = genresJson.removeSurrounding("[", "]").split(",")
             .map { it.trim().removeSurrounding("\"") }.filter { it.isNotBlank() },
-    )
+        languages = runCatching {
+            val a = org.json.JSONArray(languagesJson)
+            (0 until a.length()).mapNotNull { index ->
+                runCatching { dev.endlesssea.extensions.api.model.AudioLang.valueOf(a.getString(index)) }.getOrNull()
+            }
+        }.getOrDefault(emptyList()),
+        externalIds = runCatching {
+            val obj = org.json.JSONObject(externalIdsJson)
+            obj.keys().asSequence().associateWith { key -> obj.optString(key) }
+        }.getOrDefault(emptyMap()),
+    ).apply {
+        this.rating = this@toDetails.rating
+    }
 }

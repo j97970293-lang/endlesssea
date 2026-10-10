@@ -43,11 +43,20 @@ class CaptchaActivity : Activity() {
     private var errorPanel: View? = null
     private var errorText: TextView? = null
     private var pageUrl: String = ""
+    private var requestHeaders: Map<String, String> = emptyMap()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pageUrl = intent.getStringExtra(CaptchaContract.EXTRA_PAGE_URL).orEmpty()
+        requestHeaders = runCatching {
+            val json = org.json.JSONObject(
+                intent.getStringExtra(CaptchaContract.EXTRA_HEADERS_JSON).orEmpty().ifBlank { "{}" },
+            )
+            json.keys().asSequence().associateWith { key -> json.optString(key) }
+                .filterValues { it.isNotBlank() }
+                .filterKeys { !it.equals("Cookie", true) && !it.equals("User-Agent", true) }
+        }.getOrDefault(emptyMap())
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -71,7 +80,7 @@ class CaptchaActivity : Activity() {
             setOnClickListener {
                 errorPanel?.visibility = View.GONE
                 web.visibility = View.VISIBLE
-                web.loadUrl(pageUrl)
+                web.loadUrl(pageUrl, requestHeaders)
             }
         }
         // Bouton flottant « J'ai terminé » : si la vérification est passée mais la
@@ -127,9 +136,19 @@ class CaptchaActivity : Activity() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 view.evaluateJavascript(
-                    "(document.title + ' ' + document.body.innerText.slice(0,2000))"
+                    """(function(){
+                        var active = document.querySelector(
+                          '.cf-turnstile, #challenge-form, [id*=captcha], [class*=captcha], iframe[src*=turnstile], iframe[src*=challenge]'
+                        );
+                        var text = (document.title || '') + ' ' + ((document.body && document.body.innerText) || '').slice(0,3000);
+                        return (active ? '__ES_CHALLENGE__ ' : '') + text;
+                    })()"""
                 ) { text ->
-                    if (text != null && !containsChallengeMarkers(text.lowercase())) {
+                    val normalized = text.orEmpty().lowercase()
+                    if (normalized.isNotBlank() &&
+                        "__es_challenge__" !in normalized &&
+                        !containsChallengeMarkers(normalized)
+                    ) {
                         // Marqueurs de défi absents → les cookies sont exploitables.
                         CookieManager.getInstance().flush()
                         setResult(CaptchaContract.RESULT_SOLVED)
@@ -186,7 +205,9 @@ class CaptchaActivity : Activity() {
         }
 
         setContentView(root)
-        web.loadUrl(pageUrl)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
+        if (pageUrl.startsWith("http")) web.loadUrl(pageUrl, requestHeaders)
+        else showError("Adresse de vérification invalide.")
     }
 
     private fun showError(message: String) {
@@ -213,7 +234,8 @@ class CaptchaActivity : Activity() {
         /** Marqueurs courants des pages anti-bot (détection best-effort). */
         val CHALLENGE_MARKERS = listOf(
             "verify you are human", "vérification anti-robot", "are you a robot",
-            "cf-challenge", "just a moment", "captcha", "vérification de sécurité",
+            "cf-challenge", "just a moment", "captcha", "turnstile",
+            "verifying your connection", "checking your browser", "vérification de sécurité",
         )
 
         private fun sslErrorName(code: Int) = when (code) {

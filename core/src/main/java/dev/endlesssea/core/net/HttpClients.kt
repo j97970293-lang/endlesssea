@@ -1,5 +1,9 @@
 package dev.endlesssea.core.net
 
+import android.webkit.CookieManager as WebCookieManager
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import okhttp3.JavaNetCookieJar
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -14,7 +18,55 @@ import java.util.concurrent.TimeUnit
 object HttpClients {
 
     const val USER_AGENT =
-        "EndlessSea/0.1 (Android; +https://github.com/endlesssea) OkHttp/4"
+        "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36 EndlessSea/0.33"
+
+    /**
+     * Pont bidirectionnel WebView ↔ OkHttp.
+     *
+     * Une vérification Cloudflare/Turnstile est résolue dans un WebView Android,
+     * dont les cookies vivent dans [android.webkit.CookieManager]. OkHttp et Coil
+     * utilisaient auparavant des jars séparés : le retry repartait donc sans
+     * `cf_clearance` et les posters protégés restaient en 403. Ce jar unique est
+     * installé sur tous les clients créés par [baseBuilder].
+     */
+    object WebViewCookieJar : CookieJar {
+        private fun manager(): WebCookieManager? = runCatching {
+            WebCookieManager.getInstance().apply { setAcceptCookie(true) }
+        }.getOrNull()
+
+        override fun loadForRequest(url: HttpUrl): List<Cookie> {
+            val header = runCatching { manager()?.getCookie(url.toString()) }.getOrNull().orEmpty()
+            if (header.isBlank()) return emptyList()
+            return header.split(';').mapNotNull { pair ->
+                Cookie.parse(url, pair.trim())
+            }
+        }
+
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            val manager = manager() ?: return
+            cookies.forEach { cookie ->
+                runCatching { manager.setCookie(url.toString(), cookie.toString()) }
+            }
+            runCatching { manager.flush() }
+        }
+
+        /** Cookies visibles pour le domaine, au format attendu par ExtensionHttpClient. */
+        fun dump(hostOrUrl: String): Map<String, String> {
+            val base = when {
+                hostOrUrl.startsWith("http://") || hostOrUrl.startsWith("https://") -> hostOrUrl
+                else -> "https://${hostOrUrl.trim().trimEnd('/')}/"
+            }
+            val header = runCatching { manager()?.getCookie(base) }.getOrNull().orEmpty()
+            if (header.isBlank()) return emptyMap()
+            return buildMap {
+                header.split(';').forEach { raw ->
+                    val part = raw.trim()
+                    val split = part.indexOf('=')
+                    if (split > 0) put(part.substring(0, split).trim(), part.substring(split + 1).trim())
+                }
+            }
+        }
+    }
 
     /** Base builder: polite defaults reused by app + per-extension clients. */
     fun baseBuilder(): OkHttpClient.Builder {
@@ -33,6 +85,7 @@ object HttpClients {
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .cookieJar(WebViewCookieJar)
             .addInterceptor { chain ->
                 chain.proceed(
                     chain.request().newBuilder()
@@ -45,7 +98,7 @@ object HttpClients {
         return builder
     }
 
-    /** Client with an isolated, in-memory cookie jar (one per extension at runtime). */
+    /** Client avec jar Java explicite pour les rares intégrations qui l'exigent. */
     fun withCookieJar(persistent: CookieManager): OkHttpClient =
         baseBuilder()
             .cookieJar(JavaNetCookieJar(persistent.apply {
@@ -53,7 +106,7 @@ object HttpClients {
             }))
             .build()
 
-    /** Verbose client for debug builds — never shipped in release. */
+    /** Client verbeux de diagnostic (les builds release retirent les logs via R8). */
     fun debug(): OkHttpClient =
         baseBuilder()
             .addInterceptor(HttpLoggingInterceptor().apply {

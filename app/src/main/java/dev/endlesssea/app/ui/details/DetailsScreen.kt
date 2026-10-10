@@ -81,7 +81,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import dev.endlesssea.app.ui.components.GlassCard
 import dev.endlesssea.app.ui.player.PlayerActivity
 import dev.endlesssea.extensions.api.model.AudioLang
@@ -95,7 +94,7 @@ private fun audioSection(lang: AudioLang) = when (lang) {
     AudioLang.VF -> "VF"
     AudioLang.MULTI -> "MULTI"
     AudioLang.VO -> "VO (original)"
-    AudioLang.OTHER -> "Autre"
+    AudioLang.OTHER -> "Langue non indiquée"
 }
 
 /**
@@ -241,8 +240,8 @@ fun DetailsScreen(
                     .height(410.dp),
             ) {
                 (state.details?.bannerUrl ?: state.details?.posterUrl)?.let { img ->
-                    AsyncImage(
-                        model = img,
+                    dev.endlesssea.app.SafeAsyncImage(
+                        url = img,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -360,8 +359,8 @@ fun DetailsScreen(
                             )
                         }
                         GlassCard(cornerRadius = 18.dp, contentPadding = PaddingValues(0.dp)) {
-                            AsyncImage(
-                                model = state.details?.posterUrl,
+                            dev.endlesssea.app.SafeAsyncImage(
+                                url = state.details?.posterUrl,
                                 contentDescription = state.details?.title,
                                 modifier = Modifier.size(width = 118.dp, height = 176.dp),
                                 contentScale = ContentScale.Crop,
@@ -1505,8 +1504,8 @@ private fun CharacterCard(credit: dev.endlesssea.extensions.api.model.CharacterC
                     .clip(RoundedCornerShape(24.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                AsyncImage(
-                    model = credit.imageUrl,
+                dev.endlesssea.app.SafeAsyncImage(
+                    url = credit.imageUrl,
                     contentDescription = credit.name,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
@@ -1863,8 +1862,8 @@ private fun EpisodeRowAnymex(
                 if (localVideo) {
                     dev.endlesssea.app.ui.local.LocalVideoThumbnail(episode.id, localVideoBytes, Modifier.fillMaxSize())
                 } else if (episode.thumbnailUrl != null) {
-                    AsyncImage(
-                        model = episode.thumbnailUrl,
+                    dev.endlesssea.app.SafeAsyncImage(
+                        url = episode.thumbnailUrl,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,

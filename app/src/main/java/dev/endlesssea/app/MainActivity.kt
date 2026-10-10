@@ -61,6 +61,14 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private val captchaLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        CaptchaCoordinator.onResult(
+            result.resultCode == dev.endlesssea.extensions.api.captcha.CaptchaContract.RESULT_SOLVED,
+        )
+    }
+
     private val pendingExternalIntent = MutableStateFlow<Intent?>(null)
 
     @Inject lateinit var prefs: AppPrefs
@@ -69,6 +77,13 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CaptchaCoordinator.attach { challengeIntent ->
+            challengeIntent.setClass(
+                this,
+                dev.endlesssea.extensions.loader.captcha.CaptchaActivity::class.java,
+            )
+            captchaLauncher.launch(challengeIntent)
+        }
         pendingExternalIntent.value = intent
         enableEdgeToEdge()
         setContent {
@@ -374,6 +389,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingExternalIntent.value = intent
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) CaptchaCoordinator.detach()
+        super.onDestroy()
     }
 
     @Suppress("DEPRECATION")

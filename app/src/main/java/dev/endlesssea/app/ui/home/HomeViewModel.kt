@@ -243,12 +243,19 @@ class HomeViewModel @Inject constructor(
                     // ---- Catalogues par genre : 2 premières rangées déclarées (ou « main »)
                     val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
                         .filter { it.key.isNotBlank() }
-                    val catList = declared.ifEmpty {
-                        listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
-                    }.take(2)
+                    val catList = balancedCategories(
+                        declared.ifEmpty {
+                            listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+                        },
+                        limit = 2,
+                    )
                     catList.forEach { cat ->
                         val actualKey = if (declared.isEmpty()) "main" else cat.key
-                        runCatching { ext.getMainPage(MainPageRequest(category = actualKey, page = 1)) }
+                        runCatching {
+                            dev.endlesssea.app.withCaptchaRetry {
+                                ext.getMainPage(MainPageRequest(category = actualKey, page = 1))
+                            }
+                        }
                             .onSuccess { page ->
                                 if (page.items.isEmpty()) return@onSuccess
                                 val items = page.items.take(20).map {
@@ -322,15 +329,22 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(loading = true)
         val declared = runCatching { ext.categories() }.getOrDefault(emptyList())
             .filter { it.key.isNotBlank() }
-        val cats = declared.ifEmpty {
-            listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
-        }.take(6)
+        val cats = balancedCategories(
+            declared.ifEmpty {
+                listOf(dev.endlesssea.extensions.api.model.HomeCategory("main", ext.info.name))
+            },
+            limit = 6,
+        )
         val fresh = mutableListOf<HomeRowUi>()
         coroutineScope {
             cats.map { cat ->
                 async {
                     val key = if (declared.isEmpty()) "main" else cat.key
-                    runCatching { ext.getMainPage(MainPageRequest(category = key, page = 1)) }
+                    runCatching {
+                        dev.endlesssea.app.withCaptchaRetry {
+                            ext.getMainPage(MainPageRequest(category = key, page = 1))
+                        }
+                    }
                         .onSuccess { page ->
                             if (page.items.isEmpty()) return@onSuccess
                             val items = page.items.take(20).map {

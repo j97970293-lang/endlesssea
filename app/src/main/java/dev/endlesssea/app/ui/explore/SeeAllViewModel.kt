@@ -49,7 +49,9 @@ class SeeAllViewModel @Inject constructor(
         runCatching {
             val ext = registry.instance(pkg)
             _uiState.value = _uiState.value.copy(extensionName = ext.info.name)
-            ext.getMainPage(MainPageRequest(category = category, page = nextPage))
+            dev.endlesssea.app.withCaptchaRetry {
+                ext.getMainPage(MainPageRequest(category = category, page = nextPage))
+            }
         }.onSuccess { page ->
             val wrapped = page.items.map {
                 SearchItemUi(

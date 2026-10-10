@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.endlesssea.app.ui.search.SearchItemUi
+import dev.endlesssea.app.ui.home.balancedCategories
 import dev.endlesssea.extensions.api.model.MainPageRequest
 import dev.endlesssea.extensions.loader.ExtensionRegistry
 import kotlinx.coroutines.coroutineScope
@@ -93,14 +94,18 @@ class ExploreViewModel @Inject constructor(
                         // déclare beaucoup de genres avant son planning ou ses actualités.
                         val editorial = listOf(ExploreSpecialKind.PROGRAMS, ExploreSpecialKind.NEWS)
                             .mapNotNull { kind -> declared.firstOrNull { exploreSpecialKind(it.key, it.title) == kind } }
-                        val regular = declared.filter { exploreSpecialKind(it.key, it.title) == null }
-                            .take(MAX_CATEGORIES_PER_EXT)
+                        val regular = balancedCategories(
+                            declared.filter { exploreSpecialKind(it.key, it.title) == null },
+                            MAX_CATEGORIES_PER_EXT,
+                        )
                         (editorial + regular).distinctBy { it.key }
                     }
                     catList.forEach { cat ->
                         val actualKey = if (declared.isEmpty()) "main" else cat.key
                         runCatching {
-                            ext.getMainPage(MainPageRequest(category = actualKey, page = 1))
+                            dev.endlesssea.app.withCaptchaRetry {
+                                ext.getMainPage(MainPageRequest(category = actualKey, page = 1))
+                            }
                         }.onSuccess { page ->
                             if (page.items.isNotEmpty()) {
                                 val wrapped = ExploreRowUi(

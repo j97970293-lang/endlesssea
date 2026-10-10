@@ -146,7 +146,11 @@ class SearchViewModel @Inject constructor(
             .filter { (_, ext) -> sourceFilter == "ALL" || ext.info.id == sourceFilter }
             .map { (name, ext) ->
             async {
-                runCatching { ext.search(query, page = 1, filters = filters) }
+                runCatching {
+                    dev.endlesssea.app.withCaptchaRetry {
+                        ext.search(query, page = 1, filters = filters)
+                    }
+                }
                     .onSuccess { page ->
                         // id composite « <pkg id>:<url> » — l'écran Détails rappelle cette extension
                         val remapPrefix = ext.info.id
