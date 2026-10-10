@@ -520,42 +520,49 @@ fun DetailsScreen(
                     }
                 }
 
-                // ---- Bouton « Continuer » pleine largeur (reprise) + Lire / Tout télécharger
+                // ---- Bouton unique Lire/Continuer + Tout télécharger
                 item {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                        state.resumeLabel?.let { label ->
-                            Button(
-                                onClick = { viewModel.playResume(onReady = launchPlayer()) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(label)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
+                        val resumeAvailable = state.resumeEpisodeId != null &&
+                            state.episodes.any { it.id == state.resumeEpisodeId }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Button(
                                 onClick = {
-                                    state.episodes.firstOrNull()?.let { viewModel.playEpisode(it, onReady = launchPlayer()) }
+                                    if (resumeAvailable) {
+                                        viewModel.playResume(onReady = launchPlayer())
+                                    } else {
+                                        state.episodes.firstOrNull()?.let {
+                                            viewModel.playEpisode(it, onReady = launchPlayer())
+                                        }
+                                    }
                                 },
+                                enabled = state.episodes.isNotEmpty(),
                                 modifier = Modifier.weight(1.4f),
                             ) {
-                                Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lire")
+                                Icon(Icons.Filled.PlayArrow, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    if (resumeAvailable) state.resumeLabel?.removePrefix("▶ ") ?: "Continuer"
+                                    else "Lire",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
-                        if (state.episodes.size > 1 && !viewModel.isLocal) {
-                            OutlinedButton(
-                                onClick = { serverOrderDialog = true },
-                                enabled = !state.batchRunning,
-                                modifier = Modifier.weight(1.4f),
-                            ) {
-                                if (state.batchRunning) {
-                                    dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(6.dp))
-                                } else {
-                                    Icon(Icons.Filled.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                            if (state.episodes.size > 1 && !viewModel.isLocal) {
+                                OutlinedButton(
+                                    onClick = { serverOrderDialog = true },
+                                    enabled = !state.batchRunning,
+                                    modifier = Modifier.weight(1.4f),
+                                ) {
+                                    if (state.batchRunning) {
+                                        dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(6.dp))
+                                    } else {
+                                        Icon(Icons.Filled.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                                    }
+                                    Text("Tout télécharger")
                                 }
-                                Text("Tout télécharger")
                             }
-                        }
                         }
                     }
                 }
@@ -943,12 +950,14 @@ fun DetailsScreen(
 
     playSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
+        var selectedAudioLang by remember(episode.id) { mutableStateOf<AudioLang?>(null) }
         // §serveurs-visibles : la recherche démarre à l'ouverture de la feuille,
         // et la liste se remplit au fil de l'eau (serveur par serveur).
         LaunchedEffect(episode.id) { viewModel.loadLinks(episode) }
         ModalBottomSheet(onDismissRequest = { playSheetEpisode = null }) {
-            Column(Modifier.fillMaxWidth().heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.8f)
-                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth()
+                .heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.8f)
+                .padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
                     "Lire — ${episode.title ?: "Épisode ${episode.number.toInt()}"}",
                     style = MaterialTheme.typography.titleMedium,
@@ -982,56 +991,100 @@ fun DetailsScreen(
                         }
                     }
                 } else {
-                    // Ordre des serveurs : priorité glissée dans les réglages, inconnus à la fin (alpha)
+                    // VOSTFR/VF sont accessibles sans parcourir une longue liste de serveurs.
+                    val languageGroups = playbackLanguageGroups(links)
+                    val availableLanguages = languageGroups.map { it.first }
+                    val selectedLanguage = selectedAudioLang
+                    LaunchedEffect(availableLanguages, selectedLanguage) {
+                        if (selectedLanguage != null && selectedLanguage !in availableLanguages) {
+                            selectedAudioLang = null
+                        }
+                    }
                     val priority = viewModel.serverPriority()
                     fun serverRank(name: String): Int {
                         val i = priority.indexOfFirst { it.equals(name, true) }
                         return if (i >= 0) i else Int.MAX_VALUE
                     }
-                    val grouped = links.groupBy { it.server.ifBlank { "Source" } }.toList()
-                        .sortedWith(compareBy<Pair<String, List<dev.endlesssea.extensions.api.model.VideoLink>>> { serverRank(it.first) }
-                            .thenBy { it.first.lowercase() })
                     val stillLoading = state.linksLoadingEpisode == episode.id
+                    val serverCount = links.map { it.server.ifBlank { "Source" } }.distinct().size
                     Text(
-                        "${grouped.size} serveur(s) — ${links.size} lien(s)" +
+                        "$serverCount serveur(s) — ${links.size} lien(s)" +
                             if (stillLoading) " · recherche en cours…" else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
-                    grouped.forEach { (server, srvLinks) ->
-                        val best = srvLinks.maxByOrNull { it.quality.pixels } ?: srvLinks.first()
-                        GlassCard(
-                            cornerRadius = 14.dp,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    if (availableLanguages.size > 1) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth().clickable {
-                                    val startIndex = links.indexOf(best).coerceAtLeast(0)
-                                    playSheetEpisode = null
-                                    viewModel.playEpisode(episode, startIndex = startIndex, onReady = launchPlayer())
-                                },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(server, style = MaterialTheme.typography.bodyLarge)
-                                    Text(
-                                        listOfNotNull(
-                                            best.quality.label,
-                                            best.audioLang.name.takeIf { l -> l != "OTHER" },
-                                            "${srvLinks.size} qualité(s)",
-                                        ).joinToString(" · "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Text("▶", color = MaterialTheme.colorScheme.primary)
+                            FilterChip(
+                                selected = selectedAudioLang == null,
+                                onClick = { selectedAudioLang = null },
+                                label = { Text("Toutes (${links.size})", maxLines = 1, softWrap = false) },
+                            )
+                            languageGroups.forEach { (lang, languageLinks) ->
+                                val count = languageLinks.size
+                                FilterChip(
+                                    selected = selectedAudioLang == lang,
+                                    onClick = { selectedAudioLang = lang },
+                                    label = { Text("${audioSection(lang)} ($count)", maxLines = 1, softWrap = false) },
+                                )
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    val languageGroupsToShow = if (selectedLanguage == null) languageGroups
+                        else languageGroups.filter { it.first == selectedLanguage }
+                    Column(
+                        Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    ) {
+                        languageGroupsToShow.forEach { (lang, languageLinks) ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(audioSection(lang), style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.weight(1f))
+                                Text("${languageLinks.size} lien(s)", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            val grouped = languageLinks.groupBy { it.server.ifBlank { "Source" } }.toList()
+                                .sortedWith(compareBy<Pair<String, List<VideoLink>>> { serverRank(it.first) }
+                                    .thenBy { it.first.lowercase() })
+                            grouped.forEach { (server, srvLinks) ->
+                                val best = srvLinks.maxByOrNull { it.quality.pixels } ?: srvLinks.first()
+                                GlassCard(
+                                    cornerRadius = 14.dp,
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable {
+                                            val startIndex = links.indexOf(best).coerceAtLeast(0)
+                                            playSheetEpisode = null
+                                            viewModel.playEpisode(episode, startIndex = startIndex, onReady = launchPlayer())
+                                        },
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(server, style = MaterialTheme.typography.bodyLarge)
+                                            Text(
+                                                "${best.quality.label} · ${srvLinks.size} lien(s)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        Text("▶", color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(28.dp))
                     }
                 }
-                Spacer(Modifier.height(28.dp))
             }
         }
         LaunchedEffect(episode.id) {
