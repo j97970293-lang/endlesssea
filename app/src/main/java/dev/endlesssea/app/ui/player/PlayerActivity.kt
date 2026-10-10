@@ -178,6 +178,7 @@ private val BUILTIN_PRESETS = listOf(
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
+    val currentLink = state.links.getOrNull(state.currentLinkIndex)
     val isPlaying by viewModel.engine.isPlaying.collectAsState()
     val playbackRequested by viewModel.engine.playbackRequested.collectAsState()
     val subtitleTracks by viewModel.engine.availableSubtitles.collectAsState()
@@ -211,6 +212,25 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     var subLoading by remember { mutableStateOf(false) }
     var subResults by remember {
         androidx.compose.runtime.mutableStateOf<List<OnlineSubtitle>>(emptyList())
+    }
+    var pendingSubtitleExport by remember {
+        mutableStateOf<Pair<dev.endlesssea.extensions.api.model.SubtitleTrack, Map<String, String>>?>(null)
+    }
+    val subtitleSavePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
+    ) { destination ->
+        val pending = pendingSubtitleExport
+        pendingSubtitleExport = null
+        if (destination != null && pending != null) {
+            playerScope.launch {
+                val result = exportSidecarSubtitle(context, pending.first, pending.second, destination)
+                val message = result.fold(
+                    onSuccess = { "Sous-titre enregistré sans la vidéo." },
+                    onFailure = { "Téléchargement du sous-titre impossible : ${it.message ?: "erreur réseau"}" },
+                )
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
     // §cadrage-video : mode persistant ; 0 contenir, 1 recadrer, 2 étirer, 3 fond flou sans rognage.
@@ -853,7 +873,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Text("Luminosité au démarrage : $screenBrightness %")
                 Slider(value = screenBrightness.toFloat(), onValueChange = { viewModel.setScreenBrightness(it.toInt()) }, valueRange = 10f..100f)
                 TextButton(onClick = { showMoreSheet = false; showPlaylist = true }) { Text("Playlist") }
-                state.links.getOrNull(state.currentLinkIndex)
+                currentLink
                     ?.takeIf { it.streamType != dev.endlesssea.extensions.api.model.StreamType.EMBED &&
                         it.streamType != dev.endlesssea.extensions.api.model.StreamType.TORRENT }
                     ?.let { currentLink ->
@@ -1336,6 +1356,29 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
+                    val downloadableSubtitles = currentLink?.subtitles.orEmpty().filter {
+                        it.url.startsWith("https://", ignoreCase = true) || it.url.startsWith("http://", ignoreCase = true)
+                    }
+                    if (downloadableSubtitles.isNotEmpty()) {
+                        Text("Sous-titres de la source — téléchargement seul", style = MaterialTheme.typography.labelLarge)
+                        downloadableSubtitles.forEach { track ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(track.label.ifBlank { track.lang }, style = MaterialTheme.typography.bodyMedium)
+                                    Text(track.format.name, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = {
+                                    pendingSubtitleExport = track to currentLink?.headers.orEmpty()
+                                    subtitleSavePicker.launch(subtitleExportFileName(state.title, track))
+                                }) { Text("Télécharger") }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Text(
                         "Désactivé",
                         color = MaterialTheme.colorScheme.primary,
