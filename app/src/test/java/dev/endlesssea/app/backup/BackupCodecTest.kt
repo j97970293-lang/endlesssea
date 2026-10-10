@@ -15,7 +15,7 @@ class BackupCodecTest {
         media = listOf(MediaEntity("extension:1", "extension", "ANIME", "Title", "title", customTitle = "Mon titre", cachedAt = 42)),
         genres = listOf(GenreEntity(7, "Mon genre", true, 0, false)),
         customCategories = mapOf("À revoir" to listOf("extension:1", "content://episode")),
-        localMetadata = mapOf("content://episode" to LocalFileMeta("Titre, spécial", "content://image", 0, 90, 1200)),
+        localMetadata = mapOf("content://episode" to LocalFileMeta("Titre, spécial", "content://image", 0, 90, 1200, "SERIES")),
         preferences = BackupPreferences(3, 1.25f, true, 10, "floating", "bottom", "top", "left", false),
     )
 

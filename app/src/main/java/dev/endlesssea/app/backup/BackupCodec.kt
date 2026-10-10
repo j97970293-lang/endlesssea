@@ -88,10 +88,12 @@ object BackupCodec {
             values.keys().forEach { uri ->
                 require(uri.isNotBlank()) { "Métadonnées sans URI." }
                 val fields = values.getJSONArray(uri)
-                require(fields.length() in 2..5) { "Métadonnées locales invalides." }
+                // Older metadata has five fields; newer snapshots add mediaType as field six.
+                require(fields.length() in 2..6) { "Métadonnées locales invalides." }
                 for (i in 0 until fields.length()) {
                     if (!fields.isNull(i)) require(fields.get(i) is String) { "Métadonnées locales invalides." }
-                    if (i >= 2 && !fields.isNull(i) && fields.getString(i).isNotBlank()) {
+                    // Only the intro/outro marker fields are numeric; field 5 is mediaType.
+                    if (i in 2..4 && !fields.isNull(i) && fields.getString(i).isNotBlank()) {
                         require((fields.getString(i).toIntOrNull() ?: -1) >= 0) { "Repère de lecture invalide." }
                     }
                 }
