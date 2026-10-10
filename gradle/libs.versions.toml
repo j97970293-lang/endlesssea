@@ -36,7 +36,7 @@ desugar = "2.1.4"
 junit = "4.13.2"
 truth = "1.4.4"
 turbine = "1.2.0"
-androidx-test = "1.6.1"
+androidx-test = "1.2.1"
 espresso = "3.6.1"
 
 [libraries]
