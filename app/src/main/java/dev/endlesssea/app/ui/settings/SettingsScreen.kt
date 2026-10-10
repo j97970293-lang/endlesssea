@@ -1091,8 +1091,9 @@ fun SettingsScreen(
                     // §rendu-vidéo : choix de la surface de rendu
                     Text("Rendu vidéo", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Texture ou Surface : deux sorties vidéo disponibles. " +
-                            "Les filtres utilisent le GPU dans les deux modes ; fluidité et consommation dépendent de l’appareil.",
+                        "Texture active les filtres GPU. Surface désactive toute la chaîne d'effets et laisse Android/Media3 " +
+                            "gérer le HDR natif si la vidéo, le décodeur et l'écran sont compatibles. Aucun filtre ne recrée " +
+                            "les détails absents de la source.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1110,7 +1111,7 @@ fun SettingsScreen(
                         FilterChip(
                             selected = render == "surface",
                             onClick = { viewModel.setVideoRender("surface") },
-                            label = { Text("Surface (perf)", maxLines = 1, softWrap = false) },
+                            label = { Text("Surface (HDR natif)", maxLines = 1, softWrap = false) },
                         )
                     }
                 }

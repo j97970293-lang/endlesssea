@@ -179,6 +179,7 @@ private val BUILTIN_PRESETS = listOf(
 fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
     val currentLink = state.links.getOrNull(state.currentLinkIndex)
+    val renderMode by viewModel.videoRender.collectAsState()
     val isPlaying by viewModel.engine.isPlaying.collectAsState()
     val playbackRequested by viewModel.engine.playbackRequested.collectAsState()
     val subtitleTracks by viewModel.engine.availableSubtitles.collectAsState()
@@ -299,7 +300,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         }
     }) {
         // Media3 owns surface sizing and lifecycle; Compose supplies only the custom controls.
-        val renderMode by viewModel.videoRender.collectAsState()
         // Media3 conserve les proportions avec FIT/ZOOM ; le zoom Compose ne sert qu'au pincement.
         Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }.clipToBounds()) {
             if (zoomMode == 3) {
@@ -872,6 +872,28 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 )
                 Text("Luminosité au démarrage : $screenBrightness %")
                 Slider(value = screenBrightness.toFloat(), onValueChange = { viewModel.setScreenBrightness(it.toInt()) }, valueRange = 10f..100f)
+                Text("Rendu vidéo", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = renderMode != "surface",
+                        onClick = { viewModel.setVideoRender("texture") },
+                        label = { Text("Filtres GPU") },
+                    )
+                    FilterChip(
+                        selected = renderMode == "surface",
+                        onClick = { viewModel.setVideoRender("surface") },
+                        label = { Text("Surface · HDR natif") },
+                    )
+                }
+                Text(
+                    if (renderMode == "surface") {
+                        "Effets GPU désactivés. Le HDR natif dépend de la vidéo, du décodeur et de l'écran."
+                    } else {
+                        "Filtres GPU légers actifs. Ils ajustent l'image, sans recréer les détails absents."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 TextButton(onClick = { showMoreSheet = false; showPlaylist = true }) { Text("Playlist") }
                 currentLink
                     ?.takeIf { it.streamType != dev.endlesssea.extensions.api.model.StreamType.EMBED &&

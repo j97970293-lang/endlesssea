@@ -355,8 +355,8 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
     /**
      * §rendu-vidéo : surface de rendu du lecteur.
      *  - "texture" (défaut) : TextureView, nécessaire aux filtres vidéo ;
-     *  - "surface" : SurfaceView, plus rapide / moins gourmand, compatible HDR
-     *    et Android TV, mais sans filtres.
+     *  - "surface" : SurfaceView avec effets GPU désactivés ; privilégie le
+     *    chemin HDR natif de l'appareil quand source/décodeur/écran le permettent.
      */
     private val _videoRender = MutableStateFlow(p.getString("video_render", "texture") ?: "texture")
     val videoRender: StateFlow<String> = _videoRender
