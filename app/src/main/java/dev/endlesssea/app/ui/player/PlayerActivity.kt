@@ -126,6 +126,11 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch { viewModel.persistPosition() }
     }
 
+    override fun onDestroy() {
+        if (isFinishing) viewModel.clearRecoverySession()
+        super.onDestroy()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
@@ -786,6 +791,9 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(error, color = Color.White)
+                    if (error.startsWith("Reprise impossible")) {
+                        TextButton(onClick = viewModel::retryRecovery) { Text("Réessayer") }
+                    }
                     TextButtonBack(onBack)
                 }
             }

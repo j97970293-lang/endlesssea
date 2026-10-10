@@ -1,8 +1,11 @@
 package dev.endlesssea.app.ui.player
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.endlesssea.app.ui.player.session.PlaybackRecoveryState
+import dev.endlesssea.app.ui.player.session.PlaybackRecoveryStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.endlesssea.data.db.WatchHistoryDao
@@ -97,6 +100,8 @@ class PlayerViewModel @Inject constructor(
     private val mediaDao: dev.endlesssea.data.db.MediaDao,
     /** §suivi (conversation 11) : épisodes vus synchronisés avec les services. */
     private val trackers: dev.endlesssea.app.tracking.TrackerRepository,
+    private val recoveryResolver: PlaybackRecoveryResolver,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     val engine = EsPlayer(context, okHttp, viewModelScope)
@@ -108,18 +113,38 @@ class PlayerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState
 
-    private val sessionOwner = dev.endlesssea.app.ui.player.session.PlaybackSessionOwner<PlayerLaunchStore.Launch> {
-        it.links.isNotEmpty()
+    private data class SessionRequest(
+        val launch: PlayerLaunchStore.Launch? = null,
+        val recovery: PlaybackRecoveryState? = null,
+    )
+
+    private val recoveryStore = PlaybackRecoveryStore(savedStateHandle)
+    private val sessionOwner = dev.endlesssea.app.ui.player.session.PlaybackSessionOwner<SessionRequest> {
+        it.launch?.links?.isNotEmpty() == true || it.recovery?.isValid == true
     }
     private val autoAdvanceGate = PlaybackAutoAdvanceGate()
 
-    /** Called on every Activity creation; an already-owned session is never re-prepared. */
+    /** Called on every Activity creation; a retained ViewModel never consumes or rebuilds twice. */
     fun attachSession() {
-        when (val attachment = sessionOwner.attach(PlayerLaunchStore::consume)) {
+        var hadPendingLaunch = false
+        when (val attachment = sessionOwner.attach(
+            consume = {
+                PlayerLaunchStore.consumePending().also { hadPendingLaunch = it != null }
+                    ?.let { SessionRequest(launch = it) }
+            },
+            restore = {
+                if (hadPendingLaunch) null else recoveryStore.read()?.let { SessionRequest(recovery = it) }
+            },
+        )) {
             is dev.endlesssea.app.ui.player.session.PlaybackSessionOwner.Attachment.Start -> {
                 val request = attachment.request
-                prepare(request.mediaId, request.episodeId, request.title.ifBlank { "Lecture" },
-                    request.links, request.startIndex)
+                val launch = request.launch
+                if (launch != null) {
+                    prepare(launch.mediaId, launch.episodeId, launch.title.ifBlank { "Lecture" },
+                        launch.links, launch.startIndex)
+                } else {
+                    request.recovery?.let(::restorePlayback)
+                }
             }
             dev.endlesssea.app.ui.player.session.PlaybackSessionOwner.Attachment.Retained -> Unit
             dev.endlesssea.app.ui.player.session.PlaybackSessionOwner.Attachment.Unavailable -> {
@@ -128,6 +153,43 @@ class PlayerViewModel @Inject constructor(
             }
         }
     }
+
+    private fun restorePlayback(state: PlaybackRecoveryState) {
+        _uiState.value = _uiState.value.copy(loading = true, error = null, title = state.title)
+        viewModelScope.launch {
+            try {
+                val restored = recoveryResolver.restore(state)
+                PlayerLaunchStore.setQueue(restored.queue, restored.queueIndex)
+                PlayerLaunchStore.resolver = { id -> recoveryResolver.resolveLinks(state.mediaId, id) }
+                PlayerLaunchStore.updateMarkers(
+                    restored.queue.getOrNull(restored.queueIndex)?.markers ?: PlayerLaunchStore.SkipMarkers(),
+                )
+                prepare(
+                    mediaId = state.mediaId,
+                    episodeId = state.episodeId,
+                    title = state.title.ifBlank { "Lecture" },
+                    links = restored.links,
+                    startIndex = 0,
+                    recoveryPositionMs = state.positionMs,
+                ).join()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    error = "Reprise impossible : ${error.message ?: "source indisponible"}. Rouvrez la vidéo depuis sa fiche.",
+                )
+            }
+        }
+    }
+
+    /** Explicit retry for a transient offline/network failure while restoring a session. */
+    fun retryRecovery() {
+        recoveryStore.read()?.let(::restorePlayback)
+    }
+
+    /** Do not relaunch a task after the user intentionally closed the player. */
+    fun clearRecoverySession() = recoveryStore.clear()
 
     private var episodeId: String? = null
     private var mediaId: String? = null
@@ -495,13 +557,28 @@ class PlayerViewModel @Inject constructor(
         title: String,
         links: List<VideoLink>,
         startIndex: Int = 0,
+        recoveryPositionMs: Long? = null,
     ) = viewModelScope.launch {
+        if (links.isEmpty()) {
+            _uiState.value = _uiState.value.copy(title = title, loading = false, error = "Aucun lien vidéo exploitable.")
+            return@launch
+        }
         _uiState.value = _uiState.value.copy(title = title, loading = true, error = null)
         this@PlayerViewModel.mediaId = mediaId
         this@PlayerViewModel.episodeId = episodeId
-        val selectedLinkIndex = startIndex.coerceIn(0, (links.size - 1).coerceAtLeast(0))
+        val selectedLinkIndex = startIndex.coerceIn(0, links.size - 1)
         _uiState.value = _uiState.value.copy(links = links, currentLinkIndex = selectedLinkIndex)
-        val resumeMs = episodeId?.let { historyDao.byEpisode(it)?.takeUnless { h -> h.watched }?.positionMs } ?: 0L
+        val recoveryIdentity = mediaId?.takeIf { it.isNotBlank() }?.let { id ->
+            episodeId?.takeIf { it.isNotBlank() }?.let { id to it }
+        }
+        recoveryStore.save(recoveryIdentity?.let { (id, episode) ->
+            PlaybackRecoveryState(id, episode, title, recoveryPositionMs?.coerceAtLeast(0L) ?: 0L)
+        })
+        val history = episodeId?.let { historyDao.byEpisode(it) }
+        val resumeMs = recoveryPositionMs?.coerceAtLeast(0L)
+            ?: history?.takeUnless { it.watched }?.positionMs?.coerceAtLeast(0L)
+            ?: 0L
+        recoveryStore.save(recoveryIdentity?.let { (id, episode) -> PlaybackRecoveryState(id, episode, title, resumeMs) })
         runCatching {
             engine.prepare(links, startPositionMs = resumeMs, startIndex = selectedLinkIndex)
             engine.play()
@@ -829,6 +906,7 @@ class PlayerViewModel @Inject constructor(
         val pos = engine.positionMs.value
         val dur = engine.durationMs.value
         if (pos <= 0 || dur <= 0) return
+        recoveryStore.updatePosition(mediaId, ep, pos)
         val watched = pos.toFloat() / dur >= 0.9f   // ≥ 90 % → marqué « vu » (spec §24)
         if (prefs.recordHistory.value) historyDao.upsert(
             WatchHistoryEntity(

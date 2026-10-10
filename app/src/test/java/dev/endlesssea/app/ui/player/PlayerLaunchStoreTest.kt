@@ -30,4 +30,10 @@ class PlayerLaunchStoreTest {
         PlayerLaunchStore.setQueue(emptyList(), 0)
         assertEquals(-1, PlayerLaunchStore.queueIndex)
     }
+    @Test fun consumePendingDistinguishesNoRequestFromAnInvalidRequest() {
+        assertNull(PlayerLaunchStore.consumePending())
+        PlayerLaunchStore.set("Title", "media", "episode", emptyList(), 0)
+        assertEquals("episode", PlayerLaunchStore.consumePending()?.episodeId)
+        assertNull(PlayerLaunchStore.consumePending())
+    }
 }

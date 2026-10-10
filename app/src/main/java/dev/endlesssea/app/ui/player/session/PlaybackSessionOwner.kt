@@ -2,8 +2,9 @@ package dev.endlesssea.app.ui.player.session
 
 /**
  * The ViewModel owns a session, not the Activity. Reattaching a recreated Activity
- * must not consume a second request or rebuild the engine. This is not persistence
- * across process death: an absent request is reported explicitly instead.
+ * must not consume a second request or rebuild the engine. An optional restore
+ * supplier may provide a separately persisted request after process death; this
+ * owner itself keeps no disk or saved-state data.
  */
 internal class PlaybackSessionOwner<T>(private val isPlayable: (T) -> Boolean) {
     private var received = false
@@ -15,10 +16,14 @@ internal class PlaybackSessionOwner<T>(private val isPlayable: (T) -> Boolean) {
     }
 
     @Synchronized
-    fun attach(consume: () -> T?): Attachment<T> {
+    fun attach(consume: () -> T?): Attachment<T> = attach(consume, restore = { null })
+
+    @Synchronized
+    fun attach(consume: () -> T?, restore: () -> T?): Attachment<T> {
         if (received) return Attachment.Retained
-        val request = consume() ?: return Attachment.Unavailable
-        if (!isPlayable(request)) return Attachment.Unavailable
+        val request = consume()?.takeIf(isPlayable)
+            ?: restore()?.takeIf(isPlayable)
+            ?: return Attachment.Unavailable
         received = true
         return Attachment.Start(request)
     }
