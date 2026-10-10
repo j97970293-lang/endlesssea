@@ -61,7 +61,7 @@ Typed mapping: `VideoUnavailable`, `NetworkError` (with retry), `SourceUnavailab
 
 | Area | Implementation |
 |---|---|
-| Themes | Real theme system, not a colour list: `ui/player/themes/PlayerTheme.kt` declares `TopControls` / `CenterControls` / `BottomControls`; `ThemeProvider` maps 8 skins (Endless Sea, Netflix, Crunchyroll, YouTube, VLC, Plex, Apple TV+, Gaming) — each one has its own layout, shapes, control sizes and scrubber height |
+| Controls | The maintained **Essentiel** layout composes `TopControls` / `CenterControls` / `BottomControls` from `ui/player/themes/PlayerTheme.kt`. Obsolete skins and selectors were removed; saved legacy IDs migrate to Essentiel. |
 | Gestures | Centralised in `player/…/GestureConfig.kt`: double-tap window (chained jumps), skip seconds, pinch-zoom ceiling, long-press speed, vertical swipe step, dead zone, swappable brightness/volume sides — no magic number left in `PlayerActivity` |
 | Subtitles | Shifted ±0.5 s in 0.5 s steps by rewriting the external SRT/VTT into the cache (`SubtitleShift`, `player:testDebugUnitTest` covers both encodings and the clamp at zero) |
 | Audio boost | Up to 200 %, implemented with `LoudnessEnhancer` (mB = 2000·log10(p/100)) and exposed as `EsPlayer.audioBoostPercent` |

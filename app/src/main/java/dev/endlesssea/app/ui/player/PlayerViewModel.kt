@@ -837,19 +837,15 @@ class PlayerViewModel @Inject constructor(
 
     fun refreshSkip() = loadSkipSegments(force = true)
 
-    // §lecteur-placement / §theme-lecteur : réglages lus directement par l'écran
-    val progressPosition: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.progressPosition
-    val toolsPosition: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.toolsPosition
+    // §lecteur-placement : réglages qui influencent l'interface Essentiel.
     val megaSkipSide: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.megaSkipSide
     val progressThickness: kotlinx.coroutines.flow.StateFlow<Int> get() = prefs.progressThickness
     val progressRounded: kotlinx.coroutines.flow.StateFlow<Boolean> get() = prefs.progressRounded
-    val playerTheme: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.playerTheme
-    fun setProgressPosition(v: String) = prefs.setProgressPosition(v)
-    fun setToolsPosition(v: String) = prefs.setToolsPosition(v)
+    val playerFramingMode: kotlinx.coroutines.flow.StateFlow<Int> get() = prefs.playerFramingMode
+    fun setPlayerFramingMode(v: Int) = prefs.setPlayerFramingMode(v)
     fun setMegaSkipSide(v: String) = prefs.setMegaSkipSide(v)
     fun setProgressThickness(v: Int) = prefs.setProgressThickness(v)
     fun setProgressRounded(v: Boolean) = prefs.setProgressRounded(v)
-    fun setPlayerTheme(v: String) = prefs.setPlayerTheme(v)
 
     /** §rendu-vidéo : "texture" (filtres) ou "surface" (perf/HDR). */
     val videoRender: kotlinx.coroutines.flow.StateFlow<String> get() = prefs.videoRender

@@ -103,7 +103,7 @@ object BackupCodec {
         val preferences = if (root.has("preferences") && version >= 2) decodeBackupPreferences(root.getJSONObject("preferences")) else null
         preferences?.let {
             require(it.themeMode in 0..3 && it.defaultSpeed in 0.25f..3f && it.skipSeconds in setOf(5, 10, 15, 30, 85)) { "Réglages de lecture invalides." }
-            require(it.playerTheme in dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES.keys) { "Thème du lecteur inconnu." }
+            require(dev.endlesssea.app.di.AppPrefs.isKnownPlayerTheme(it.playerTheme)) { "Thème du lecteur inconnu." }
             require(it.playerToolsPosition in setOf("top", "bottom") && it.playerProgressPosition in setOf("top", "bottom") && it.megaSkipSide in setOf("left", "right")) { "Position des commandes invalide." }
         }
         return BackupSnapshot(version, root.long("exportedAt"), library, history, media, genres, categories, localMetadata, preferences)

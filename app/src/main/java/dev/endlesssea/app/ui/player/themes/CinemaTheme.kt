@@ -52,7 +52,7 @@ object CinemaTheme : PlayerTheme {
                 border = BorderStroke(1.dp, outline)) {
                 Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.AspectRatio, "Changer le cadrage vidéo", tint = Color.White, modifier = Modifier.size(22.dp))
-                    Text(zoomLabel(state.zoomMode), color = Color.White, style = MaterialTheme.typography.labelSmall,
+                    Text(zoomLabel(state.zoomMode, state.manualZoom), color = Color.White, style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(start = 5.dp))
                 }
             }
@@ -89,8 +89,7 @@ object CinemaTheme : PlayerTheme {
 
     @Composable
     internal fun Sections(state: PlayerControlsState, actions: PlayerControlsActions, top: Boolean) {
-        // This layout deliberately keeps the timeline and tools at the bottom, like the reference.
-        // Legacy top/tools preferences remain available to the legacy themes only.
+        // This layout deliberately keeps the timeline and tools at the bottom; only the megaskip side is configurable.
         if (!ReferencePlayerPlacement.showBottomSections(top)) return
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (state.megaSkipLeft) MegaSkip(state, actions)

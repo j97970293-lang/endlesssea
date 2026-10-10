@@ -3,7 +3,7 @@
 ## Implémenté
 
 - Défaut : retour et titre en haut ; recul de 10 s, lecture/pause et avance de 10 s au centre ; sauts à gauche et paramètres/informations à droite au-dessus de la progression ; temps, vitesse, sous-titres, playlist et orientation en bas.
-- Suppression des anciens thèmes de lecteurs tiers. Six interfaces originales : Zen, Orbit, Compact Bar, Neon Frame, Split Controls, Floating Cards. Anciennes préférences migrées vers Défaut.
+- Interface Essentiel unique. Les thèmes alternatifs historiques (Défaut, Zen, Orbit, Compact Bar, Neon Frame, Split Controls, Floating Cards) et leurs sélecteurs sont supprimés ; les préférences/sauvegardes anciennes sont migrées vers Essentiel.
 - Épaisseur de progression réellement appliquée (2–8 dp), curseur 8–20 dp, buffer 2–8 dp, masquage du curseur au repos et forme arrondie configurables.
 - Playlist : vignettes ou emplacement de repli, saison/épisode et durée quand fournis, historique et progression, sélection d'épisode, badge de téléchargement. File locale conservée, lecture locale prioritaire pour les épisodes téléchargés depuis une fiche.
 - Masquage des commandes après 3 s, suspendu pendant les panneaux et le glissement ; bouton de déverrouillage indépendant ; paramètres défilants.

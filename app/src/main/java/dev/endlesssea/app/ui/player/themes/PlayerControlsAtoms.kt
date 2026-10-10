@@ -254,9 +254,11 @@ fun SkinChip(
 }
 
 /** Libellé du cadrage courant (utilisé par les thèmes détaillés). */
-fun zoomLabel(mode: Int): String = when (mode) {
-    0 -> "Contenir"
-    1 -> "Remplir"
-    2 -> "Étirer"
-    else -> "Ajusté"
+fun zoomLabel(mode: Int, manualZoom: Boolean = false): String = when {
+    manualZoom -> "Manuel"
+    mode == 0 -> "Contenir"
+    mode == 1 -> "Recadrer"
+    mode == 2 -> "Étirer"
+    mode == 3 -> "Fond flou"
+    else -> "Contenir"
 }

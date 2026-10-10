@@ -29,8 +29,8 @@ La disponibilité signifie « lisible actuellement » : une permission révoqué
 - Feuilles de lecture et téléchargement : hauteur bornée à l'écran et contenu défilant. Dialogue de priorité des serveurs également borné. Pas de prétention d'auto-défilement pendant le glisser-déposer.
 - Nouveau lecteur principal **Essentiel** : titre et source sur un bandeau sobre, transport central lisible, bouton lecture clair, timeline séparée et barre horizontale d'actions libellées (épisodes, audio, sous-titres, qualité, vitesse, sauts, options).
 - Présentation centrale adaptée à la largeur ; tailles tactiles de 48 dp minimum dans les nouvelles commandes. Les incréments de saut suivent le réglage utilisateur.
-- Il est activé une seule fois à la première ouverture de l'application après cette mise à jour, pour rendre la reconstruction visible. L'ancien identifiant de thème est conservé dans les préférences ; les anciens thèmes restent sélectionnables dans Réglages.
-- Le moteur, les sous-titres, la file et les identités de progression sont conservés. Les placements de timeline/outils restent pris en compte.
+- Il est activé une seule fois à la première ouverture après la mise à jour. Les anciens identifiants sont migrés vers « Essentiel » ; les anciens thèmes et leurs sélecteurs ne sont plus proposés.
+- Le moteur, les sous-titres, la file et les identités de progression sont conservés. Les champs de placement historiques sont encore lus/écrits par les sauvegardes pour compatibilité, mais n'influencent plus la disposition fixe d'Essentiel.
 
 ## Tests et limites
 

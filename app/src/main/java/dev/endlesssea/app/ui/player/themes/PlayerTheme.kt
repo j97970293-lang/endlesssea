@@ -7,18 +7,9 @@ import dev.endlesssea.app.skip.CustomSkipButton
 import dev.endlesssea.app.skip.SkipSegment
 
 /**
- * §theme-lecteur (conversations 1 & 2) — un thème de lecteur n'est pas une
- * couleur : c'est une **mise en page complète** des commandes. Chaque thème
- * fournit ses propres barres :
- *
- *  - [TopControls]    : retour, titre, pistes, verrouillage ;
- *  - [CenterControls] : transport central (précédent · lecture · suivant,
- *                       sauts ±10 s selon le thème) ;
- *  - [BottomControls] : ligne de temps, outils, mégaskip.
- *
- * Les thèmes se contentent de composer les briques partagées de
- * [dev.endlesssea.app.ui.player.themes] (SkinSeekBar, SkinPlayButton…) et
- * peuvent ignorer une barre (ex. Apple TV+ n'affiche presque rien).
+ * Contract for the maintained Essentiel player layout. It keeps the control
+ * groups independently composable while obsolete skins stay out of the registry.
+ * Shared controls use [TopControls], [CenterControls], and [BottomControls].
  */
 data class PlayerControlsState(
     val title: String = "",
@@ -32,8 +23,10 @@ data class PlayerControlsState(
     /** Position de glissement en cours (0..1) ou null si l'utilisateur ne glisse pas. */
     val dragFraction: Float? = null,
     val speed: Float = 1f,
-    /** 0 = contenir · 1 = remplir · 2 = étirer. */
+    /** 0 = contenir · 1 = recadrer · 2 = étirer · 3 = fond flou sans rognage. */
     val zoomMode: Int = 0,
+    /** Un zoom/pan manuel est actif en plus du mode de cadrage choisi. */
+    val manualZoom: Boolean = false,
     val hasPrev: Boolean = false,
     val hasNext: Boolean = false,
     /** Des liens qualité/serveurs sont disponibles. */
@@ -48,9 +41,6 @@ data class PlayerControlsState(
     val activeSkip: SkipSegment? = null,
     val skipCountdown: Int? = null,
     val customSkips: List<CustomSkipButton> = emptyList(),
-    /** Disposition héritée des réglages : ligne de temps / outils en haut. */
-    val progressOnTop: Boolean = false,
-    val toolsOnTop: Boolean = false,
     val progressThickness: Int = 4,
     val progressRounded: Boolean = true,
     val thumbSize: Int = 12,
@@ -120,18 +110,9 @@ interface PlayerTheme {
     fun BottomControls(state: PlayerControlsState, actions: PlayerControlsActions, modifier: Modifier = Modifier)
 }
 
-/** Registre unique des interfaces originales. Les anciens choix reviennent au défaut. */
+/** Seul habillage maintenu : les anciens identifiants sont migrés vers Essentiel. */
 object ThemeProvider {
-    val all: Map<String, PlayerTheme> = linkedMapOf(
-        "cinema" to CinemaTheme,
-        "default" to DefaultTheme,
-        "zen" to ZenTheme,
-        "orbit" to OrbitTheme,
-        "compactbar" to CompactBarTheme,
-        "neonframe" to NeonFrameTheme,
-        "split" to SplitControlsTheme,
-        "floating" to FloatingCardsTheme,
-    )
-    fun of(id: String?): PlayerTheme = all[id] ?: DefaultTheme
-    fun migrate(old: String?): String = old?.takeIf { it in all } ?: "default"
+    val all: Map<String, PlayerTheme> = linkedMapOf("cinema" to CinemaTheme)
+    fun of(id: String?): PlayerTheme = all[id] ?: CinemaTheme
+    fun migrate(old: String?): String = old?.takeIf { it == "cinema" } ?: "cinema"
 }

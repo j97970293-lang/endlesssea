@@ -16,7 +16,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
@@ -214,8 +213,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         androidx.compose.runtime.mutableStateOf<List<OnlineSubtitle>>(emptyList())
     }
     var slidingPos by remember { mutableStateOf<Float?>(null) }
-    // §fit : 0 = contenir · 1 = remplir (zoom) · 2 = étirer (déforme)
-    var zoomMode by remember { mutableIntStateOf(0) }
+    // §cadrage-video : mode persistant ; 0 contenir, 1 recadrer, 2 étirer, 3 fond flou sans rognage.
+    val zoomMode by viewModel.playerFramingMode.collectAsState()
     var showFramingDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var landscapeNow by remember { mutableStateOf(true) } // bascule visuelle §orientation-lecteur
@@ -236,9 +235,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         showFramingDialog = true
     }
 
-    // §placements / §theme-lecteur : réglages lus une fois pour tout l'habillage
-    val progressPos by viewModel.progressPosition.collectAsState()
-    val toolsPos by viewModel.toolsPosition.collectAsState()
     val screenBrightness by viewModel.screenBrightness.collectAsState()
     LaunchedEffect(screenBrightness) {
         (context as? android.app.Activity)?.window?.let { window ->
@@ -248,7 +244,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     val megaSide by viewModel.megaSkipSide.collectAsState()
     val progressThickness by viewModel.progressThickness.collectAsState()
     val progressRounded by viewModel.progressRounded.collectAsState()
-    val playerThemeName by viewModel.playerTheme.collectAsState()
     // §megaskip : segments en ligne + boutons personnalisés + stats
     val pinchZoomOn by viewModel.pinchZoomEnabled.collectAsState()
     val swapVB by viewModel.swapVolumeBrightness.collectAsState()
@@ -285,36 +280,45 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
     }) {
         // Media3 owns surface sizing and lifecycle; Compose supplies only the custom controls.
         val renderMode by viewModel.videoRender.collectAsState()
-        // §gestes-lecteur : zoom par pincement + déplacement à deux doigts —
-        // appliqué à la surface vidéo (indépendant du mode « contenir/remplir »).
-        BoxWithConstraints(Modifier.fillMaxSize().onSizeChanged { viewport=it }.clipToBounds(), contentAlignment = Alignment.Center) {
-        val frame = dev.endlesssea.player.videoFrameBounds(maxWidth.value, maxHeight.value, sourceAspect, zoomMode)
-        androidx.compose.runtime.key(renderMode) {
-            AndroidView(
-                factory = { ctx ->
-                    (android.view.LayoutInflater.from(ctx).inflate(
-                        if (renderMode == "surface") dev.endlesssea.app.R.layout.player_video_surface
-                        else dev.endlesssea.app.R.layout.player_video_texture,
-                        null, false,
-                    ) as androidx.media3.ui.PlayerView).apply {
-                        player = viewModel.engine.player
-                        // The existing subtitle overlay handles the user's styling/delay settings.
-                        subtitleView?.visibility = android.view.View.GONE
-                    }
-                },
-                update = { videoView ->
-                    videoView.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                },
-                onRelease = { it.player = null },
-                modifier = Modifier.fillMaxSize().graphicsLayer(
-                    scaleX = frame.width / maxWidth.value * pinchScale * state.videoScale,
-                    scaleY = frame.height / maxHeight.value * pinchScale * state.videoScale,
-                    translationX = panX.coerceIn(-panLimits.width,panLimits.width),
-                    translationY = panY.coerceIn(-panLimits.height,panLimits.height),
-                ),
-            )
-        }
-
+        // Media3 conserve les proportions avec FIT/ZOOM ; le zoom Compose ne sert qu'au pincement.
+        Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }.clipToBounds()) {
+            if (zoomMode == 3) {
+                VideoFramingBackdrop(
+                    thumbnailUrl = state.playlist.getOrNull(state.playlistIndex)?.thumbnailUrl,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            androidx.compose.runtime.key(renderMode) {
+                AndroidView(
+                    factory = { ctx ->
+                        (android.view.LayoutInflater.from(ctx).inflate(
+                            if (renderMode == "surface") dev.endlesssea.app.R.layout.player_video_surface
+                            else dev.endlesssea.app.R.layout.player_video_texture,
+                            null, false,
+                        ) as androidx.media3.ui.PlayerView).apply {
+                            player = viewModel.engine.player
+                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            // The existing subtitle overlay handles the user's styling/delay settings.
+                            subtitleView?.visibility = android.view.View.GONE
+                        }
+                    },
+                    update = { videoView ->
+                        videoView.resizeMode = when (zoomMode) {
+                            1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                    },
+                    onRelease = { it.player = null },
+                    modifier = Modifier.fillMaxSize().graphicsLayer(
+                        scaleX = pinchScale * state.videoScale,
+                        scaleY = pinchScale * state.videoScale,
+                        translationX = panX.coerceIn(-panLimits.width, panLimits.width),
+                        translationY = panY.coerceIn(-panLimits.height, panLimits.height),
+                    ),
+                )
+            }
         }
         // §gestes-lecteur : pincement (zoom 1×–3×) + déplacement à deux doigts.
         if (pinchZoomOn) {
@@ -667,10 +671,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             )
         }
 
-        // ---- §theme-lecteur (conversations 1 & 2) : les commandes viennent du
-        // thème choisi — 8 skins complets (mise en page, formes, accents),
-        // pas un simple changement de couleur.
-        val activeTheme = ThemeProvider.of(playerThemeName)
+        // ---- §theme-lecteur : interface Essentiel unique ; les anciennes skins sont retirées.
+        val activeTheme = ThemeProvider.of(null)
         if (state.controlsVisible || state.locked) {
             val controlsState = PlayerControlsState(
                 title = state.title,
@@ -682,7 +684,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 durationMs = state.durationMs,
                 dragFraction = slidingPos,
                 speed = state.speed,
-                zoomMode = if(pinchScale != 1f || panX != 0f || panY != 0f) 3 else zoomMode,
+                zoomMode = zoomMode,
+                manualZoom = pinchScale != 1f || panX != 0f || panY != 0f || state.videoScale != 1f,
                 hasPrev = state.hasPrev,
                 hasNext = state.hasNext,
                 hasLinks = state.links.isNotEmpty(),
@@ -695,8 +698,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 activeSkip = state.activeSkip,
                 skipCountdown = state.skipCountdown,
                 customSkips = state.skipButtons,
-                progressOnTop = progressPos == "top",
-                toolsOnTop = toolsPos == "top",
                 progressThickness = progressThickness,
                 bufferedPositionMs = state.bufferedPositionMs,
                 thumbSize = thumbSize,
@@ -756,14 +757,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
             } else Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
                 activeTheme.TopControls(controlsState, controlsActions)
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                    if (activeTheme.id == "cinema") {
-                        dev.endlesssea.app.ui.player.themes.CinemaTheme.Sections(controlsState, controlsActions, top = true)
-                    } else {
-                        dev.endlesssea.app.ui.player.themes.PlayerBarContent(
-                            controlsState, controlsActions,
-                            activeTheme.accent ?: MaterialTheme.colorScheme.primary, top = true,
-                        )
-                    }
+                    dev.endlesssea.app.ui.player.themes.CinemaTheme.Sections(controlsState, controlsActions, top = true)
                 }
             }
             if (!state.locked) {
@@ -866,15 +860,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 }
                 TextButton(onClick = { showMoreSheet=false; openFraming() }) { Text("Cadrage : ${dev.endlesssea.app.ui.player.themes.zoomLabel(zoomMode)}") }
                 TextButton(onClick = { showMoreSheet = false; showSkipDialog = true }) { Text("Configurer les sauts") }
-                if (playerThemeName == "cinema") {
-                    Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = megaSide != "left", onClick = { viewModel.setMegaSkipSide("right") }, label = { Text("À droite") })
-                        FilterChip(selected = megaSide == "left", onClick = { viewModel.setMegaSkipSide("left") }, label = { Text("À gauche") })
-                    }
-                    Text("Essentiel conserve la progression et les raccourcis en bas, comme la disposition de référence.",
-                        style = MaterialTheme.typography.bodySmall)
+                Text("Mégaskip : juste au-dessus de la barre de progression", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = megaSide != "left", onClick = { viewModel.setMegaSkipSide("right") }, label = { Text("À droite") })
+                    FilterChip(selected = megaSide == "left", onClick = { viewModel.setMegaSkipSide("left") }, label = { Text("À gauche") })
                 }
+                Text("Essentiel conserve la progression et les raccourcis en bas, comme la disposition de référence.",
+                    style = MaterialTheme.typography.bodySmall)
                 Text("Épaisseur de la barre : $progressThickness dp",
                     style = MaterialTheme.typography.labelMedium)
                 Slider(
@@ -890,19 +882,6 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Text("Épaisseur du buffer : $bufferThickness dp")
                 Slider(value = bufferThickness.toFloat(), onValueChange = { viewModel.setSeekBuffer(it.toInt()) }, valueRange = 2f..8f)
                 TextButton(onClick = { viewModel.setSeekHideThumb(!hideThumb) }) { Text(if (hideThumb) "Afficher le curseur au repos" else "Masquer le curseur au repos") }
-                Text("Thème du lecteur", style = MaterialTheme.typography.labelMedium)
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    dev.endlesssea.app.di.AppPrefs.PLAYER_THEMES.forEach { (key, v) ->
-                        FilterChip(
-                            selected = playerThemeName == key,
-                            onClick = { viewModel.setPlayerTheme(key) },
-                            label = { Text(v.second, maxLines = 1, softWrap = false) },
-                        )
-                    }
-                }
                 Text(
                     "Renforcement des contours : %d %%".format((state.videoSharpen * 100).toInt()),
                     style = MaterialTheme.typography.labelMedium,
@@ -1286,11 +1265,21 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         AlertDialog(onDismissRequest={showFramingDialog=false}, title={Text("Cadrage de l’image")},
             confirmButton={TextButton(onClick={showFramingDialog=false}) {Text("Terminé")}},
             text={Column(Modifier.heightIn(max=360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                listOf(0 to "Contenir — toute l’image, sans déformation", 1 to "Remplir — sans bandes, bords rognés", 2 to "Étirer — remplit en déformant").forEach { (mode,label) ->
-                    TextButton(onClick={zoomMode=mode;pinchScale=1f;panX=0f;panY=0f;viewModel.setVideoScale(1f)}) {
-                        Text((if(zoomMode==mode && pinchScale==1f) "✓ " else "")+label)
+                listOf(
+                    0 to "Contenir — image entière, proportions conservées",
+                    1 to "Remplir par recadrage — bords coupés",
+                    2 to "Étirer — remplit, mais peut déformer",
+                    3 to "Remplir sans rogner — fond flou + image entière",
+                ).forEach { (mode, label) ->
+                    TextButton(onClick = {
+                        viewModel.setPlayerFramingMode(mode)
+                        pinchScale = 1f; panX = 0f; panY = 0f; viewModel.setVideoScale(1f)
+                    }) {
+                        Text((if (zoomMode == mode && pinchScale == 1f) "✓ " else "") + label)
                     }
                 }
+                Text("Le fond est une miniature étendue ; son flou est coupé sur les appareils à faible mémoire.",
+                    style = MaterialTheme.typography.bodySmall)
                 Text("Ajuster manuellement",style=MaterialTheme.typography.titleSmall)
                 Text("Zoom : ×%.2f".format(pinchScale))
                 Slider(value=pinchScale,onValueChange={pinchScale=it},valueRange=1f..3f)
@@ -1300,8 +1289,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 Text("Position verticale")
                 Slider(value=if(panLimits.height>0f) (panY/panLimits.height).coerceIn(-1f,1f) else 0f,
                     onValueChange={panY=it*panLimits.height},valueRange=-1f..1f,enabled=panLimits.height>0f)
-                Text("Les déplacements restent limités aux bords. Contenir et Remplir conservent les proportions ; Étirer les déforme.",style=MaterialTheme.typography.bodySmall)
-                TextButton(onClick={zoomMode=0;pinchScale=1f;panX=0f;panY=0f;viewModel.setVideoScale(1f)}) {Text("Réinitialiser : image entière centrée")}
+                Text("Les déplacements restent limités aux bords. Contenir, recadrer et fond flou gardent les proportions ; Étirer les déforme.",style=MaterialTheme.typography.bodySmall)
+                TextButton(onClick={viewModel.setPlayerFramingMode(0);pinchScale=1f;panX=0f;panY=0f;viewModel.setVideoScale(1f)}) {Text("Réinitialiser : image entière centrée")}
             }})
     }
 

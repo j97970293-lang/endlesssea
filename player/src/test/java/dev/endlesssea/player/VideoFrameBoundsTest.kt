@@ -13,6 +13,9 @@ class VideoFrameBoundsTest {
         assertEquals(2000f, b.width, .01f); assertEquals(1000f, b.height, .01f)
     }
     @Test fun stretchUsesEntireViewport() { assertEquals(VideoFrameBounds(1000f,1000f), videoFrameBounds(1000f,1000f,2f,2)) }
+    @Test fun blurredBackdropModeKeepsTheForegroundFullyContained() {
+        assertEquals(videoFrameBounds(1000f, 600f, 4f / 3f, 0), videoFrameBounds(1000f, 600f, 4f / 3f, 3))
+    }
     @Test fun portraitSourceFitsLandscape() {
         val b = videoFrameBounds(1600f,900f,.5f,0)
         assertEquals(450f,b.width,.01f); assertEquals(900f,b.height,.01f)
