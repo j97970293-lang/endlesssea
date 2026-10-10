@@ -15,17 +15,20 @@ import org.junit.runner.RunWith
 class Media3ConfigTest {
     @Test
     fun shortAndNormalBuffersBothBuild() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        listOf(15_000 to 30_000, 30_000 to 60_000).forEach { (min, max) ->
-            val player = ExoPlayer.Builder(context)
-                .setLoadControl(
-                    DefaultLoadControl.Builder()
-                        .setBufferDurationsMs(min, max, 1_500, 3_000)
-                        .build(),
-                )
-                .build()
-            assertTrue(player.playbackState >= 0)
-            player.release()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        instrumentation.runOnMainSync {
+            listOf(15_000 to 30_000, 30_000 to 60_000).forEach { (min, max) ->
+                val player = ExoPlayer.Builder(context)
+                    .setLoadControl(
+                        DefaultLoadControl.Builder()
+                            .setBufferDurationsMs(min, max, 1_500, 3_000)
+                            .build(),
+                    )
+                    .build()
+                assertTrue(player.playbackState >= 0)
+                player.release()
+            }
         }
     }
 }
