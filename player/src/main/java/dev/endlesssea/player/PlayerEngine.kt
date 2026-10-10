@@ -12,7 +12,7 @@ interface PlayerEngine {
     val availableSubtitles: StateFlow<List<SubtitleTrack>>
     val availableAudio: StateFlow<List<AudioTrackInfo>>
 
-    fun prepare(links: List<VideoLink>, startPositionMs: Long = 0)
+    fun prepare(links: List<VideoLink>, startPositionMs: Long = 0, startIndex: Int = 0)
     fun play()
     fun pause()
     fun seekTo(ms: Long)

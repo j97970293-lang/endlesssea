@@ -111,6 +111,7 @@ class PlayerViewModel @Inject constructor(
     private val sessionOwner = dev.endlesssea.app.ui.player.session.PlaybackSessionOwner<PlayerLaunchStore.Launch> {
         it.links.isNotEmpty()
     }
+    private val autoAdvanceGate = PlaybackAutoAdvanceGate()
 
     /** Called on every Activity creation; an already-owned session is never re-prepared. */
     fun attachSession() {
@@ -153,6 +154,20 @@ class PlayerViewModel @Inject constructor(
         // §thermique : pression thermique → réduction automatique de l'upscaling
         // (qualité → performance → auto → désactivé) tant que la garde est active.
         thermal.start()
+        viewModelScope.launch {
+            engine.playbackEnded.collect { generation ->
+                if (generation != engine.currentPlaybackGeneration) return@collect
+                val queue = PlayerLaunchStore.queue
+                val index = PlayerLaunchStore.queueIndex
+                val nextIndex = autoAdvanceGate.nextIndex(
+                    generation = generation,
+                    queueSize = queue.size,
+                    currentIndex = index,
+                    loading = _uiState.value.loading,
+                ) ?: return@collect
+                playQueueOffset(nextIndex - index)
+            }
+        }
         viewModelScope.launch {
             thermal.status.collect { status ->
                 if (!prefs.thermalGuard.value) return@collect
@@ -484,11 +499,11 @@ class PlayerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(title = title, loading = true, error = null)
         this@PlayerViewModel.mediaId = mediaId
         this@PlayerViewModel.episodeId = episodeId
-        _uiState.value = _uiState.value.copy(links = links, currentLinkIndex = startIndex.coerceAtLeast(0))
+        val selectedLinkIndex = startIndex.coerceIn(0, (links.size - 1).coerceAtLeast(0))
+        _uiState.value = _uiState.value.copy(links = links, currentLinkIndex = selectedLinkIndex)
         val resumeMs = episodeId?.let { historyDao.byEpisode(it)?.takeUnless { h -> h.watched }?.positionMs } ?: 0L
         runCatching {
-            engine.prepare(links, startPositionMs = resumeMs)
-            engine.player.seekTo(startIndex.coerceAtLeast(0), resumeMs)
+            engine.prepare(links, startPositionMs = resumeMs, startIndex = selectedLinkIndex)
             engine.play()
         }.onFailure {
             _uiState.value = _uiState.value.copy(error = it.message ?: "Lecture impossible", loading = false)
@@ -594,7 +609,7 @@ class PlayerViewModel @Inject constructor(
     fun switchQuality(index: Int) {
         if (index !in _uiState.value.links.indices || index == _uiState.value.currentLinkIndex) return
         val pos = engine.player.currentPosition.coerceAtLeast(0)
-        engine.player.seekTo(index, pos)
+        engine.selectLink(index, pos)
         engine.play()
         _uiState.value = _uiState.value.copy(currentLinkIndex = index)
     }

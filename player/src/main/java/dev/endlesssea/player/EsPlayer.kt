@@ -19,8 +19,11 @@ import dev.endlesssea.extensions.api.model.VideoLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -116,6 +119,13 @@ class EsPlayer(
         private set
 
     private var currentIndex = 0
+    private var sourceLinks: List<VideoLink> = emptyList()
+    private var playbackGeneration = 0L
+    private val _playbackEnded = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+
+    /** Playback generation that reached STATE_ENDED, used to advance a queue exactly once. */
+    val playbackEnded: SharedFlow<Long> = _playbackEnded.asSharedFlow()
+    val currentPlaybackGeneration: Long get() = playbackGeneration
 
     private val relativeSeekTarget = RelativeSeekTarget()
     private var relativeSeekJob: kotlinx.coroutines.Job? = null
@@ -127,9 +137,19 @@ class EsPlayer(
         player.addListener(object : Player.Listener {
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 cancelRelativeSeek()
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) playbackGeneration += 1
             }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { publishPlaybackIntent() }
-            override fun onPlaybackStateChanged(playbackState: Int) { publishPlaybackIntent() }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                publishPlaybackIntent()
+                if (
+                    playbackState == Player.STATE_ENDED &&
+                    player.playbackState == Player.STATE_ENDED &&
+                    player.mediaItemCount > 0
+                ) {
+                    _playbackEnded.tryEmit(playbackGeneration)
+                }
+            }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) { publishPlaybackIntent() }
             override fun onIsPlayingChanged(playing: Boolean) { _isPlaying.value = playing }
             override fun onTracksChanged(tracks: Tracks) {
@@ -196,26 +216,44 @@ class EsPlayer(
         }
     }
 
-    override fun prepare(links: List<VideoLink>, startPositionMs: Long) {
-        // Extension headers (Referer/UA/post-CAPTCHA cookies) apply to every item.
-        prepareWithHeaders(links.firstOrNull()?.headers ?: emptyMap())
-
-        val items = links.map { link ->
-            MediaItem.Builder()
-                .setMediaId("${link.server}:${link.quality.label}")
-                .setUri(link.url)
-                .setMimeType(
-                    when (link.streamType) {
-                        StreamType.HLS -> MimeTypes.APPLICATION_M3U8
-                        StreamType.DASH -> MimeTypes.APPLICATION_MPD
-                        else -> MimeTypes.VIDEO_MP4 // progressive default; Media3 sniffs anyway
-                    }
-                )
-                .setSubtitleConfigurations(link.subtitles.map { it.toConfiguration() })
-                .build()
+    override fun prepare(links: List<VideoLink>, startPositionMs: Long, startIndex: Int) {
+        if (links.isEmpty()) {
+            sourceLinks = emptyList()
+            currentIndex = 0
+            playbackGeneration += 1
+            _availableSubtitles.value = emptyList()
+            player.clearMediaItems()
+            error("Aucun lien vidéo disponible")
         }
-        player.setMediaItems(items, currentIndex, startPositionMs)
-        _availableSubtitles.value = links.getOrNull(currentIndex)?.subtitles ?: emptyList()
+        sourceLinks = links.toList()
+        activateLink(startIndex.coerceIn(0, sourceLinks.lastIndex), startPositionMs)
+    }
+
+    /** A stream link is an alternative source, not the next item in a playlist. */
+    fun selectLink(index: Int, positionMs: Long) {
+        if (index !in sourceLinks.indices || index == currentIndex) return
+        activateLink(index, positionMs)
+    }
+
+    private fun activateLink(index: Int, positionMs: Long) {
+        val link = sourceLinks[index]
+        currentIndex = index
+        playbackGeneration += 1
+        prepareWithHeaders(link.headers)
+        val item = MediaItem.Builder()
+            .setMediaId("${link.server}:${link.quality.label}")
+            .setUri(link.url)
+            .setMimeType(
+                when (link.streamType) {
+                    StreamType.HLS -> MimeTypes.APPLICATION_M3U8
+                    StreamType.DASH -> MimeTypes.APPLICATION_MPD
+                    else -> MimeTypes.VIDEO_MP4 // progressive default; Media3 sniffs anyway
+                }
+            )
+            .setSubtitleConfigurations(link.subtitles.map { it.toConfiguration() })
+            .build()
+        _availableSubtitles.value = link.subtitles
+        player.setMediaItem(item, positionMs.coerceAtLeast(0L))
         player.prepare()
     }
 
@@ -337,7 +375,11 @@ class EsPlayer(
 
     override fun play() {
         if (player.mediaItemCount == 0) return
-        if (player.playbackState == Player.STATE_ENDED) player.seekTo(player.currentMediaItemIndex, 0L)
+        if (player.playbackState == Player.STATE_ENDED) {
+            // A user replay starts a fresh completion generation; it may auto-advance again.
+            playbackGeneration += 1
+            player.seekTo(0L)
+        }
         if (player.playbackState == Player.STATE_IDLE || player.playerError != null) player.prepare()
         player.play()
     }
