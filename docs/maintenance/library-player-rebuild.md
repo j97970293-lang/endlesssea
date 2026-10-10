@@ -60,7 +60,16 @@ Les anciens thèmes restent accessibles **pendant la transition**. Aucun n'est s
 - Une session déjà attachée n'est pas préparée de nouveau ; un lancement en attente sans rapport n'est pas consommé par cette réattache.
 - Sans lancement exploitable, un message explicite invite à rouvrir la vidéo. Aucun lien vide n'est transmis au moteur par cette entrée.
 
-**Limites du lot :** les grilles, panneaux de fichiers, moteur et commandes existants sont encore utilisés. La navigation n'unifie pas encore tout le modèle de contenu. `PlayerLaunchStore` reste en mémoire ; la restauration complète après mort du processus et la sérialisation des changements d'épisodes restent à faire. La politique de pause existante est conservée : ce lot ne garantit pas une reprise automatique transparente après rotation.
+**Limites du lot :** les grilles, panneaux de fichiers, moteur et commandes existants sont encore utilisés. La navigation n'unifie pas encore tout le modèle de contenu. `PlayerLaunchStore` reste un canal transitoire en mémoire ; il ne contient jamais l'état durable de reprise.
+
+### Reprise après mort du processus — incrément en cours
+
+- `SavedStateHandle` conserve uniquement l'identité stable du média/épisode, le titre et la dernière position ; les liens vidéo signés, en-têtes et cookies ne sont pas sérialisés.
+- Au retour d'une tâche restaurée par Android, l'application vérifie les fichiers locaux/téléchargés puis redemande un lien à l'extension à partir de l'épisode conservé. La file est reconstruite depuis les fichiers locaux ou Room quand ces données sont disponibles ; sinon l'épisode courant reste seul dans la file.
+- La fermeture volontaire du lecteur efface l'état de reprise. Si la source ne peut pas être résolue, un message explicite et une action Réessayer sont affichés.
+- Ce mécanisme dépend de la restauration d'état par Android : il ne promet pas de reprise après arrêt forcé, suppression de tâche ou permission SAF révoquée. Il reste à vérifier par CI et sur appareil avant d'être considéré comme terminé.
+
+La politique de pause existante est conservée : ce mécanisme ne garantit pas une reprise automatique transparente après rotation.
 
 ## Lots suivants
 

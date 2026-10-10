@@ -24,6 +24,35 @@ class PlaybackSessionOwnerTest {
         val owner = PlaybackSessionOwner<String> { it.isNotBlank() }
         assertEquals(PlaybackSessionOwner.Attachment.Unavailable, owner.attach { null })
     }
+    @Test fun savedRecoveryStartsWhenThereIsNoNewLaunch() {
+        val owner = PlaybackSessionOwner<String> { it.isNotBlank() }
+        assertEquals(PlaybackSessionOwner.Attachment.Start("restored"), owner.attach(
+            consume = { null }, restore = { "restored" },
+        ))
+    }
+    @Test fun aNewLaunchTakesPrecedenceOverSavedRecovery() {
+        val owner = PlaybackSessionOwner<String> { it.isNotBlank() }
+        var restored = false
+        assertEquals(PlaybackSessionOwner.Attachment.Start("new"), owner.attach(
+            consume = { "new" }, restore = { restored = true; "old" },
+        ))
+        assertFalse(restored)
+    }
+    @Test fun invalidLaunchCanFallBackToValidSavedRecovery() {
+        val owner = PlaybackSessionOwner<String> { it.isNotBlank() }
+        assertEquals(PlaybackSessionOwner.Attachment.Start("restored"), owner.attach(
+            consume = { "" }, restore = { "restored" },
+        ))
+    }
+    @Test fun reattachingDoesNotReadRecoveryAgain() {
+        val owner = PlaybackSessionOwner<String> { it.isNotBlank() }
+        owner.attach(consume = { null }, restore = { "restored" })
+        var restored = false
+        assertEquals(PlaybackSessionOwner.Attachment.Retained, owner.attach(
+            consume = { error("Must not consume again") }, restore = { restored = true; "again" },
+        ))
+        assertFalse(restored)
+    }
     @Test fun emptyLinkEquivalentCannotStartPlayback() {
         assertEquals(PlaybackSessionOwner.Attachment.Unavailable,
             PlaybackSessionOwner<String> { it.isNotBlank() }.attach { "" })

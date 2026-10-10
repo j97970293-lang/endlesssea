@@ -60,7 +60,9 @@ object PlayerLaunchStore {
 
     @Volatile var pending: Launch = Launch()
         private set
+    @Volatile private var hasPendingLaunch: Boolean = false
 
+    @Synchronized
     fun set(
         title: String, mediaId: String?, episodeId: String?,
         links: List<VideoLink>, startIndex: Int,
@@ -73,6 +75,7 @@ object PlayerLaunchStore {
             resolver = null
         }
         pending = Launch(title, mediaId, episodeId, links, startIndex)
+        hasPendingLaunch = true
         lastMarkers = markers
     }
 
@@ -82,5 +85,14 @@ object PlayerLaunchStore {
 
     fun updateMarkers(markers: SkipMarkers) { lastMarkers = markers }
 
-    fun consume(): Launch = pending.also { pending = Launch() }
+    /** Null means no launch was issued; a blank Launch is not confused with an absent request. */
+    @Synchronized
+    fun consumePending(): Launch? {
+        if (!hasPendingLaunch) return null
+        hasPendingLaunch = false
+        return pending.also { pending = Launch() }
+    }
+
+    /** Compatibility accessor for tests/callers that want an empty sentinel. */
+    fun consume(): Launch = consumePending() ?: Launch()
 }
