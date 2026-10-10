@@ -115,6 +115,8 @@ class DetailsViewModel @Inject constructor(
     val usePosterColor = prefs.usePosterColor
 
     val serverOrder = prefs.serverOrder
+    val preferredAudioLanguage = prefs.preferredAudioLang
+    val preferredPlaybackQuality = prefs.preferredPlaybackQuality
     fun saveServerOrder(order: List<String>) = prefs.setServerOrder(order)
     val uiState: StateFlow<DetailsUiState> = _uiState
 
@@ -700,13 +702,19 @@ class DetailsViewModel @Inject constructor(
     /** §fiche-serveurs : priorité des serveurs configurée par l'utilisateur (réglages). */
     fun serverPriority(): List<String> = prefs.serverOrder.value
 
-    /** Met la langue préférée (réglage global) en premier, sans casser l'ordre qualité. */
+    /** Priorise la langue préférée, le serveur mémorisé puis la qualité visée. */
     private fun orderByLangPref(links: List<VideoLink>): List<VideoLink> {
-        val pref = prefs.preferredAudioLang.value
-        if (pref == "auto" || links.size < 2) return links
+        if (links.size < 2) return links
+        val language = prefs.preferredAudioLang.value
+        val quality = prefs.preferredPlaybackQuality.value
+        val servers = prefs.serverOrder.value
+        fun serverRank(name: String): Int =
+            servers.indexOfFirst { it.equals(name, ignoreCase = true) }.let { if (it < 0) Int.MAX_VALUE else it }
         return links.sortedWith(
-            compareByDescending<VideoLink> { it.audioLang.iso == pref }
-                .thenByDescending { it.quality.ordinal },
+            compareBy<VideoLink> { if (language == "auto" || it.audioLang.iso == language) 0 else 1 }
+                .thenBy { serverRank(it.server) }
+                .thenBy { playbackQualityRank(it.quality, quality) }
+                .thenBy { if (it.streamType == dev.endlesssea.extensions.api.model.StreamType.EMBED) 1 else 0 },
         )
     }
 
@@ -932,7 +940,11 @@ class DetailsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(message = "Résolution des liens… (${i + 1}/${episodes.size})")
             try {
                 val links = resolveBatchLinks(episode)
-                val best = selectBatchDownload(links, serverPriority, excludedServers, language, quality)
+                val best = selectBatchDownload(
+                    links, serverPriority, excludedServers, language, quality,
+                    preferredQuality = prefs.preferredPlaybackQuality.value,
+                    preferredLanguage = prefs.preferredAudioLang.value,
+                )
                 if (best == null) { streamOnly++; return@forEachIndexed }
                 enqueueAndWait(episode, best)
                 added++

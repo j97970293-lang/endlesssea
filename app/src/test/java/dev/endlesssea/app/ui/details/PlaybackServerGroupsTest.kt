@@ -30,6 +30,15 @@ class PlaybackServerGroupsTest {
         assertEquals(listOf(vf), groups[1].second)
     }
 
+    @Test fun preferredAudioLanguageMovesToTheFirstSection() {
+        val vf = link("VF", AudioLang.VF)
+        val vostfr = link("VOSTFR", AudioLang.VOSTFR)
+        assertEquals(
+            listOf(AudioLang.VF, AudioLang.VOSTFR),
+            playbackLanguageGroups(listOf(vostfr, vf), "vf").map { it.first },
+        )
+    }
+
     @Test fun languagesWithoutLinksAreOmitted() {
         assertEquals(emptyList<Pair<AudioLang, List<VideoLink>>>(), playbackLanguageGroups(emptyList()))
     }

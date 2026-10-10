@@ -1248,6 +1248,33 @@ fun SettingsScreen(
                 }
             }
 
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text("Qualité de lecture préférée", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Auto choisit la meilleure résolution. Sinon : résolution exacte, puis la plus proche en dessous, et seulement après une résolution supérieure. Un filtre strict de téléchargement remplace cette préférence.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "auto" to "Auto", "2160" to "4K", "1440" to "1440p",
+                            "1080" to "1080p", "720" to "720p", "480" to "480p", "360" to "360p",
+                        ).forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.preferredPlaybackQuality == key,
+                                onClick = { viewModel.setPreferredPlaybackQuality(key) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
+                            )
+                        }
+                    }
+                }
+            }
+
             // ---------------------------------------------------------- GENRES
             }
             // §fusion-reglages : « Genres » n'est plus une page à part — elle vit

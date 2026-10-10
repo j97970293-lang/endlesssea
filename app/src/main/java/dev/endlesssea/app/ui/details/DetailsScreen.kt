@@ -1040,6 +1040,8 @@ fun DetailsScreen(
 
     playSheetEpisode?.let { episode ->
         val links = state.linksByEpisode[episode.id] ?: emptyList()
+        val preferredAudioLanguage by viewModel.preferredAudioLanguage.collectAsState()
+        val preferredQuality by viewModel.preferredPlaybackQuality.collectAsState()
         var selectedAudioLang by remember(episode.id) { mutableStateOf<AudioLang?>(null) }
         // §serveurs-visibles : la recherche démarre à l'ouverture de la feuille,
         // et la liste se remplit au fil de l'eau (serveur par serveur).
@@ -1082,7 +1084,7 @@ fun DetailsScreen(
                     }
                 } else {
                     // VOSTFR/VF sont accessibles sans parcourir une longue liste de serveurs.
-                    val languageGroups = playbackLanguageGroups(links)
+                    val languageGroups = playbackLanguageGroups(links, preferredAudioLanguage)
                     val availableLanguages = languageGroups.map { it.first }
                     val selectedLanguage = selectedAudioLang
                     LaunchedEffect(availableLanguages, selectedLanguage) {
@@ -1145,7 +1147,7 @@ fun DetailsScreen(
                                 .sortedWith(compareBy<Pair<String, List<VideoLink>>> { serverRank(it.first) }
                                     .thenBy { it.first.lowercase() })
                             grouped.forEach { (server, srvLinks) ->
-                                val best = srvLinks.maxByOrNull { it.quality.pixels } ?: srvLinks.first()
+                                val best = preferredPlaybackLink(srvLinks, preferredQuality) ?: srvLinks.first()
                                 GlassCard(
                                     cornerRadius = 14.dp,
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),

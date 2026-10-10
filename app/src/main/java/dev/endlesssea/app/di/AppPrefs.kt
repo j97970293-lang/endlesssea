@@ -15,6 +15,8 @@ import javax.inject.Singleton
 class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
 
     companion object {
+        private val PLAYBACK_QUALITY_OPTIONS = setOf("auto", "2160", "1440", "1080", "720", "480", "360")
+
         /**
          * Variantes « tout teinté » pour le verre (§24) : couleurs PROFONDES et
          * désaturées — un verre tout bleu/vert/rouge DOIT rester lisible.
@@ -426,6 +428,17 @@ class AppPrefs @Inject constructor(@ApplicationContext context: Context) {
         val s = if (v in listOf("auto", "vf", "vostfr", "vo")) v else "auto"
         p.edit().putString("pref_audio_lang", s).apply()
         _preferredAudioLang.value = s
+    }
+
+    /** Qualité de lecture visée : « auto » ou une résolution en pixels. */
+    private val _preferredPlaybackQuality = MutableStateFlow(
+        p.getString("playback_quality", "auto")?.takeIf { it in PLAYBACK_QUALITY_OPTIONS } ?: "auto",
+    )
+    val preferredPlaybackQuality: StateFlow<String> = _preferredPlaybackQuality
+    fun setPreferredPlaybackQuality(v: String) {
+        val safe = v.takeIf { it in PLAYBACK_QUALITY_OPTIONS } ?: "auto"
+        p.edit().putString("playback_quality", safe).apply()
+        _preferredPlaybackQuality.value = safe
     }
 
     // ---------------------------------------------------------------- apparence avancée

@@ -59,6 +59,7 @@ data class SettingsUiState(
     val bgImageUri: String? = null,
     val bgDim: Int = 35,
     val preferredAudioLang: String = "auto",
+    val preferredPlaybackQuality: String = "auto",
     val genres: List<GenreUi> = emptyList(),
     val updateAutoCheck: Boolean = true,
     val availableUpdate: dev.endlesssea.app.update.AppUpdateInfo? = null,
@@ -160,6 +161,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.bgImageUri.collect { v -> set { copy(bgImageUri = v) } } }
         viewModelScope.launch { prefs.bgDim.collect { v -> set { copy(bgDim = v) } } }
         viewModelScope.launch { prefs.preferredAudioLang.collect { v -> set { copy(preferredAudioLang = v) } } }
+        viewModelScope.launch { prefs.preferredPlaybackQuality.collect { v -> set { copy(preferredPlaybackQuality = v) } } }
         set { copy(lastBackupAt = prefs.lastAutoBackupAt) }
         viewModelScope.launch { maybeAutoBackup() }
         viewModelScope.launch { prefs.barMargin.collect { v -> set { copy(barMargin = v) } } }
@@ -337,6 +339,10 @@ class SettingsViewModel @Inject constructor(
     fun setPreferredAudioLang(v: String) {
         prefs.setPreferredAudioLang(v)
         toastState("Langue préférée : " + when (v) { "vf" -> "VF"; "vostfr" -> "VOSTFR"; "vo" -> "VO"; else -> "Auto" })
+    }
+    fun setPreferredPlaybackQuality(v: String) {
+        prefs.setPreferredPlaybackQuality(v)
+        toastState("Qualité de lecture préférée : " + if (v == "auto") "Auto" else "${v}p")
     }
     fun setGlassScrim(v: Int) { prefs.setGlassScrim(v) }
     fun setCardStyle(v: String) { prefs.setCardStyle(v) }
