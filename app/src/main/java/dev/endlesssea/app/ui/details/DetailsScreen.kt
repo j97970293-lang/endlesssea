@@ -113,6 +113,8 @@ fun DetailsScreen(
     /** §suivi (conversation 11) : ouverture de l'écran « Comptes & suivi ». */
     onOpenTrackers: () -> Unit = {},
     viewModel: DetailsViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
+    /** Reprendre directement l'épisode de l'historique (action explicite de l'accueil). */
+    autoResume: Boolean = false,
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -150,6 +152,17 @@ fun DetailsScreen(
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
     }
     fun launchPlayer(): () -> Unit = { context.startActivity(Intent(context, PlayerActivity::class.java)) }
+
+    var autoResumeStarted by remember(mediaId) { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(autoResume, state.loading, state.resumeEpisodeId, state.episodes) {
+        val resumeId = state.resumeEpisodeId
+        if (autoResume && !autoResumeStarted && !state.loading &&
+            resumeId != null && state.episodes.any { it.id == resumeId }
+        ) {
+            autoResumeStarted = true
+            viewModel.playResume(onReady = launchPlayer())
+        }
+    }
 
     val seasons = remember(state.episodes) {
         state.episodes.mapNotNull { it.season }.distinct().sorted()
@@ -905,8 +918,8 @@ fun DetailsScreen(
     val resumePromptOn by viewModel.resumePrompt.collectAsState()
     var resumeAsked by remember { androidx.compose.runtime.mutableStateOf(false) }
     var showResumeDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
-    LaunchedEffect(state.resumeLabel, resumePromptOn) {
-        if (resumePromptOn && !resumeAsked && state.resumeLabel != null) {
+    LaunchedEffect(state.resumeLabel, resumePromptOn, autoResume) {
+        if (!autoResume && resumePromptOn && !resumeAsked && state.resumeLabel != null) {
             resumeAsked = true
             showResumeDialog = true
         }

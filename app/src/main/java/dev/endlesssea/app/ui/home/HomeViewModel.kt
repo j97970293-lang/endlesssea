@@ -22,8 +22,12 @@ import javax.inject.Inject
  * épisode et temps restant, au lieu d'une affiche de série.
  */
 data class ContinueItemUi(
-    /** Cible du clic : id de fiche, ou « local:<uri> » pour un fichier local. */
+    /** Cible du clic : id de fiche à reprendre, ou « local:<uri> » pour un fichier local. */
     val id: String,
+    /** Identité stable de la fiche/dossier pour ouvrir sa page d'affiche. */
+    val mediaId: String,
+    /** Dernier épisode effectivement lu, utilisé pour reprendre ou supprimer l'entrée. */
+    val episodeId: String,
     val title: String,
     val subtitle: String,
     val thumbUrl: String?,
@@ -133,9 +137,40 @@ class HomeViewModel @Inject constructor(
                     }
                     val watched = humanSince(h.updatedAt)
                     val media = mediaDao.byId(h.mediaId)
+                    val localTarget = localContinueTarget(h.episodeId)
+                    val clickTarget = continueClickTarget(h.mediaId, h.episodeId)
                     when {
+                        // Les fichiers locaux doivent viser l'URI de l'épisode pour Lire,
+                        // jamais l'URI du dossier série — sinon SAF ouvre une collection vide.
+                        localTarget != null -> if (prefs.localInHistory.value) {
+                            val meta = runCatching { prefs.localFileMeta(h.episodeId) }.getOrNull()
+                            val cover = meta?.coverUri?.takeIf { it.isNotBlank() }
+                                ?: media?.customCoverUri?.takeIf { it.isNotBlank() }
+                                ?: media?.posterUrl?.takeIf { it.isNotBlank() }
+                                ?: media?.bannerUrl?.takeIf { it.isNotBlank() }
+                            val folder = h.mediaId.removePrefix("local:")
+                            ContinueItemUi(
+                                id = clickTarget,
+                                mediaId = h.mediaId,
+                                episodeId = h.episodeId,
+                                title = media?.customTitle?.takeIf { it.isNotBlank() }
+                                    ?: media?.title?.takeIf { it.isNotBlank() }
+                                    ?: dev.endlesssea.app.local.LocalVideos.seriesMeta[folder]?.title
+                                    ?: meta?.title?.takeIf { it.isNotBlank() }
+                                    ?: prettyLocalName(h.episodeId),
+                                subtitle = episodeLabel(h.episodeId),
+                                thumbUrl = cover,
+                                localVideoUri = h.episodeId.takeIf { cover.isNullOrBlank() },
+                                progress = progress,
+                                remainingLabel = remaining,
+                                watchedLabel = watched,
+                                isLocal = true,
+                            )
+                        } else null
                         media != null -> ContinueItemUi(
-                            id = media.id,
+                            id = clickTarget,
+                            mediaId = media.id,
+                            episodeId = h.episodeId,
                             title = media.customTitle?.takeIf { it.isNotBlank() } ?: media.title,
                             subtitle = episodeLabel(h.episodeId),
                             thumbUrl = media.customCoverUri ?: media.posterUrl ?: media.bannerUrl,
@@ -143,22 +178,6 @@ class HomeViewModel @Inject constructor(
                             remainingLabel = remaining,
                             watchedLabel = watched,
                         )
-                        // §historique-local : un fichier local (pas de fiche en base)
-                        // apparaît quand même, sauf si l'utilisateur l'exclut.
-                        prefs.localInHistory.value && isLocalRef(h.episodeId) -> {
-                            val meta = runCatching { prefs.localFileMeta(h.episodeId) }.getOrNull()
-                            ContinueItemUi(
-                                id = "local:" + h.episodeId,
-                                title = meta?.title ?: prettyLocalName(h.episodeId),
-                                subtitle = "Fichier local",
-                                thumbUrl = meta?.coverUri,
-                                localVideoUri = h.episodeId.takeIf { meta?.coverUri.isNullOrBlank() },
-                                progress = progress,
-                                remainingLabel = remaining,
-                                watchedLabel = watched,
-                                isLocal = true,
-                            )
-                        }
                         else -> null
                     }
                 }.distinctBy { it.id }.take(12)
@@ -177,8 +196,7 @@ class HomeViewModel @Inject constructor(
      * §nom-fichier : une URI SAF finit par « primary%3AMovies%2Ffilm.mp4 » —
      * on en extrait le vrai nom de fichier, sans chemin ni extension.
      */
-    private fun isLocalRef(id: String): Boolean =
-        id.startsWith("content://") || id.startsWith("file://") || id.startsWith("/")
+    private fun isLocalRef(id: String): Boolean = localContinueTarget(id) != null
 
     private fun prettyLocalName(uri: String): String =
         dev.endlesssea.app.local.LocalNames.pretty(uri)
@@ -204,6 +222,11 @@ class HomeViewModel @Inject constructor(
             delta < 2L * 86_400_000L -> "hier"
             else -> "il y a ${delta / 86_400_000L} jours"
         }
+    }
+
+    /** Supprime uniquement l'entrée d'historique sélectionnée, sans toucher au fichier média. */
+    fun deleteHistoryEntry(episodeId: String) {
+        viewModelScope.launch { historyDao.deleteEpisode(episodeId) }
     }
 
     // ---------- Contenu réel des extensions (ce qui donne vie à l'accueil)

@@ -231,6 +231,17 @@ fun EsNavGraph(nav: NavHostController) {
                         openDetails(nav, id)
                     }
                 },
+                onContinue = { item ->
+                    if (item.isLocal) {
+                        localResume.resume(item.episodeId,
+                            onReady = { queue, selected -> dev.endlesssea.app.ui.library.playLocal(ctx, queue, selected) },
+                            onError = { message -> android.widget.Toast.makeText(ctx, message, android.widget.Toast.LENGTH_LONG).show() },
+                        )
+                    } else {
+                        nav.navigate("resume/${Uri.encode(item.mediaId)}")
+                    }
+                },
+                onOpenContinueDetails = { item -> openDetails(nav, item.mediaId) },
                 onSeeAll = { pkg, category ->
                     nav.navigate("seeAll/${Uri.encode(pkg)}/${Uri.encode(category)}")
                 },
@@ -315,6 +326,18 @@ fun EsNavGraph(nav: NavHostController) {
             dev.endlesssea.app.ui.tracking.TrackersScreen(onBack = { nav.popBackStack() })
         }
 
+        // L'action « Reprendre » utilise la même fiche mais lance directement
+        // le dernier épisode connu, sans demander une seconde confirmation.
+        composable("resume/{id}") { entry ->
+            val id = Uri.decode(entry.arguments?.getString("id").orEmpty())
+            DetailsScreen(
+                mediaId = id,
+                onBack = { nav.popBackStack() },
+                onDownloadQueued = { nav.navigate(Screen.Downloads.route) },
+                onOpenTrackers = { nav.navigate("trackers") },
+                autoResume = true,
+            )
+        }
         composable("details/{id}") { entry ->
             val id = Uri.decode(entry.arguments?.getString("id").orEmpty())
             DetailsScreen(

@@ -3,6 +3,8 @@ package dev.endlesssea.app.ui.home
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,11 +29,14 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -70,6 +75,10 @@ fun HomeScreen(
     /** §tout-voir : (source, catégorie) → page complète du catalogue. */
     onSeeAll: (String, String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
+    /** Reprend directement l'épisode indiqué dans l'historique. */
+    onContinue: (ContinueItemUi) -> Unit = { onMediaClick(it.id) },
+    /** Ouvre la fiche du média, distincte de la cible épisode. */
+    onOpenContinueDetails: (ContinueItemUi) -> Unit = { onMediaClick(it.mediaId) },
 ) {
     val state by viewModel.uiState.collectAsState()
     // §fournisseurs : état et feuille modale hissés hors de la LazyColumn —
@@ -148,7 +157,12 @@ fun HomeScreen(
         // barre de progression, temps restant et date de visionnage (conversation 9).
         if (state.continueWatching.isNotEmpty()) {
             item {
-                ContinueWatchingRow(items = state.continueWatching, onMediaClick = onMediaClick)
+                ContinueWatchingRow(
+                    items = state.continueWatching,
+                    onContinue = onContinue,
+                    onOpenDetails = onOpenContinueDetails,
+                    onDeleteHistory = viewModel::deleteHistoryEntry,
+                )
             }
         }
 
@@ -522,8 +536,11 @@ private fun PortraitCarousel(items: List<SearchItemUi>, onClick: (String) -> Uni
 @Composable
 private fun ContinueWatchingRow(
     items: List<ContinueItemUi>,
-    onMediaClick: (String) -> Unit,
+    onContinue: (ContinueItemUi) -> Unit,
+    onOpenDetails: (ContinueItemUi) -> Unit,
+    onDeleteHistory: (String) -> Unit,
 ) {
+    var pendingDelete by remember { mutableStateOf<ContinueItemUi?>(null) }
     Column {
         Text(
             "Reprendre la lecture",
@@ -537,98 +554,154 @@ private fun ContinueWatchingRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(items, key = { it.id }) { item ->
-                ContinueWatchingCard(item = item, onClick = { onMediaClick(item.id) })
+                ContinueWatchingCard(
+                    item = item,
+                    onClick = { onContinue(item) },
+                    onOpenDetails = { onOpenDetails(item) },
+                    onRequestDelete = { pendingDelete = item },
+                )
             }
         }
     }
+    pendingDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Supprimer de l’historique ?") },
+            text = {
+                Text("« ${item.title} » sera retiré de l’historique. Le fichier ou l’épisode ne sera pas supprimé.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteHistory(item.episodeId)
+                    pendingDelete = null
+                }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Annuler") }
+            },
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ContinueWatchingCard(item: ContinueItemUi, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(232.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-            .clickable { onClick() },
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(130.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
+private fun ContinueWatchingCard(
+    item: ContinueItemUi,
+    onClick: () -> Unit,
+    onOpenDetails: () -> Unit,
+    onRequestDelete: () -> Unit,
+) {
+    var menuOpen by remember(item.id) { mutableStateOf(false) }
+    Box {
+        Column(
+            modifier = Modifier
+                .width(232.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { menuOpen = true },
+                ),
         ) {
-            when {
-                item.localVideoUri != null -> dev.endlesssea.app.ui.local.LocalVideoThumbnail(
-                    uri = item.localVideoUri,
-                    bytes = 0L,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                item.thumbUrl != null -> AsyncImage(
-                    model = item.thumbUrl,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            // Voile de lisibilité + pastille « lecture »
             Box(
                 Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
-                        ),
-                    ),
-            )
-            Box(
-                Modifier
-                    .align(Alignment.Center)
-                    .size(42.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(Color.Black.copy(alpha = 0.45f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    androidx.compose.material.icons.Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.White,
-                )
-            }
-            // Barre de progression : exactement le style de l'historique
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { item.progress },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(4.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.White.copy(alpha = 0.25f),
-                drawStopIndicator = {},
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            item.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            listOf(item.subtitle, item.watchedLabel)
-                .filter { it.isNotBlank() }
-                .joinToString(" · "),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (item.remainingLabel.isNotBlank()) {
+                    .height(130.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
+            ) {
+                when {
+                    item.localVideoUri != null -> dev.endlesssea.app.ui.local.LocalVideoThumbnail(
+                        uri = item.localVideoUri,
+                        bytes = 0L,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    item.thumbUrl != null -> AsyncImage(
+                        model = item.thumbUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                // Voile de lisibilité + pastille « lecture »
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            ),
+                        ),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .size(42.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                    )
+                }
+                // Barre de progression : exactement le style de l'historique
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { item.progress },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.White.copy(alpha = 0.25f),
+                    drawStopIndicator = {},
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                item.remainingLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOf(item.subtitle, item.watchedLabel)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.remainingLabel.isNotBlank()) {
+                Text(
+                    item.remainingLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+        ) {
+            if (item.mediaId.isNotBlank()) {
+                DropdownMenuItem(
+                    text = { Text("Ouvrir la fiche") },
+                    onClick = {
+                        menuOpen = false
+                        onOpenDetails()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Supprimer de l’historique") },
+                onClick = {
+                    menuOpen = false
+                    onRequestDelete()
+                },
             )
         }
     }
