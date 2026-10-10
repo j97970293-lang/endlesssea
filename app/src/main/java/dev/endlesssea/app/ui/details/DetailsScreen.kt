@@ -128,6 +128,8 @@ fun DetailsScreen(
     var playSheetEpisode by remember { mutableStateOf<Episode?>(null) }
     /** §telecharge-tout-sélect : dialogue de sélection d'épisodes (après le tri serveurs). */
     var batchSelectDialog by remember { mutableStateOf(false) }
+    /** Sélection amorcée depuis la liste avant le tri des serveurs. */
+    var batchSelectionSeed by remember { mutableStateOf<Set<String>?>(null) }
     /** Priorité de serveurs choisie dans l'étape 1 du « Tout télécharger ». */
     var batchPriority by remember { mutableStateOf<List<String>?>(null) }
     var batchExcluded by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -136,6 +138,9 @@ fun DetailsScreen(
     // §glisser-serveurs : dialogue de choix/réordonnancement avant « Tout télécharger »
     var serverOrderDialog by remember { mutableStateOf(false) }
     var selectedSeason by remember { mutableStateOf<Int?>(null) }
+    var episodeSelectionMode by remember(mediaId) { mutableStateOf(false) }
+    var selectedEpisodeIds by remember(mediaId) { mutableStateOf<Set<String>>(emptySet()) }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
     var episodeQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var offlineOnly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var synopsisExpanded by remember { mutableStateOf(false) }
@@ -173,6 +178,27 @@ fun DetailsScreen(
             (selectedSeason == null || ep.season == selectedSeason) && (!offlineOnly || ep.id in offline) &&
                 dev.endlesssea.app.ui.library.matchesEpisodeSearch(episodeQuery, ep.number.takeIf { it.isFinite() }?.toString()?.toDoubleOrNull(), ep.title)
         }
+    }
+    val selectedEpisodes = episodesShown.filter { it.id in selectedEpisodeIds }
+    val selectedVisibleIds = selectedEpisodes.mapTo(hashSetOf()) { it.id }
+    val selectedDownloadFiles = state.deviceFiles.filter {
+        it.managedDownload && it.episodeId in selectedVisibleIds
+    }
+    if (confirmBulkDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmBulkDelete = false },
+            title = { Text("Supprimer ${selectedDownloadFiles.size} téléchargement(s) ?") },
+            text = { Text("Les fichiers hors ligne sélectionnés seront supprimés définitivement. Les épisodes de la source ne seront pas supprimés.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteDeviceFiles(selectedDownloadFiles)
+                    confirmBulkDelete = false
+                    selectedEpisodeIds = emptySet()
+                    episodeSelectionMode = false
+                }) { Text("Supprimer") }
+            },
+            dismissButton = { TextButton(onClick = { confirmBulkDelete = false }) { Text("Annuler") } },
+        )
     }
 
     // §film-et-serie : une même fiche peut porter un FILM et des saisons (cas
@@ -688,6 +714,55 @@ fun DetailsScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            TextButton(onClick = {
+                                episodeSelectionMode = !episodeSelectionMode
+                                selectedEpisodeIds = emptySet()
+                            }) {
+                                Text(if (episodeSelectionMode) "Terminer" else "Sélectionner")
+                            }
+                        }
+                        if (episodeSelectionMode) {
+                            val visibleIds = episodesShown.mapTo(hashSetOf()) { it.id }
+                            val allVisibleSelected = visibleIds.isNotEmpty() && visibleIds.all { it in selectedEpisodeIds }
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("${selectedEpisodes.size} sélectionné(s)", Modifier.weight(1f))
+                                    TextButton(onClick = {
+                                        selectedEpisodeIds = if (allVisibleSelected) {
+                                            selectedEpisodeIds - visibleIds
+                                        } else {
+                                            selectedEpisodeIds + visibleIds
+                                        }
+                                    }) { Text(if (allVisibleSelected) "Désélectionner tout" else "Tout sélectionner") }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.markEpisodesWatched(selectedEpisodes.mapTo(hashSetOf()) { it.id })
+                                            selectedEpisodeIds = emptySet()
+                                            episodeSelectionMode = false
+                                        },
+                                        enabled = selectedEpisodes.isNotEmpty(),
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Marquer vus", maxLines = 1) }
+                                    OutlinedButton(
+                                        onClick = {
+                                            batchSelectionSeed = selectedEpisodes.mapTo(hashSetOf()) { it.id }
+                                            serverOrderDialog = true
+                                        },
+                                        enabled = selectedEpisodes.isNotEmpty() && !viewModel.isLocal && !state.batchRunning,
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Télécharger", maxLines = 1) }
+                                    OutlinedButton(
+                                        onClick = { confirmBulkDelete = true },
+                                        enabled = selectedDownloadFiles.isNotEmpty(),
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Supprimer", maxLines = 1) }
+                                }
+                            }
                         }
                         TextButton(onClick = { confirmAllWatched = true }, modifier = Modifier.padding(horizontal = 16.dp)) {
                             Text("Tout marquer vu")
@@ -738,6 +813,9 @@ fun DetailsScreen(
                                 },
                                 isMovie = true,
                                 mediaTitle = state.details?.title,
+                                selectionMode = episodeSelectionMode,
+                                selected = episode.id in selectedEpisodeIds,
+                                onSelectionToggle = { selectedEpisodeIds = if (episode.id in selectedEpisodeIds) selectedEpisodeIds - episode.id else selectedEpisodeIds + episode.id },
                             )
                         }
                     }
@@ -764,6 +842,9 @@ fun DetailsScreen(
                                     val local = viewModel.downloadedFor(episode.id)
                                     if (local != null) deleteCandidate = local else if (!viewModel.isLocal) downloadSheetEpisode = episode
                                 },
+                            selectionMode = episodeSelectionMode,
+                            selected = episode.id in selectedEpisodeIds,
+                            onSelectionToggle = { selectedEpisodeIds = if (episode.id in selectedEpisodeIds) selectedEpisodeIds - episode.id else selectedEpisodeIds + episode.id },
                         )
                     }
                 }
@@ -863,7 +944,7 @@ fun DetailsScreen(
         }
         var inactive by remember { mutableStateOf(setOf<String>()) }
         AlertDialog(
-            onDismissRequest = { serverOrderDialog = false },
+            onDismissRequest = { serverOrderDialog = false; batchSelectionSeed = null },
             confirmButton = {
                 Button(onClick = {
                     val active = ordered.filter { it !in inactive }
@@ -875,7 +956,7 @@ fun DetailsScreen(
                     serverOrderDialog = false
                 }) { Text("Choisir les épisodes") }
             },
-            dismissButton = { TextButton(onClick = { serverOrderDialog = false }) { Text("Annuler") } },
+            dismissButton = { TextButton(onClick = { serverOrderDialog = false; batchSelectionSeed = null }) { Text("Annuler") } },
             title = { Text("Serveurs & priorité") },
             text = {
                 Column(Modifier.heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.65f).verticalScroll(rememberScrollState())) {
@@ -1103,11 +1184,15 @@ fun DetailsScreen(
 
     // ---- §telecharge-tout-sélect : choix des épisodes avant « Tout télécharger »
     if (batchSelectDialog) {
-        val selected = remember { mutableStateMapOf<String, Boolean>().apply {
-            state.episodes.forEach { put(it.id, true) }
-        } }
+        val selected = remember(state.episodes, batchSelectionSeed) {
+            mutableStateMapOf<String, Boolean>().apply {
+                state.episodes.forEach { episode ->
+                    put(episode.id, batchSelectionSeed?.let { episode.id in it } ?: true)
+                }
+            }
+        }
         AlertDialog(
-            onDismissRequest = { batchSelectDialog = false },
+            onDismissRequest = { batchSelectDialog = false; batchSelectionSeed = null },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     val picked = state.episodes.filter { selected[it.id] == true }
@@ -1118,6 +1203,7 @@ fun DetailsScreen(
                             excludedServers = batchExcluded, language = batchLanguage, quality = batchQuality)
                     }
                     batchPriority = null
+                    batchSelectionSeed = null
                 }) { Text("Télécharger (${selected.count { it.value }})") }
             },
             dismissButton = {
@@ -1128,7 +1214,7 @@ fun DetailsScreen(
                     TextButton(onClick = {
                         state.episodes.forEach { selected[it.id] = false }
                     }) { Text("Aucun") }
-                    TextButton(onClick = { batchSelectDialog = false }) { Text("Annuler") }
+                    TextButton(onClick = { batchSelectDialog = false; batchSelectionSeed = null }) { Text("Annuler") }
                 }
             },
             title = { Text(if(mediaIsMovie) "Télécharger le film" else "Tout télécharger — épisodes") },
@@ -1736,8 +1822,14 @@ private fun EpisodeRowAnymex(
     downloaded: Boolean = false,
     localVideo: Boolean = false,
     localVideoBytes: Long = 0L,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onSelectionToggle: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
 ) {
+    val rowClick: () -> Unit = {
+        if (selectionMode) onSelectionToggle?.invoke() else onPlay()
+    }
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         cornerRadius = 16.dp,
@@ -1748,7 +1840,7 @@ private fun EpisodeRowAnymex(
                 Modifier
                     .size(width = 118.dp, height = 66.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = onPlay),
+                    .clickable(onClick = rowClick),
             ) {
                 if (localVideo) {
                     dev.endlesssea.app.ui.local.LocalVideoThumbnail(episode.id, localVideoBytes, Modifier.fillMaxSize())
@@ -1779,7 +1871,12 @@ private fun EpisodeRowAnymex(
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).combinedClickable(onClick = onPlay, onLongClick = onEdit)) {
+            Column(
+                Modifier.weight(1f).combinedClickable(
+                    onClick = rowClick,
+                    onLongClick = if (selectionMode) null else onEdit,
+                ),
+            ) {
                 dev.endlesssea.app.ui.components.ExpandableText(
                     text = when {
                         isMovie -> episode.title?.takeIf { it.isNotBlank() } ?: mediaTitle ?: "Film"
@@ -1801,12 +1898,16 @@ private fun EpisodeRowAnymex(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (onEdit != null) IconButton(onClick = onEdit) { Icon(Icons.Filled.MoreVert, "Modifier cet épisode") }
-            if (loading) {
-                dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
-            } else if (!localVideo || downloaded) {
-                IconButton(onClick = onDownload) {
-                    Icon(if (downloaded) Icons.Filled.Delete else Icons.Filled.Download, if (downloaded) "Supprimer le fichier hors ligne" else "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
+            if (selectionMode) {
+                androidx.compose.material3.Checkbox(checked = selected, onCheckedChange = { onSelectionToggle?.invoke() })
+            } else {
+                if (onEdit != null) IconButton(onClick = onEdit) { Icon(Icons.Filled.MoreVert, "Modifier cet épisode") }
+                if (loading) {
+                    dev.endlesssea.app.ui.components.EsLoadingIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
+                } else if (!localVideo || downloaded) {
+                    IconButton(onClick = onDownload) {
+                        Icon(if (downloaded) Icons.Filled.Delete else Icons.Filled.Download, if (downloaded) "Supprimer le fichier hors ligne" else "Télécharger l'épisode", tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
